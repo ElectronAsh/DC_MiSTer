@@ -784,8 +784,8 @@ float_to_fixed  float_y4 (
 );
 
 
-reg signed [10:0] x_ps;
-reg signed [10:0] y_ps;
+reg [10:0] x_ps;
+reg [10:0] y_ps;
 
 // Half-edge constants
 // Setup phase...
@@ -1037,10 +1037,10 @@ always @(*) begin
 end
 */
 
-wire signed [63:0] u_div_z_fixed = ($signed(IP_U_INTERP)<<FRAC_BITS) / $signed(IP_Z_INTERP);
+wire signed [63:0] u_div_z_fixed = (IP_U_INTERP<<FRAC_BITS) / IP_Z_INTERP;
 //reg signed [31:0] u_div_z_fixed;
 
-wire signed [63:0] v_div_z_fixed = ($signed(IP_V_INTERP)<<FRAC_BITS) / $signed(IP_Z_INTERP);
+wire signed [63:0] v_div_z_fixed = (IP_V_INTERP<<FRAC_BITS) / IP_Z_INTERP;
 //reg signed [31:0] v_div_z_fixed;
 
 wire signed [31:0] u_div_z = u_div_z_fixed >>FRAC_BITS;
