@@ -918,6 +918,7 @@ end
 wire reset = /*RESET |*/ status[0] | boot1_loading | vram_dump_loading;
 
 
+
 (*keep*)wire boot0_loading = ioctl_index=={2'd0, 6'd0} && ioctl_download;	// PVR regs loaded at core-load.
 (*keep*)wire pvr_dump_loading = ioctl_index[5:0]==2 && ioctl_download;		// File index 2 "Load PVR Regs".
 (*noprune*)reg [31:00] rom_word32;
@@ -925,37 +926,29 @@ reg pvr_wr = 1'b0;
 
 reg [31:0] pvr_ptr [0:80];	// 0x140/4 words. Enough to load up to TA_ALLOC_CTRL.
 
-//always @(posedge SH4_CKIO2) begin
-always @(posedge clk_sys) begin
-	if (ioctl_download && ioctl_wr) begin
-		case (ioctl_addr[1:0])
-			0: rom_word32[15:00] <= ioctl_data;
-			2: begin rom_word32[31:16] <= ioctl_data; if (boot0_loading |  pvr_dump_loading) pvr_wr <= 1'b1; end
-			default: ;
-		endcase
-	end
-	
-	if (pvr_wr) begin
-		pvr_ptr[ ioctl_addr[24:2] ] <= rom_word32;
-		pvr_wr <= 1'b0;
-	end
-end
-
 
 (*keep*)wire boot1_loading = ioctl_index=={2'd1, 6'd0} && ioctl_download;	// VRAM dump loaded at core-load.
 (*keep*)wire vram_dump_loading = ioctl_index[5:0]==3 && ioctl_download;		// File index 3 "Load VRAM Dump".
-(*noprune*)reg [63:00] rom_word64;
+reg [7:0] download_be;
 reg ddr_wr = 1'b0;
 
+
+//always @(posedge SH4_CKIO2) begin
 always @(posedge clk_sys) begin
 	if (ioctl_download && ioctl_wr) begin
-		case (ioctl_addr[2:0])
-			0: rom_word64[15:00] <= ioctl_data;
-			2: rom_word64[31:16] <= ioctl_data;
-			4: rom_word64[47:32] <= ioctl_data;
-			6: begin rom_word64[63:48] <= ioctl_data; if (boot1_loading | vram_dump_loading) ddr_wr <= 1'b1; end
-			default: ;
-		endcase
+		if (!ioctl_addr[1]) rom_word32[15:00] <= ioctl_data;
+		else begin
+			rom_word32[31:16] <= ioctl_data;
+			if (boot0_loading |  pvr_dump_loading) pvr_wr <= 1'b1;
+			if (boot1_loading | vram_dump_loading) ddr_wr <= 1'b1;
+		end
+	end
+	
+	download_be <= (!ioctl_addr[22]) ? 8'b00001111 : 8'b11110000;
+	
+	if (pvr_wr) begin
+		pvr_ptr[ ioctl_addr[23:2] ] <= rom_word32;
+		pvr_wr <= 1'b0;
 	end
 	
 	if (ddr_wr) begin
@@ -966,6 +959,8 @@ always @(posedge clk_sys) begin
 		end
 	end
 end
+
+
 
 /*
 //wire [28:0] DDRAM_BASE = 29'h04000000;	// 512MB >> 3.
@@ -1019,7 +1014,7 @@ assign DDRAM_RD       = ioctl_download ? 1'b0 : read;
 */
 
 wire pvr_reg_cs = (boot0_loading | pvr_dump_loading);	// BYTE Address!
-wire [15:0] pvr_addr = ioctl_addr;
+wire [15:0] pvr_addr = ioctl_addr[21:0];
 wire [31:0] pvr_din = rom_word32;
 //wire pvr_wr = pvr_wr_rising;
 wire pvr_rd = 1'b0;
@@ -1031,17 +1026,17 @@ wire vram_rd;
 wire vram_wr;
 
 wire [63:0] vram_dout;
-wire [63:0] vram_din = DDRAM_DOUT;
+wire [63:0] vram_din = DDRAM_DOUT[63:0];
 wire vram_valid = DDRAM_DOUT_READY;
 
 wire [28:0] DDRAM_BASE = 29'h06400000;	// 800MB >> 3. (DDRAM_BASE is the 64-bit WORD address!)
 
 assign DDRAM_CLK      = clk_sys;
 assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : 8'd1;
-assign DDRAM_ADDR     = ioctl_download ? DDRAM_BASE+ioctl_addr[24:3] : DDRAM_BASE+vram_addr[23:3];
-assign DDRAM_DIN      = ioctl_download ? {ioctl_data, rom_word64[47:00]} : vram_dout;
-assign DDRAM_WE       = ioctl_download ? ddr_wr : /*vram_wr*/ 1'b0;
-assign DDRAM_BE       = ioctl_download ? 8'b11111111 : 8'b11111111;
+assign DDRAM_ADDR     = ioctl_download ? DDRAM_BASE+ioctl_addr[21:2] : DDRAM_BASE+vram_addr[21:2];	// Limit the write/read addresses to 4MB!
+assign DDRAM_DIN      = ioctl_download ? {rom_word32,rom_word32} : vram_dout;								// We are loading the 8MB VRAM dumps into each 32-bit half of DDR3 now.
+assign DDRAM_WE       = ioctl_download ? ddr_wr : /*vram_wr*/ 1'b0;											// This is so we can do texture reads of the full 64-bit word.
+assign DDRAM_BE       = ioctl_download ? download_be : 8'b11111111;
 assign DDRAM_RD       = ioctl_download ? 1'b0 : vram_rd;
 
 wire [22:0] fb_addr;
@@ -1106,14 +1101,15 @@ sdram_old  sdram_old_inst(
 	.clk( clk_ram ),
 	.clkref( clk_sys ),
 	
-	.raddr( hc + (vc * 640) ),		// 25 bit byte address
-	.rd( ce_pix ),					// Display requests read
+	.raddr( (hc + (vc * 640)) ),		// 25 bit byte address
+	.rd( ce_pix ),							// Display requests read
 	.rd_rdy( rd_rdy ),
 	.dout( fb_dout ),
 	
 	.waddr( fb_addr ),
-	.din( {fb_writedata[23:19],fb_writedata[15:10], fb_writedata[7:3]} ),	// Use 565 format, for now.
+	.din( {fb_writedata[23:19],fb_writedata[15:10],fb_writedata[7:3]} ),	// Use 565 format, for now.
 	.we( fb_we ),
+	.be( 2'b11 ),
 	.we_ack( we_ack )
 );
 
@@ -1125,13 +1121,13 @@ assign CLK_VIDEO = clk_sys;
 assign VGA_SL = 1'b0;
 
 wire forced_scandoubler = 1'b0;
-reg ce_pix;
 
 reg HBlank;
 reg VBlank;
 reg HSync;
 reg VSync;
 
+reg ce_pix;
 reg [9:0] hc;
 reg [8:0] vc;
 
@@ -1261,25 +1257,43 @@ assign vblank_c = VBlank;
 
 wire hs_c, vs_c, hblank_c, vblank_c;
 
+assign VGA_R = red;
+assign VGA_G = green;
+assign VGA_B = blue;
+assign VGA_VS = vs_c;
+assign VGA_HS = hs_c;
+
 video_mixer #(.LINE_LENGTH(640), .HALF_DEPTH(0), .GAMMA(1)) video_mixer
-(
-	.*,
-	.ce_pix( ce_pix ),
+(	
+	.CLK_VIDEO( CLK_VIDEO ),	// input
+	.ce_pix( ce_pix ),			// input
+	
+	.CE_PIXEL( CE_PIXEL ),		// output
+	
 	.scandoubler( (scale || forced_scandoubler) ),
 	.hq2x( scale==1 ),
-	.freeze_sync(),
 
-	.R( red ),
-	.G( green ),
-	.B( blue ),
+	.gamma_bus( gamma_bus ),	// input [21:0]
+
+	.R( red ),		// input
+	.G( green ),	// input
+	.B( blue ),		// input
 
 	// Positive pulses.
-	.HSync( hs_c ),
-	.VSync( vs_c ),
-	.HBlank( hblank_c ),
-	.VBlank( vblank_c ),
+	.HSync( hs_c ),		// input
+	.VSync( vs_c ),		// input
+	.HBlank( hblank_c ),	// input
+	.VBlank( vblank_c ),	// input
 	
-	.VGA_DE( vga_de )
+	.HDMI_FREEZE( HDMI_FREEZE ),
+	.freeze_sync(),
+	
+	//.VGA_R( VGA_R ),		// output
+	//.VGA_G( VGA_G ),		// output
+	//.VGA_B( VGA_B ),		// output
+	//.VGA_VS( VGA_VS ),	// output
+	//.VGA_HS( VGA_HS ),	// output
+	.VGA_DE( vga_de )		// output
 );
 
 

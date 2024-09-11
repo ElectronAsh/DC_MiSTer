@@ -41,13 +41,14 @@ module sdram_old
 	input             clk,			// sdram is accessed at up to 128MHz
 	input             clkref,		// reference clock to sync to
 	
-	input      [24:0] raddr,      // 25 bit byte address
+	input      [23:0] raddr,      // 24-bit WORD address
 	input             rd,         // cpu/chipset requests read
 	output reg        rd_rdy = 0,
 	output     [15:0] dout,			// data output to chipset/cpu
 
-	input      [24:0] waddr,      // 25 bit byte address
+	input      [23:0] waddr,      // 24-bit WORD address
 	input      [15:0] din,			// data input from chipset/cpu
+	input       [1:0] be,			// Byte mask. Active-HIGH.
 	input             we,         // cpu/chipset requests write
 	output reg        we_ack = 0
 );
@@ -194,8 +195,8 @@ always @(posedge clk) begin
 	endcase
 
 	casex ({ram_req,mode,q})
-		{1'b1,  MODE_NORMAL, STATE_START}: SDRAM_A <= a[21:9];
-		{1'b1,  MODE_NORMAL, STATE_CONT }: SDRAM_A <= {~a[0] & wr, a[0] & wr, 2'b10, a[22], a[8:1]};
+		{1'b1,  MODE_NORMAL, STATE_START}: SDRAM_A <= a[20:8];
+		{1'b1,  MODE_NORMAL, STATE_CONT }: SDRAM_A <= {rd ? 2'b00:~be, 2'b10, a[21], a[7:0]};
 
 		// init
 		{1'bX,     MODE_LDM, STATE_START}: SDRAM_A <= MODE;

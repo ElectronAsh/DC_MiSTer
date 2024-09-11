@@ -497,7 +497,7 @@ end
 wire ra_vram_rd;
 wire ra_vram_wr;
 wire [23:0] ra_vram_addr;
-wire [31:0] ra_vram_din = (!ra_vram_addr[2]) ? vram_din[31:0] : vram_din[63:32];
+wire [31:0] ra_vram_din = (!ra_vram_addr[22]) ? vram_din[31:0] : vram_din[63:32];
 
 wire [31:0] ra_control;
 wire ra_cont_last;
@@ -573,7 +573,7 @@ wire isp_vram_rd;
 wire isp_vram_wr;
 
 // Keep this as 32-bit for now. Only textures are read aas 64-bit wide.
-wire [63:0] isp_vram_din = (!isp_vram_addr_out[2]) ? vram_din[31:0] : vram_din[63:32];	// Todo. Handle 64-bit Texture reads!
+wire [31:0] isp_vram_din = (!isp_vram_addr_out[22]) ? vram_din[31:0] : vram_din[63:32];	// TESTING! Loading 4MB halves of VRAM dumps into lower and upper DDR3.
 wire [31:0] isp_vram_dout;
 
 wire isp_entry_valid;
@@ -610,8 +610,10 @@ isp_parser isp_parser_inst (
 	.isp_vram_rd( isp_vram_rd ),		// output  isp_vram_rd
 	.isp_vram_wr( isp_vram_wr ),		// output  isp_vram_wr
 	.isp_vram_addr_out( isp_vram_addr_out ),	// output [23:0]  isp_vram_addr_out
-	.isp_vram_din( isp_vram_din ),		// input  [63:0]  isp_vram_din
-	.isp_vram_dout( isp_vram_dout ),		// output  [63:0]  isp_vram_dout
+	.isp_vram_din( isp_vram_din ),		// input  [31:0]  isp_vram_din
+	.isp_vram_dout( isp_vram_dout ),		// output  [31:0]  isp_vram_dout
+	
+	.tex_vram_din( vram_din ),				// full 64-bit input [63:0]
 	
 	.fb_addr( fb_addr ),						// output [22:0]  fb_addr
 	.fb_writedata( fb_writedata ),		// output [31:0]  fb_writedata

@@ -21,6 +21,7 @@
 
 //`define SH4_HAT
 `define MISTER_DISABLE_YC
+`define MISTER_DISABLE_ADAPTIVE
 
 module sys_top
 (
@@ -1391,6 +1392,7 @@ osd vga_osd
 	.vs_out(vga_vs_osd)
 );
 
+
 wire vga_cs_osd;
 csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 
@@ -1467,6 +1469,7 @@ csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 	assign VGA_G  = (VGA_EN | SW[3]) ? 6'bZZZZZZ :   (vga_fb | vga_scaler) ? vgas_o[15:10]                               : VGA_DISABLE ? 6'd0 : vga_o[15:10];
 	assign VGA_B  = (VGA_EN | SW[3]) ? 6'bZZZZZZ :   (vga_fb | vga_scaler) ? vgas_o[7:2]                                 : VGA_DISABLE ? 6'd0 : vga_o[7:2]  ;
 `endif
+
 
 reg video_sync = 0;
 always @(posedge clk_vid) begin

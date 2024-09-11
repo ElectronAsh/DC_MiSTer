@@ -24,9 +24,9 @@ module video_mixer
 )
 (
 	input            CLK_VIDEO, // should be multiple by (ce_pix*4)
-	output reg       CE_PIXEL,  // output pixel clock enable
-
 	input            ce_pix,    // input pixel clock or clock_enable
+	
+	output reg       CE_PIXEL,  // output pixel clock enable
 
 	input            scandoubler,
 	input            hq2x, 	    // high quality 2x scaling

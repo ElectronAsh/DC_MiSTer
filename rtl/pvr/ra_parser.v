@@ -180,7 +180,7 @@ else begin
 				2: if (!ra_trans[31] && t_opb>0)      begin ra_vram_addr <= ra_trans[23:0];      ol_jump_bytes <= (4<<t_opb )*4; ra_state <= 8'd10; end
 				3: if (!ra_trans_mod[31] && tm_opb>0) begin ra_vram_addr <= ra_trans_mod[23:0];  ol_jump_bytes <= (4<<tm_opb)*4; ra_state <= 15; end // TESTING
 				4: if (!ra_puncht[31] && pt_opb>0)    begin ra_vram_addr <= ra_puncht[23:0];     ol_jump_bytes <= (4<<pt_opb)*4; ra_state <= 8'd10; end
-				5: ra_state <= 8'd15;	// All prim TYPES in this Object are done!
+				5: ra_state <= 8'd15;	// All prim TYPES in this TILE are done!
 				default: ;
 			endcase
 		end
@@ -243,7 +243,7 @@ else begin
 			end
 		end
 		
-		15: begin	// All prim TYPES in this Object have been processed!
+		15: begin	// All prim TYPES in this TILE have been processed!
 			tile_prims_done <= 1'b1;
 			if (ra_cont_last) ra_state <= 8'd16;	// TESTING. Don't repeat rendering the same frame, just stop.
 			else begin
