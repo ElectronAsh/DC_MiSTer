@@ -59,14 +59,16 @@ reg signed [63:0] Aa_mult_1;
 reg signed [31:0] FZ2_sub_FZ1;
 reg signed [31:0] FY3_sub_FY1;
 reg signed [63:0] Aa_mult_2;
-reg signed [47:0] Aa;		// Need this to be 48-bit, else things like foreground logos (Daytona) don't render.
+reg signed [47:0] Aa;		// This must be > 48-bit, to get the Daytona logos to render correctly.
+									// But will then use a LOT of logic, for the divide.
 
 // Ba = (FX3 - FX1) * (FZ2 - FZ1) - (FX2 - FX1) * (FZ3 - FZ1);
 reg signed [31:0] FX3_sub_FX1;
 reg signed [63:0] Ba_mult_1;
 reg signed [31:0] FX2_sub_FX1;
 reg signed [63:0] Ba_mult_2;
-reg signed [47:0] Ba;		// Need this to be 48-bit, else things like foreground logos (Daytona) don't render.
+reg signed [47:0] Ba;		// This must be > 48-bit, to get the Daytona logos to render correctly.
+									// But will then use a LOT of logic, for the divide.
 
 // C = (FX2 - FX1) * (FY3 - FY1) - (FX3 - FX1) * (FY2 - FY1);
 reg signed [63:0] C_mult_1;
