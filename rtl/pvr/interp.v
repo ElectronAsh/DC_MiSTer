@@ -59,34 +59,35 @@ reg signed [63:0] Aa_mult_1;
 reg signed [31:0] FZ2_sub_FZ1;
 reg signed [31:0] FY3_sub_FY1;
 reg signed [63:0] Aa_mult_2;
-reg signed [63:0] Aa;
+reg signed [47:0] Aa;		// Need this to be 48-bit, else things like foreground logos (Daytona) don't render.
 
 // Ba = (FX3 - FX1) * (FZ2 - FZ1) - (FX2 - FX1) * (FZ3 - FZ1);
 reg signed [31:0] FX3_sub_FX1;
 reg signed [63:0] Ba_mult_1;
 reg signed [31:0] FX2_sub_FX1;
 reg signed [63:0] Ba_mult_2;
-reg signed [63:0] Ba;
+reg signed [47:0] Ba;		// Need this to be 48-bit, else things like foreground logos (Daytona) don't render.
 
 // C = (FX2 - FX1) * (FY3 - FY1) - (FX3 - FX1) * (FY2 - FY1);
 reg signed [63:0] C_mult_1;
 reg signed [63:0] C_mult_2;
 reg signed [47:0] C;		// Seems to work best as 48-bit? Investigate value ranges later. ElectronAsh.
 
-// ddx = -Aa / C;
-// ddy = -Ba / C;
-reg signed [63:0] FDDX;
-reg signed [63:0] FDDY;
+// ddx = Aa / C;
+// ddy = Ba / C;
+reg signed [31:0] FDDX;
+reg signed [31:0] FDDY;
 
 // c = (FZ1 - ddx * FX1 - ddy * FY1);
-reg signed [63:0] FDDX_mult_FX1;
-reg signed [63:0] FDDY_mult_FY1;
+reg signed [47:0] FDDX_mult_FX1;
+reg signed [47:0] FDDY_mult_FY1;
 reg signed [47:0] c;		// Seems to work best as 48-bit? Investigate value ranges later. ElectronAsh.
 
 reg signed [63:0] y_mult_FDDY_plus_c;
 
 always @(posedge clock) if (setup) begin
-	// Aa = (FZ3 - FZ1) * (FY2 - FY1) - (FZ2 - FZ1) * (FY3 - FY1);
+//always @(*) begin
+	//  Aa = (FZ3 - FZ1) * (FY2 - FY1) - (FZ2 - FZ1) * (FY3 - FY1);
 	FZ3_sub_FZ1 = (FZ3 - FZ1);
 	FY2_sub_FY1 = (FY2 - FY1);
 	Aa_mult_1   = (FZ3_sub_FZ1 * FY2_sub_FY1) >>FRAC_BITS;

@@ -7,11 +7,11 @@ module ra_parser (
 	
 	input ra_trig,
 
-	input [31:0] PARAM_BASE,	// 0x20.
-	input [31:0] REGION_BASE,	// 0x2C.
+	input [31:0] PARAM_BASE,		// 0x20.
+	input [31:0] REGION_BASE,		// 0x2C.
 	
-	input [31:0] FPU_PARAM_CFG,
-	input [31:0] TA_ALLOC_CTRL,
+	input [31:0] FPU_PARAM_CFG,	// 0x7C
+	input [31:0] TA_ALLOC_CTRL,	// 0x140
 	
 	input vram_wait,
 	input vram_valid,
@@ -63,16 +63,12 @@ assign ra_cont_flush  = ra_control[28];
 assign ra_cont_tiley  = ra_control[13:8];
 assign ra_cont_tilex  = ra_control[7:2];
 
-
-// OL Word parsing...
-//reg [2:0] type_cnt;
-
 // OL Word bit decodes...
 wire [5:0] strip_mask = {opb_word[25], opb_word[26], opb_word[27], opb_word[28], opb_word[29], opb_word[30]};	// For Triangle Strips only.
 wire [3:0] num_prims = opb_word[28:25];	// For Triangle Array or Quad Array only.
-wire shadow = opb_word[24];				// For all three poly types.
-wire [2:0] skip = opb_word[23:21];		// For all three poly types.
-wire eol = opb_word[28];				// End Of List.
+wire shadow = opb_word[24];					// For all three poly types.
+wire [2:0] skip = opb_word[23:21];			// For all three poly types.
+wire eol = opb_word[28];						// End Of List.
 
 reg [7:0] ol_jump_bytes;
 
@@ -144,14 +140,14 @@ else begin
 				ra_vram_addr <= ra_vram_addr + 4;
 				ra_state <= 8'd7;
 			end
-			else begin						// fmt v1.
+			else begin							// fmt v1.
 				ra_puncht <= 32'h80000000;	// (mark ra_puncht as Unused).
-				ra_state <= 8'd8;			// Done!
+				ra_state <= 8'd8;				// Done!
 			end
 		end
 		
 		7: if (vram_valid) begin
-			ra_puncht <= ra_vram_din;	// fmt v2 (grab puncht).
+			ra_puncht <= ra_vram_din;		// fmt v2 (grab puncht as well).
 			ra_vram_addr <= ra_vram_addr + 4;
 			ra_state <= ra_state + 1;
 		end
@@ -178,7 +174,7 @@ else begin
 				0: if (!ra_opaque[31] && o_opb>0)     begin ra_vram_addr <= ra_opaque[23:0];     ol_jump_bytes <= (4<<o_opb )*4; ra_state <= 8'd10; end
 				1: if (!ra_opaque_mod[31] && o_opb>0) begin ra_vram_addr <= ra_opaque_mod[23:0]; ol_jump_bytes <= (4<<om_opb)*4; ra_state <= 8'd10; end
 				2: if (!ra_trans[31] && t_opb>0)      begin ra_vram_addr <= ra_trans[23:0];      ol_jump_bytes <= (4<<t_opb )*4; ra_state <= 8'd10; end
-				3: if (!ra_trans_mod[31] && tm_opb>0) begin ra_vram_addr <= ra_trans_mod[23:0];  ol_jump_bytes <= (4<<tm_opb)*4; ra_state <= 15; end // TESTING
+				3: if (!ra_trans_mod[31] && tm_opb>0) begin ra_vram_addr <= ra_trans_mod[23:0];  ol_jump_bytes <= (4<<tm_opb)*4; ra_state <= 8'd15; end // TESTING
 				4: if (!ra_puncht[31] && pt_opb>0)    begin ra_vram_addr <= ra_puncht[23:0];     ol_jump_bytes <= (4<<pt_opb)*4; ra_state <= 8'd10; end
 				5: ra_state <= 8'd15;	// All prim TYPES in this TILE are done!
 				default: ;

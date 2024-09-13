@@ -15,7 +15,7 @@ module pvr (
 	input [31:0] pvr_din,
 	input pvr_rd,
 	input pvr_wr,
-	output [31:0] pvr_dout,
+	output reg [31:0] pvr_dout,
 	
 	input [31:0] PARAM_BASE,
 	input [31:0] REGION_BASE,
@@ -237,22 +237,22 @@ reg [31:0] PALETTE_RAM_END;		// 16'h1FFC;
 
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
-	ID <= 32'h17FD11DB;
+	ID 		<= 32'h17FD11DB;
 	REVISION <= 32'h00000011;
 end
 else begin
 	// Handle PVR and TA reg Writes...
 	if (pvr_reg_cs && pvr_wr) begin
 		case (pvr_addr)
-			// Main regs...
-			//ID_addr: ID <= pvr_din; 									// 16'h0000; R   Device ID
+			// Main HOLLY/PVR regs
+			//ID_addr: 				  ID <= pvr_din;					// 16'h0000; R   Device ID
 			//REVISION_addr: REVISION <= pvr_din; 					// 16'h0004; R   Revision number
 			SOFTRESET_addr: SOFTRESET <= pvr_din; 					// 16'h0008; RW  CORE & TA software reset
 				
 			STARTRENDER_addr: STARTRENDER <= pvr_din; 			// 16'h0014; RW  Drawing start
 			TEST_SELECT_addr: TEST_SELECT <= pvr_din; 			// 16'h0018; RW  Test - writing this register is prohibited.
 
-			//PARAM_BASE_addr: PARAM_BASE <= pvr_din; 				// 16'h0020; RW  Base address for ISP regs
+			//PARAM_BASE_addr: PARAM_BASE <= pvr_din; 			// 16'h0020; RW  Base address for ISP regs
 			//REGION_BASE_addr: REGION_BASE <= pvr_din; 			// 16'h002C; RW  Base address for Region Array
 			
 			SPAN_SORT_CFG_addr: SPAN_SORT_CFG <= pvr_din; 		// 16'h0030; RW  Span Sorter control
@@ -342,109 +342,107 @@ else begin
 	end
 end
 
-/* verilator lint_off LATCH */
-always @(*) begin
+
+always @(posedge clock) begin
 	// Handle PVR and TA reg Reads...
 
-	// Main regs
+	// Main HOLLY/PVR regs
 	casez (pvr_addr)
-		ID_addr: pvr_dout[31:0] = ID; 									// R   16'h0000; Device ID
-		REVISION_addr: pvr_dout[31:0] =  REVISION; 					// R   16'h0004; Revision number
-		SOFTRESET_addr: pvr_dout[31:0] =  SOFTRESET; 				// RW  16'h0008; CORE & TA software reset
+		ID_addr:                pvr_dout[31:0] <= ID; 						// R   16'h0000; Device ID
+		REVISION_addr:          pvr_dout[31:0] <= REVISION; 				// R   16'h0004; Revision number
+		SOFTRESET_addr:         pvr_dout[31:0] <= SOFTRESET; 				// RW  16'h0008; CORE & TA software reset
 			
-		STARTRENDER_addr: pvr_dout[31:0] =  STARTRENDER; 			// RW  16'h0014; Drawing start
-		TEST_SELECT_addr: pvr_dout[31:0] =  TEST_SELECT; 			// RW  16'h0018; Test - writing this register is prohibited.
+		STARTRENDER_addr:       pvr_dout[31:0] <= STARTRENDER; 			// RW  16'h0014; Drawing start
+		TEST_SELECT_addr:       pvr_dout[31:0] <= TEST_SELECT; 			// RW  16'h0018; Test - writing this register is prohibited.
 
-		PARAM_BASE_addr: pvr_dout[31:0] =  PARAM_BASE; 				// RW  16'h0020; Base address for ISP regs
+		PARAM_BASE_addr:        pvr_dout[31:0] <= PARAM_BASE; 			// RW  16'h0020; Base address for ISP regs
 
-		REGION_BASE_addr: pvr_dout[31:0] =  REGION_BASE; 			// RW  16'h002C; Base address for Region Array
-		SPAN_SORT_CFG_addr: pvr_dout[31:0] =  SPAN_SORT_CFG; 		// RW  16'h0030; Span Sorter control
+		REGION_BASE_addr:       pvr_dout[31:0] <= REGION_BASE; 			// RW  16'h002C; Base address for Region Array
+		SPAN_SORT_CFG_addr:     pvr_dout[31:0] <= SPAN_SORT_CFG; 		// RW  16'h0030; Span Sorter control
 
-		VO_BORDER_COL_addr: pvr_dout[31:0] =  VO_BORDER_COL; 		// RW  16'h0040; Border area color
-		FB_R_CTRL_addr: pvr_dout[31:0] =  FB_R_CTRL; 				// RW  16'h0044; Frame buffer read control
-		FB_W_CTRL_addr: pvr_dout[31:0] =  FB_W_CTRL; 				// RW  16'h0048; Frame buffer write control
-		FB_W_LINESTRIDE_addr: pvr_dout[31:0] =  FB_W_LINESTRIDE; // RW  16'h004C; Frame buffer line stride
-		FB_R_SOF1_addr: pvr_dout[31:0] =  FB_R_SOF1; 				// RW  16'h0050; Read start address for field - 1/strip - 1
-		FB_R_SOF2_addr: pvr_dout[31:0] =  FB_R_SOF2; 				// RW  16'h0054; Read start address for field - 2/strip - 2
+		VO_BORDER_COL_addr:     pvr_dout[31:0] <= VO_BORDER_COL; 		// RW  16'h0040; Border area color
+		FB_R_CTRL_addr:         pvr_dout[31:0] <= FB_R_CTRL; 				// RW  16'h0044; Frame buffer read control
+		FB_W_CTRL_addr:         pvr_dout[31:0] <= FB_W_CTRL; 				// RW  16'h0048; Frame buffer write control
+		FB_W_LINESTRIDE_addr:   pvr_dout[31:0] <= FB_W_LINESTRIDE; 		// RW  16'h004C; Frame buffer line stride
+		FB_R_SOF1_addr:         pvr_dout[31:0] <= FB_R_SOF1; 				// RW  16'h0050; Read start address for field - 1/strip - 1
+		FB_R_SOF2_addr:         pvr_dout[31:0] <= FB_R_SOF2; 				// RW  16'h0054; Read start address for field - 2/strip - 2
+	
+		FB_R_SIZE_addr:         pvr_dout[31:0] <= FB_R_SIZE; 				// RW  16'h005C; Frame buffer XY size	
+		FB_W_SOF1_addr:         pvr_dout[31:0] <= FB_W_SOF1; 				// RW  16'h0060; Write start address for field - 1/strip - 1
+		FB_W_SOF2_addr:         pvr_dout[31:0] <= FB_W_SOF2; 				// RW  16'h0064; Write start address for field - 2/strip - 2
+		FB_X_CLIP_addr:         pvr_dout[31:0] <= FB_X_CLIP; 				// RW  16'h0068; Pixel clip X coordinate
+		FB_Y_CLIP_addr:         pvr_dout[31:0] <= FB_Y_CLIP; 				// RW  16'h006C; Pixel clip Y coordinate
 
-		FB_R_SIZE_addr: pvr_dout[31:0] =  FB_R_SIZE; 				// RW  16'h005C; Frame buffer XY size	
-		FB_W_SOF1_addr: pvr_dout[31:0] =  FB_W_SOF1; 				// RW  16'h0060; Write start address for field - 1/strip - 1
-		FB_W_SOF2_addr: pvr_dout[31:0] =  FB_W_SOF2; 				// RW  16'h0064; Write start address for field - 2/strip - 2
-		FB_X_CLIP_addr: pvr_dout[31:0] =  FB_X_CLIP; 				// RW  16'h0068; Pixel clip X coordinate
-		FB_Y_CLIP_addr: pvr_dout[31:0] =  FB_Y_CLIP; 				// RW  16'h006C; Pixel clip Y coordinate
+		FPU_SHAD_SCALE_addr:    pvr_dout[31:0] <= FPU_SHAD_SCALE; 		// RW  16'h0074; Intensity Volume mode
+		FPU_CULL_VAL_addr:      pvr_dout[31:0] <= FPU_CULL_VAL; 			// RW  16'h0078; Comparison value for culling
+		FPU_PARAM_CFG_addr:     pvr_dout[31:0] <= FPU_PARAM_CFG; 		// RW  16'h007C; Parameter read control
+		HALF_OFFSET_addr:       pvr_dout[31:0] <= HALF_OFFSET; 			// RW  16'h0080; Pixel sampling control
+		FPU_PERP_VAL_addr:      pvr_dout[31:0] <= FPU_PERP_VAL; 			// RW  16'h0084; Comparison value for perpendicular polygons
+		ISP_BACKGND_D_addr:     pvr_dout[31:0] <= ISP_BACKGND_D; 		// RW  16'h0088; Background surface depth
+		ISP_BACKGND_T_addr:     pvr_dout[31:0] <= ISP_BACKGND_T; 		// RW  16'h008C; Background surface tag
 
-		FPU_SHAD_SCALE_addr: pvr_dout[31:0] =  FPU_SHAD_SCALE; 	// RW  16'h0074; Intensity Volume mode
-		FPU_CULL_VAL_addr: pvr_dout[31:0] =  FPU_CULL_VAL; 		// RW  16'h0078; Comparison value for culling
-		FPU_PARAM_CFG_addr: pvr_dout[31:0] =  FPU_PARAM_CFG; 		// RW  16'h007C; Parameter read control
-		HALF_OFFSET_addr: pvr_dout[31:0] =  HALF_OFFSET; 			// RW  16'h0080; Pixel sampling control
-		FPU_PERP_VAL_addr: pvr_dout[31:0] =  FPU_PERP_VAL; 		// RW  16'h0084; Comparison value for perpendicular polygons
-		ISP_BACKGND_D_addr: pvr_dout[31:0] =  ISP_BACKGND_D; 		// RW  16'h0088; Background surface depth
-		ISP_BACKGND_T_addr: pvr_dout[31:0] =  ISP_BACKGND_T; 		// RW  16'h008C; Background surface tag
+		ISP_FEED_CFG_addr:      pvr_dout[31:0] <= ISP_FEED_CFG; 			// RW  16'h0098; Translucent polygon sort mode
 
-		ISP_FEED_CFG_addr: pvr_dout[31:0] =  ISP_FEED_CFG; 		// RW  16'h0098; Translucent polygon sort mode
+		SDRAM_REFRESH_addr:     pvr_dout[31:0] <= SDRAM_REFRESH; 		// RW  16'h00A0; Texture memory refresh counter
+		SDRAM_ARB_CFG_addr:     pvr_dout[31:0] <= SDRAM_ARB_CFG; 		// RW  16'h00A4; Texture memory arbiter control
+		SDRAM_CFG_addr:         pvr_dout[31:0] <= SDRAM_CFG; 				// RW  16'h00A8; Texture memory control
 
-		SDRAM_REFRESH_addr: pvr_dout[31:0] =  SDRAM_REFRESH; 		// RW  16'h00A0; Texture memory refresh counter
-		SDRAM_ARB_CFG_addr: pvr_dout[31:0] =  SDRAM_ARB_CFG; 		// RW  16'h00A4; Texture memory arbiter control
-		SDRAM_CFG_addr: pvr_dout[31:0] =  SDRAM_CFG; 				// RW  16'h00A8; Texture memory control
+		FOG_COL_RAM_addr:       pvr_dout[31:0] <= FOG_COL_RAM; 			// RW  16'h00B0; Color for Look Up table Fog
+		FOG_COL_VERT_addr:      pvr_dout[31:0] <= FOG_COL_VERT; 			// RW  16'h00B4; Color for vertex Fog
+		FOG_DENSITY_addr:       pvr_dout[31:0] <= FOG_DENSITY; 			// RW  16'h00B8; Fog scale value
+		FOG_CLAMP_MAX_addr:     pvr_dout[31:0] <= FOG_CLAMP_MAX; 		// RW  16'h00BC; Color clamping maximum value
+		FOG_CLAMP_MIN_addr:     pvr_dout[31:0] <= FOG_CLAMP_MIN; 		// RW  16'h00C0; Color clamping minimum value
+		SPG_TRIGGER_POS_addr:   pvr_dout[31:0] <= SPG_TRIGGER_POS; 		// RW  16'h00C4; External trigger signal HV counter value
+		SPG_HBLANK_INT_addr:    pvr_dout[31:0] <= SPG_HBLANK_INT; 		// RW  16'h00C8; H-blank interrupt control	
+		SPG_VBLANK_INT_addr:    pvr_dout[31:0] <= SPG_VBLANK_INT; 		// RW  16'h00CC; V-blank interrupt control	
+		SPG_CONTROL_addr:       pvr_dout[31:0] <= SPG_CONTROL; 			// RW  16'h00D0; Sync pulse generator control
+		SPG_HBLANK_addr:        pvr_dout[31:0] <= SPG_HBLANK; 			// RW  16'h00D4; H-blank control
+		SPG_LOAD_addr:          pvr_dout[31:0] <= SPG_LOAD; 				// RW  16'h00D8; HV counter load value
+		SPG_VBLANK_addr:        pvr_dout[31:0] <= SPG_VBLANK; 			// RW  16'h00DC; V-blank control
+		SPG_WIDTH_addr:         pvr_dout[31:0] <= SPG_WIDTH; 				// RW  16'h00E0; Sync width control
+		TEXT_CONTROL_addr:      pvr_dout[31:0] <= TEXT_CONTROL; 			// RW  16'h00E4; Texturing control
+		VO_CONTROL_addr:        pvr_dout[31:0] <= VO_CONTROL; 			// RW  16'h00E8; Video output control
+		VO_STARTX_addr:         pvr_dout[31:0] <= VO_STARTX; 				// RW  16'h00EC; Video output start X position
+		VO_STARTY_addr:         pvr_dout[31:0] <= VO_STARTY; 				// RW  16'h00F0; Video output start Y position
+		SCALER_CTL_addr:        pvr_dout[31:0] <= SCALER_CTL; 			// RW  16'h00F4; X & Y scaler control
+		PAL_RAM_CTRL_addr:      pvr_dout[31:0] <= PAL_RAM_CTRL; 			// RW  16'h0108; Palette RAM control
+		SPG_STATUS_addr:        pvr_dout[31:0] <= SPG_STATUS; 			// R   16'h010C; Sync pulse generator status
+		FB_BURSTCTRL_addr:      pvr_dout[31:0] <= FB_BURSTCTRL; 			// RW  16'h0110; Frame buffer burst control
+		FB_C_SOF_addr:          pvr_dout[31:0] <= FB_C_SOF; 				// R   16'h0114; Current frame buffer start address
+		Y_COEFF_addr:           pvr_dout[31:0] <= Y_COEFF; 				// RW  16'h0118; Y scaling coefficient
 
-		FOG_COL_RAM_addr: pvr_dout[31:0] =  FOG_COL_RAM; 			// RW  16'h00B0; Color for Look Up table Fog
-		FOG_COL_VERT_addr: pvr_dout[31:0] =  FOG_COL_VERT; 		// RW  16'h00B4; Color for vertex Fog
-		FOG_DENSITY_addr: pvr_dout[31:0] =  FOG_DENSITY; 			// RW  16'h00B8; Fog scale value
-		FOG_CLAMP_MAX_addr: pvr_dout[31:0] =  FOG_CLAMP_MAX; 		// RW  16'h00BC; Color clamping maximum value
-		FOG_CLAMP_MIN_addr: pvr_dout[31:0] =  FOG_CLAMP_MIN; 		// RW  16'h00C0; Color clamping minimum value
-		SPG_TRIGGER_POS_addr: pvr_dout[31:0] =  SPG_TRIGGER_POS; // RW  16'h00C4; External trigger signal HV counter value
-		SPG_HBLANK_INT_addr: pvr_dout[31:0] =  SPG_HBLANK_INT; 	// RW  16'h00C8; H-blank interrupt control	
-		SPG_VBLANK_INT_addr: pvr_dout[31:0] =  SPG_VBLANK_INT; 	// RW  16'h00CC; V-blank interrupt control	
-		SPG_CONTROL_addr: pvr_dout[31:0] =  SPG_CONTROL; 			// RW  16'h00D0; Sync pulse generator control
-		SPG_HBLANK_addr: pvr_dout[31:0] =  SPG_HBLANK; 				// RW  16'h00D4; H-blank control
-		SPG_LOAD_addr: pvr_dout[31:0] =  SPG_LOAD; 					// RW  16'h00D8; HV counter load value
-		SPG_VBLANK_addr: pvr_dout[31:0] =  SPG_VBLANK; 				// RW  16'h00DC; V-blank control
-		SPG_WIDTH_addr: pvr_dout[31:0] =  SPG_WIDTH; 				// RW  16'h00E0; Sync width control
-		TEXT_CONTROL_addr: pvr_dout[31:0] =  TEXT_CONTROL; 		// RW  16'h00E4; Texturing control
-		VO_CONTROL_addr: pvr_dout[31:0] =  VO_CONTROL; 				// RW  16'h00E8; Video output control
-		VO_STARTX_addr: pvr_dout[31:0] =  VO_STARTX; 				// RW  16'h00EC; Video output start X position
-		VO_STARTY_addr: pvr_dout[31:0] =  VO_STARTY; 				// RW  16'h00F0; Video output start Y position
-		SCALER_CTL_addr: pvr_dout[31:0] =  SCALER_CTL; 				// RW  16'h00F4; X & Y scaler control
-		PAL_RAM_CTRL_addr: pvr_dout[31:0] =  PAL_RAM_CTRL; 		// RW  16'h0108; Palette RAM control
-		SPG_STATUS_addr: pvr_dout[31:0] =  SPG_STATUS; 				// R   16'h010C; Sync pulse generator status
-		FB_BURSTCTRL_addr: pvr_dout[31:0] =  FB_BURSTCTRL; 		// RW  16'h0110; Frame buffer burst control
-		FB_C_SOF_addr: pvr_dout[31:0] =  FB_C_SOF; 					// R   16'h0114; Current frame buffer start address
-		Y_COEFF_addr: pvr_dout[31:0] =  Y_COEFF; 						// RW  16'h0118; Y scaling coefficient
-
-		PT_ALPHA_REF_addr: pvr_dout[31:0] =  PT_ALPHA_REF; 			// RW  16'h011C; Alpha value for Punch Through polygon comparison
+		PT_ALPHA_REF_addr:      pvr_dout[31:0] <=  PT_ALPHA_REF; 		// RW  16'h011C; Alpha value for Punch Through polygon comparison
 
 		// TA REGS
-		TA_OL_BASE_addr: pvr_dout[31:0] =  TA_OL_BASE; 					// RW  16'h0124; Object list write start address
-		TA_ISP_BASE_addr: pvr_dout[31:0] =  TA_ISP_BASE; 				// RW  16'h0128; ISP/TSP Parameter write start address
-		TA_OL_LIMIT_addr: pvr_dout[31:0] =  TA_OL_LIMIT; 				// RW  16'h012C; Start address of next Object Pointer Block
-		TA_ISP_LIMIT_addr: pvr_dout[31:0] =  TA_ISP_LIMIT; 			// RW  16'h0130; Current ISP/TSP Parameter write address
-		TA_NEXT_OPB_addr: pvr_dout[31:0] =  TA_NEXT_OPB; 				// R   16'h0134; Global Tile clip control
-		TA_ISP_CURRENT_addr: pvr_dout[31:0] =  TA_ISP_CURRENT; 		// R   16'h0138; Current ISP/TSP Parameter write address
-		TA_GLOB_TILE_CLIP_addr: pvr_dout[31:0] =  TA_GLOB_TILE_CLIP;// RW  16'h013C; Global Tile clip control
-		TA_ALLOC_CTRL_addr: pvr_dout[31:0] =  TA_ALLOC_CTRL; 			// RW  16'h0140; Object list control
-		TA_LIST_INIT_addr: pvr_dout[31:0] =  TA_LIST_INIT; 			// RW  16'h0144; TA initialization
-		TA_YUV_TEX_BASE_addr: pvr_dout[31:0] =  TA_YUV_TEX_BASE; 	// RW  16'h0148; YUV422 texture write start address
-		TA_YUV_TEX_CTRL_addr: pvr_dout[31:0] =  TA_YUV_TEX_CTRL; 	// RW  16'h014C; YUV converter control
-		TA_YUV_TEX_CNT_addr: pvr_dout[31:0] =  TA_YUV_TEX_CNT; 		// R   16'h0150; YUV converter macro block counter value
+		TA_OL_BASE_addr:        pvr_dout[31:0] <= TA_OL_BASE; 			// RW  16'h0124; Object list write start address
+		TA_ISP_BASE_addr:       pvr_dout[31:0] <= TA_ISP_BASE; 			// RW  16'h0128; ISP/TSP Parameter write start address
+		TA_OL_LIMIT_addr:       pvr_dout[31:0] <= TA_OL_LIMIT; 			// RW  16'h012C; Start address of next Object Pointer Block
+		TA_ISP_LIMIT_addr:      pvr_dout[31:0] <= TA_ISP_LIMIT; 			// RW  16'h0130; Current ISP/TSP Parameter write address
+		TA_NEXT_OPB_addr:       pvr_dout[31:0] <= TA_NEXT_OPB; 			// R   16'h0134; Global Tile clip control
+		TA_ISP_CURRENT_addr:    pvr_dout[31:0] <= TA_ISP_CURRENT; 		// R   16'h0138; Current ISP/TSP Parameter write address
+		TA_GLOB_TILE_CLIP_addr: pvr_dout[31:0] <= TA_GLOB_TILE_CLIP;	// RW  16'h013C; Global Tile clip control
+		TA_ALLOC_CTRL_addr:     pvr_dout[31:0] <= TA_ALLOC_CTRL; 		// RW  16'h0140; Object list control
+		TA_LIST_INIT_addr:      pvr_dout[31:0] <= TA_LIST_INIT; 			// RW  16'h0144; TA initialization
+		TA_YUV_TEX_BASE_addr:   pvr_dout[31:0] <= TA_YUV_TEX_BASE; 		// RW  16'h0148; YUV422 texture write start address
+		TA_YUV_TEX_CTRL_addr:   pvr_dout[31:0] <= TA_YUV_TEX_CTRL; 		// RW  16'h014C; YUV converter control
+		TA_YUV_TEX_CNT_addr:    pvr_dout[31:0] <= TA_YUV_TEX_CNT; 		// R   16'h0150; YUV converter macro block counter value
 
-		TA_LIST_CONT_addr: pvr_dout[31:0] =  TA_LIST_CONT; 			// RW  16'h0160; TA continuation processing
-		TA_NEXT_OPB_INIT_addr: pvr_dout[31:0] =  TA_NEXT_OPB_INIT; 	// RW  16'h0164; Additional OPB starting address
+		TA_LIST_CONT_addr:      pvr_dout[31:0] <= TA_LIST_CONT; 			// RW  16'h0160; TA continuation processing
+		TA_NEXT_OPB_INIT_addr:  pvr_dout[31:0] <= TA_NEXT_OPB_INIT; 	// RW  16'h0164; Additional OPB starting address
 
-		FOG_TABLE_START_addr: pvr_dout[31:0] =  FOG_TABLE_START; 	// RW  16'h0200; Look-up table Fog data
-		FOG_TABLE_END_addr: pvr_dout[31:0] =  FOG_TABLE_END;			//     16'h03FC;
+		FOG_TABLE_START_addr:   pvr_dout[31:0] <= FOG_TABLE_START; 		// RW  16'h0200; Look-up table Fog data
+		FOG_TABLE_END_addr:     pvr_dout[31:0] <= FOG_TABLE_END;			//     16'h03FC;
 
-		TA_OL_POINTERS_START_addr: pvr_dout[31:0] =  TA_OL_POINTERS_START;	// 16'h0600; R  TA object List Pointer data
-		TA_OL_POINTERS_END_addr: pvr_dout[31:0] =  TA_OL_POINTERS_END;		// 16'h0F5C;
+		TA_OL_POINTERS_START_addr: pvr_dout[31:0] <= TA_OL_POINTERS_START;	// 16'h0600; R  TA object List Pointer data
+		TA_OL_POINTERS_END_addr:   pvr_dout[31:0] <= TA_OL_POINTERS_END;		// 16'h0F5C;
 
-		//PALETTE_RAM_START_addr: pvr_dout[31:0] =  PALETTE_RAM_START; 	// 16'h1000; RW  Palette RAM
-
-		//PALETTE_RAM_END_addr: pvr_dout[31:0] =  PALETTE_RAM_END;			// 16'h1FFC;
-		16'b0001????????????: pvr_dout[31:0] = pal_dout;
+		//PALETTE_RAM_START_addr:    pvr_dout[31:0] <= PALETTE_RAM_START; 		// 16'h1000; RW  Palette RAM
+		//PALETTE_RAM_END_addr:      pvr_dout[31:0] <= PALETTE_RAM_END;			// 16'h1FFC;
+		16'b0001????????????:      pvr_dout[31:0] <= pal_dout;
 
 		default: ;
 	endcase
 end
-/* verilator lint_on LATCH */
 
 /*
 wire [21:0] param_req_addr = (vram_addr>>2);
@@ -472,27 +470,6 @@ param_cache  param_cache_inst (
 */
 
 wire ra_trig = 1'b1;
-/*
-reg [1:0] trig_state;
-reg ra_trig;
-
-always @(posedge clock or negedge reset_n)
-if (!reset_n) begin
-	trig_state <= 2'd0;
-	ra_trig <= 1'b0;
-end
-else begin
-	case (trig_state)
-	0: begin
-		ra_trig <= 1'b1;
-		trig_state <= 2'd1;
-	end
-	1: begin
-		ra_trig <= 1'b0;
-	end
-	endcase
-end
-*/
 
 wire ra_vram_rd;
 wire ra_vram_wr;
@@ -628,16 +605,15 @@ isp_parser isp_parser_inst (
 	
 	.tilex( ra_cont_tilex ),
 	.tiley( ra_cont_tiley ),
-		
+	
 	.TEXT_CONTROL( TEXT_CONTROL ),		// From TEXT_CONTROL reg. (0xE4 in PVR regs).
 	.PAL_RAM_CTRL( PAL_RAM_CTRL[1:0] ),	// From PAL_RAM_CTRL reg, bits [1:0].
 	
-	.pal_addr( pvr_addr ),		// input [15:0]  pal_addr
-	.pal_din( pvr_din ),			// input [31:0]  pal_din
-	.pal_rd( pvr_rd ),			// input  pal_rd
-	.pal_wr( pvr_wr ),			// input  pal_wr
-	
-	.pal_dout( pal_dout )		// output [31:0]  pal_dout
+	.pal_addr( pvr_addr[11:2] ),	// input [9:0]  pal_addr
+	.pal_din( pvr_din ),				// input [31:0]  pal_din
+	.pal_wr( pvr_addr[15:12]==4'b0001 && pvr_wr ),	// input  pal_wr
+	.pal_rd( pvr_rd ),				// input  pal_rd
+	.pal_dout( pal_dout )			// output [31:0]  pal_dout
 );
 
 wire [31:0] pal_dout;

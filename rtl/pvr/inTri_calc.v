@@ -30,10 +30,10 @@ wire signed [47:0] mult15 = FDX41 * y_ps;
 //wire signed [47:0] mult14 = FDY31 * x_ps;
 //wire signed [47:0] mult16 = FDY41 * x_ps;
 
-wire signed [63:0] c1_sum_mult9  = C1 + mult9;
-wire signed [63:0] c2_sum_mult11 = C2 + mult11;
-wire signed [63:0] c3_sum_mult13 = C3 + mult13;
-wire signed [63:0] c4_sum_mult15 = C4 + mult15;
+wire signed [47:0] c1_sum_mult9  = C1 + mult9;
+wire signed [47:0] c2_sum_mult11 = C2 + mult11;
+wire signed [47:0] c3_sum_mult13 = C3 + mult13;
+wire signed [47:0] c4_sum_mult15 = C4 + mult15;
 
 
 // Single pixel at a time...
@@ -82,196 +82,196 @@ wire [9:0] x_ps_31 = {x_ps[9:5], 5'd31};
 wire signed [47:0] Xhs12_0 = c1_sum_mult9   - (FDY12 * x_ps_0);
 wire signed [47:0] Xhs23_0 = c2_sum_mult11  - (FDY23 * x_ps_0);
 wire signed [47:0] Xhs31_0 = c3_sum_mult13  - (FDY31 * x_ps_0);
-wire signed [47:0] Xhs41_0 = c4_sum_mult15  - (FDY41 * x_ps_0);
+//wire signed [47:0] Xhs41_0 = c4_sum_mult15  - (FDY41 * x_ps_0);
                                                                          
 wire signed [47:0] Xhs12_1 = c1_sum_mult9   - (FDY12 * x_ps_1);
 wire signed [47:0] Xhs23_1 = c2_sum_mult11  - (FDY23 * x_ps_1);
 wire signed [47:0] Xhs31_1 = c3_sum_mult13  - (FDY31 * x_ps_1);
-wire signed [47:0] Xhs41_1 = c4_sum_mult15  - (FDY41 * x_ps_1);
+//wire signed [47:0] Xhs41_1 = c4_sum_mult15  - (FDY41 * x_ps_1);
                                                                          
 wire signed [47:0] Xhs12_2 = c1_sum_mult9   - (FDY12 * x_ps_2);
 wire signed [47:0] Xhs23_2 = c2_sum_mult11  - (FDY23 * x_ps_2);
 wire signed [47:0] Xhs31_2 = c3_sum_mult13  - (FDY31 * x_ps_2);
-wire signed [47:0] Xhs41_2 = c4_sum_mult15  - (FDY41 * x_ps_2);
+//wire signed [47:0] Xhs41_2 = c4_sum_mult15  - (FDY41 * x_ps_2);
                                                                          
 wire signed [47:0] Xhs12_3 = c1_sum_mult9   - (FDY12 * x_ps_3);
 wire signed [47:0] Xhs23_3 = c2_sum_mult11  - (FDY23 * x_ps_3);
 wire signed [47:0] Xhs31_3 = c3_sum_mult13  - (FDY31 * x_ps_3);
-wire signed [47:0] Xhs41_3 = c4_sum_mult15  - (FDY41 * x_ps_3);
+//wire signed [47:0] Xhs41_3 = c4_sum_mult15  - (FDY41 * x_ps_3);
                                                                          
 wire signed [47:0] Xhs12_4 = c1_sum_mult9   - (FDY12 * x_ps_4);
 wire signed [47:0] Xhs23_4 = c2_sum_mult11  - (FDY23 * x_ps_4);
 wire signed [47:0] Xhs31_4 = c3_sum_mult13  - (FDY31 * x_ps_4);
-wire signed [47:0] Xhs41_4 = c4_sum_mult15  - (FDY41 * x_ps_4);
+//wire signed [47:0] Xhs41_4 = c4_sum_mult15  - (FDY41 * x_ps_4);
                                                                          
 wire signed [47:0] Xhs12_5 = c1_sum_mult9   - (FDY12 * x_ps_5);
 wire signed [47:0] Xhs23_5 = c2_sum_mult11  - (FDY23 * x_ps_5);
 wire signed [47:0] Xhs31_5 = c3_sum_mult13  - (FDY31 * x_ps_5);
-wire signed [47:0] Xhs41_5 = c4_sum_mult15  - (FDY41 * x_ps_5);
+//wire signed [47:0] Xhs41_5 = c4_sum_mult15  - (FDY41 * x_ps_5);
                                                                          
 wire signed [47:0] Xhs12_6 = c1_sum_mult9   - (FDY12 * x_ps_6);
 wire signed [47:0] Xhs23_6 = c2_sum_mult11  - (FDY23 * x_ps_6);
 wire signed [47:0] Xhs31_6 = c3_sum_mult13  - (FDY31 * x_ps_6);
-wire signed [47:0] Xhs41_6 = c4_sum_mult15  - (FDY41 * x_ps_6);
+//wire signed [47:0] Xhs41_6 = c4_sum_mult15  - (FDY41 * x_ps_6);
                                                                          
 wire signed [47:0] Xhs12_7 = c1_sum_mult9   - (FDY12 * x_ps_7);
 wire signed [47:0] Xhs23_7 = c2_sum_mult11  - (FDY23 * x_ps_7);
 wire signed [47:0] Xhs31_7 = c3_sum_mult13  - (FDY31 * x_ps_7);
-wire signed [47:0] Xhs41_7 = c4_sum_mult15  - (FDY41 * x_ps_7);
+//wire signed [47:0] Xhs41_7 = c4_sum_mult15  - (FDY41 * x_ps_7);
                                                                          
 wire signed [47:0] Xhs12_8 = c1_sum_mult9   - (FDY12 * x_ps_8);
 wire signed [47:0] Xhs23_8 = c2_sum_mult11  - (FDY23 * x_ps_8);
 wire signed [47:0] Xhs31_8 = c3_sum_mult13  - (FDY31 * x_ps_8);
-wire signed [47:0] Xhs41_8 = c4_sum_mult15  - (FDY41 * x_ps_8);
+//wire signed [47:0] Xhs41_8 = c4_sum_mult15  - (FDY41 * x_ps_8);
                                                                          
 wire signed [47:0] Xhs12_9 = c1_sum_mult9   - (FDY12 * x_ps_9);
 wire signed [47:0] Xhs23_9 = c2_sum_mult11  - (FDY23 * x_ps_9);
 wire signed [47:0] Xhs31_9 = c3_sum_mult13  - (FDY31 * x_ps_9);
-wire signed [47:0] Xhs41_9 = c4_sum_mult15  - (FDY41 * x_ps_9);
+//wire signed [47:0] Xhs41_9 = c4_sum_mult15  - (FDY41 * x_ps_9);
 
 wire signed [47:0] Xhs12_10 = c1_sum_mult9  - (FDY12 * x_ps_10);
 wire signed [47:0] Xhs23_10 = c2_sum_mult11 - (FDY23 * x_ps_10);
 wire signed [47:0] Xhs31_10 = c3_sum_mult13 - (FDY31 * x_ps_10);
-wire signed [47:0] Xhs41_10 = c4_sum_mult15 - (FDY41 * x_ps_10);
+//wire signed [47:0] Xhs41_10 = c4_sum_mult15 - (FDY41 * x_ps_10);
                                                                           
 wire signed [47:0] Xhs12_11 = c1_sum_mult9  - (FDY12 * x_ps_11);
 wire signed [47:0] Xhs23_11 = c2_sum_mult11 - (FDY23 * x_ps_11);
 wire signed [47:0] Xhs31_11 = c3_sum_mult13 - (FDY31 * x_ps_11);
-wire signed [47:0] Xhs41_11 = c4_sum_mult15 - (FDY41 * x_ps_11);
+//wire signed [47:0] Xhs41_11 = c4_sum_mult15 - (FDY41 * x_ps_11);
                                                                           
 wire signed [47:0] Xhs12_12 = c1_sum_mult9  - (FDY12 * x_ps_12);
 wire signed [47:0] Xhs23_12 = c2_sum_mult11 - (FDY23 * x_ps_12);
 wire signed [47:0] Xhs31_12 = c3_sum_mult13 - (FDY31 * x_ps_12);
-wire signed [47:0] Xhs41_12 = c4_sum_mult15 - (FDY41 * x_ps_12);
+//wire signed [47:0] Xhs41_12 = c4_sum_mult15 - (FDY41 * x_ps_12);
                                                                           
 wire signed [47:0] Xhs12_13 = c1_sum_mult9  - (FDY12 * x_ps_13);
 wire signed [47:0] Xhs23_13 = c2_sum_mult11 - (FDY23 * x_ps_13);
 wire signed [47:0] Xhs31_13 = c3_sum_mult13 - (FDY31 * x_ps_13);
-wire signed [47:0] Xhs41_13 = c4_sum_mult15 - (FDY41 * x_ps_13);
+//wire signed [47:0] Xhs41_13 = c4_sum_mult15 - (FDY41 * x_ps_13);
                                                                           
 wire signed [47:0] Xhs12_14 = c1_sum_mult9  - (FDY12 * x_ps_14);
 wire signed [47:0] Xhs23_14 = c2_sum_mult11 - (FDY23 * x_ps_14);
 wire signed [47:0] Xhs31_14 = c3_sum_mult13 - (FDY31 * x_ps_14);
-wire signed [47:0] Xhs41_14 = c4_sum_mult15 - (FDY41 * x_ps_14);
+//wire signed [47:0] Xhs41_14 = c4_sum_mult15 - (FDY41 * x_ps_14);
                                                                           
 wire signed [47:0] Xhs12_15 = c1_sum_mult9  - (FDY12 * x_ps_15);
 wire signed [47:0] Xhs23_15 = c2_sum_mult11 - (FDY23 * x_ps_15);
 wire signed [47:0] Xhs31_15 = c3_sum_mult13 - (FDY31 * x_ps_15);
-wire signed [47:0] Xhs41_15 = c4_sum_mult15 - (FDY41 * x_ps_15);
+//wire signed [47:0] Xhs41_15 = c4_sum_mult15 - (FDY41 * x_ps_15);
                                                                           
 wire signed [47:0] Xhs12_16 = c1_sum_mult9  - (FDY12 * x_ps_16);
 wire signed [47:0] Xhs23_16 = c2_sum_mult11 - (FDY23 * x_ps_16);
 wire signed [47:0] Xhs31_16 = c3_sum_mult13 - (FDY31 * x_ps_16);
-wire signed [47:0] Xhs41_16 = c4_sum_mult15 - (FDY41 * x_ps_16);
+//wire signed [47:0] Xhs41_16 = c4_sum_mult15 - (FDY41 * x_ps_16);
                                                                           
 wire signed [47:0] Xhs12_17 = c1_sum_mult9  - (FDY12 * x_ps_17);
 wire signed [47:0] Xhs23_17 = c2_sum_mult11 - (FDY23 * x_ps_17);
 wire signed [47:0] Xhs31_17 = c3_sum_mult13 - (FDY31 * x_ps_17);
-wire signed [47:0] Xhs41_17 = c4_sum_mult15 - (FDY41 * x_ps_17);
+//wire signed [47:0] Xhs41_17 = c4_sum_mult15 - (FDY41 * x_ps_17);
                                                                           
 wire signed [47:0] Xhs12_18 = c1_sum_mult9  - (FDY12 * x_ps_18);
 wire signed [47:0] Xhs23_18 = c2_sum_mult11 - (FDY23 * x_ps_18);
 wire signed [47:0] Xhs31_18 = c3_sum_mult13 - (FDY31 * x_ps_18);
-wire signed [47:0] Xhs41_18 = c4_sum_mult15 - (FDY41 * x_ps_18);
+//wire signed [47:0] Xhs41_18 = c4_sum_mult15 - (FDY41 * x_ps_18);
                                                                           
 wire signed [47:0] Xhs12_19 = c1_sum_mult9  - (FDY12 * x_ps_19);
 wire signed [47:0] Xhs23_19 = c2_sum_mult11 - (FDY23 * x_ps_19);
 wire signed [47:0] Xhs31_19 = c3_sum_mult13 - (FDY31 * x_ps_19);
-wire signed [47:0] Xhs41_19 = c4_sum_mult15 - (FDY41 * x_ps_19);
+//wire signed [47:0] Xhs41_19 = c4_sum_mult15 - (FDY41 * x_ps_19);
                                                                           
 wire signed [47:0] Xhs12_20 = c1_sum_mult9  - (FDY12 * x_ps_20);
 wire signed [47:0] Xhs23_20 = c2_sum_mult11 - (FDY23 * x_ps_20);
 wire signed [47:0] Xhs31_20 = c3_sum_mult13 - (FDY31 * x_ps_20);
-wire signed [47:0] Xhs41_20 = c4_sum_mult15 - (FDY41 * x_ps_20);
+//wire signed [47:0] Xhs41_20 = c4_sum_mult15 - (FDY41 * x_ps_20);
                                                                           
 wire signed [47:0] Xhs12_21 = c1_sum_mult9  - (FDY12 * x_ps_21);
 wire signed [47:0] Xhs23_21 = c2_sum_mult11 - (FDY23 * x_ps_21);
 wire signed [47:0] Xhs31_21 = c3_sum_mult13 - (FDY31 * x_ps_21);
-wire signed [47:0] Xhs41_21 = c4_sum_mult15 - (FDY41 * x_ps_21);
+//wire signed [47:0] Xhs41_21 = c4_sum_mult15 - (FDY41 * x_ps_21);
                                                                           
 wire signed [47:0] Xhs12_22 = c1_sum_mult9  - (FDY12 * x_ps_22);
 wire signed [47:0] Xhs23_22 = c2_sum_mult11 - (FDY23 * x_ps_22);
 wire signed [47:0] Xhs31_22 = c3_sum_mult13 - (FDY31 * x_ps_22);
-wire signed [47:0] Xhs41_22 = c4_sum_mult15 - (FDY41 * x_ps_22);
+//wire signed [47:0] Xhs41_22 = c4_sum_mult15 - (FDY41 * x_ps_22);
                                                                           
 wire signed [47:0] Xhs12_23 = c1_sum_mult9  - (FDY12 * x_ps_23);
 wire signed [47:0] Xhs23_23 = c2_sum_mult11 - (FDY23 * x_ps_23);
 wire signed [47:0] Xhs31_23 = c3_sum_mult13 - (FDY31 * x_ps_23);
-wire signed [47:0] Xhs41_23 = c4_sum_mult15 - (FDY41 * x_ps_23);
+//wire signed [47:0] Xhs41_23 = c4_sum_mult15 - (FDY41 * x_ps_23);
                                                                           
 wire signed [47:0] Xhs12_24 = c1_sum_mult9  - (FDY12 * x_ps_24);
 wire signed [47:0] Xhs23_24 = c2_sum_mult11 - (FDY23 * x_ps_24);
 wire signed [47:0] Xhs31_24 = c3_sum_mult13 - (FDY31 * x_ps_24);
-wire signed [47:0] Xhs41_24 = c4_sum_mult15 - (FDY41 * x_ps_24);
+//wire signed [47:0] Xhs41_24 = c4_sum_mult15 - (FDY41 * x_ps_24);
                                                                           
 wire signed [47:0] Xhs12_25 = c1_sum_mult9  - (FDY12 * x_ps_25);
 wire signed [47:0] Xhs23_25 = c2_sum_mult11 - (FDY23 * x_ps_25);
 wire signed [47:0] Xhs31_25 = c3_sum_mult13 - (FDY31 * x_ps_25);
-wire signed [47:0] Xhs41_25 = c4_sum_mult15 - (FDY41 * x_ps_25);
+//wire signed [47:0] Xhs41_25 = c4_sum_mult15 - (FDY41 * x_ps_25);
                                                                           
 wire signed [47:0] Xhs12_26 = c1_sum_mult9  - (FDY12 * x_ps_26);
 wire signed [47:0] Xhs23_26 = c2_sum_mult11 - (FDY23 * x_ps_26);
 wire signed [47:0] Xhs31_26 = c3_sum_mult13 - (FDY31 * x_ps_26);
-wire signed [47:0] Xhs41_26 = c4_sum_mult15 - (FDY41 * x_ps_26);
+//wire signed [47:0] Xhs41_26 = c4_sum_mult15 - (FDY41 * x_ps_26);
                                                                           
 wire signed [47:0] Xhs12_27 = c1_sum_mult9  - (FDY12 * x_ps_27);
 wire signed [47:0] Xhs23_27 = c2_sum_mult11 - (FDY23 * x_ps_27);
 wire signed [47:0] Xhs31_27 = c3_sum_mult13 - (FDY31 * x_ps_27);
-wire signed [47:0] Xhs41_27 = c4_sum_mult15 - (FDY41 * x_ps_27);
+//wire signed [47:0] Xhs41_27 = c4_sum_mult15 - (FDY41 * x_ps_27);
                                                                           
 wire signed [47:0] Xhs12_28 = c1_sum_mult9  - (FDY12 * x_ps_28);
 wire signed [47:0] Xhs23_28 = c2_sum_mult11 - (FDY23 * x_ps_28);
 wire signed [47:0] Xhs31_28 = c3_sum_mult13 - (FDY31 * x_ps_28);
-wire signed [47:0] Xhs41_28 = c4_sum_mult15 - (FDY41 * x_ps_28);
+//wire signed [47:0] Xhs41_28 = c4_sum_mult15 - (FDY41 * x_ps_28);
                                                                           
 wire signed [47:0] Xhs12_29 = c1_sum_mult9  - (FDY12 * x_ps_29);
 wire signed [47:0] Xhs23_29 = c2_sum_mult11 - (FDY23 * x_ps_29);
 wire signed [47:0] Xhs31_29 = c3_sum_mult13 - (FDY31 * x_ps_29);
-wire signed [47:0] Xhs41_29 = c4_sum_mult15 - (FDY41 * x_ps_29);
+//wire signed [47:0] Xhs41_29 = c4_sum_mult15 - (FDY41 * x_ps_29);
                                                                           
 wire signed [47:0] Xhs12_30 = c1_sum_mult9  - (FDY12 * x_ps_30);
 wire signed [47:0] Xhs23_30 = c2_sum_mult11 - (FDY23 * x_ps_30);
 wire signed [47:0] Xhs31_30 = c3_sum_mult13 - (FDY31 * x_ps_30);
-wire signed [47:0] Xhs41_30 = c4_sum_mult15 - (FDY41 * x_ps_30);
+//wire signed [47:0] Xhs41_30 = c4_sum_mult15 - (FDY41 * x_ps_30);
                                                                           
 wire signed [47:0] Xhs12_31 = c1_sum_mult9  - (FDY12 * x_ps_31);
 wire signed [47:0] Xhs23_31 = c2_sum_mult11 - (FDY23 * x_ps_31);
 wire signed [47:0] Xhs31_31 = c3_sum_mult13 - (FDY31 * x_ps_31);
-wire signed [47:0] Xhs41_31 = c4_sum_mult15 - (FDY41 * x_ps_31);
+//wire signed [47:0] Xhs41_31 = c4_sum_mult15 - (FDY41 * x_ps_31);
 
 always @* begin
-	inTri[0]  = !Xhs12_0[47]  && !Xhs23_0[47]  && !Xhs31_0[47]  && !Xhs41_0[47];
-	inTri[1]  = !Xhs12_1[47]  && !Xhs23_1[47]  && !Xhs31_1[47]  && !Xhs41_1[47];
-	inTri[2]  = !Xhs12_2[47]  && !Xhs23_2[47]  && !Xhs31_2[47]  && !Xhs41_2[47];
-	inTri[3]  = !Xhs12_3[47]  && !Xhs23_3[47]  && !Xhs31_3[47]  && !Xhs41_3[47];
-	inTri[4]  = !Xhs12_4[47]  && !Xhs23_4[47]  && !Xhs31_4[47]  && !Xhs41_4[47];
-	inTri[5]  = !Xhs12_5[47]  && !Xhs23_5[47]  && !Xhs31_5[47]  && !Xhs41_5[47];
-	inTri[6]  = !Xhs12_6[47]  && !Xhs23_6[47]  && !Xhs31_6[47]  && !Xhs41_6[47];
-	inTri[7]  = !Xhs12_7[47]  && !Xhs23_7[47]  && !Xhs31_7[47]  && !Xhs41_7[47];
-	inTri[8]  = !Xhs12_8[47]  && !Xhs23_8[47]  && !Xhs31_8[47]  && !Xhs41_8[47];
-	inTri[9]  = !Xhs12_9[47]  && !Xhs23_9[47]  && !Xhs31_9[47]  && !Xhs41_9[47];
-	inTri[10] = !Xhs12_1[47]  && !Xhs23_1[47]  && !Xhs31_1[47]  && !Xhs41_1[47];
-	inTri[11] = !Xhs12_11[47] && !Xhs23_11[47] && !Xhs31_11[47] && !Xhs41_11[47];
-	inTri[12] = !Xhs12_12[47] && !Xhs23_12[47] && !Xhs31_12[47] && !Xhs41_12[47];
-	inTri[13] = !Xhs12_13[47] && !Xhs23_13[47] && !Xhs31_13[47] && !Xhs41_13[47];
-	inTri[14] = !Xhs12_14[47] && !Xhs23_14[47] && !Xhs31_14[47] && !Xhs41_14[47];
-	inTri[15] = !Xhs12_15[47] && !Xhs23_15[47] && !Xhs31_15[47] && !Xhs41_15[47];
-	inTri[16] = !Xhs12_16[47] && !Xhs23_16[47] && !Xhs31_16[47] && !Xhs41_16[47];
-	inTri[17] = !Xhs12_17[47] && !Xhs23_17[47] && !Xhs31_17[47] && !Xhs41_17[47];
-	inTri[18] = !Xhs12_18[47] && !Xhs23_18[47] && !Xhs31_18[47] && !Xhs41_18[47];
-	inTri[19] = !Xhs12_19[47] && !Xhs23_19[47] && !Xhs31_19[47] && !Xhs41_19[47];
-	inTri[20] = !Xhs12_20[47] && !Xhs23_20[47] && !Xhs31_20[47] && !Xhs41_20[47];
-	inTri[21] = !Xhs12_21[47] && !Xhs23_21[47] && !Xhs31_21[47] && !Xhs41_21[47];
-	inTri[22] = !Xhs12_22[47] && !Xhs23_22[47] && !Xhs31_22[47] && !Xhs41_22[47];
-	inTri[23] = !Xhs12_23[47] && !Xhs23_23[47] && !Xhs31_23[47] && !Xhs41_23[47];
-	inTri[24] = !Xhs12_24[47] && !Xhs23_24[47] && !Xhs31_24[47] && !Xhs41_24[47];
-	inTri[25] = !Xhs12_25[47] && !Xhs23_25[47] && !Xhs31_25[47] && !Xhs41_25[47];
-	inTri[26] = !Xhs12_26[47] && !Xhs23_26[47] && !Xhs31_26[47] && !Xhs41_26[47];
-	inTri[27] = !Xhs12_27[47] && !Xhs23_27[47] && !Xhs31_27[47] && !Xhs41_27[47];
-	inTri[28] = !Xhs12_28[47] && !Xhs23_28[47] && !Xhs31_28[47] && !Xhs41_28[47];
-	inTri[29] = !Xhs12_29[47] && !Xhs23_29[47] && !Xhs31_29[47] && !Xhs41_29[47];
-	inTri[30] = !Xhs12_30[47] && !Xhs23_30[47] && !Xhs31_30[47] && !Xhs41_30[47];
-	inTri[31] = !Xhs12_31[47] && !Xhs23_31[47] && !Xhs31_31[47] && !Xhs41_31[47];
+	inTri[0]  = !Xhs12_0[47]  && !Xhs23_0[47]  && !Xhs31_0[47] ;// && !Xhs41_0[47];
+	inTri[1]  = !Xhs12_1[47]  && !Xhs23_1[47]  && !Xhs31_1[47] ;// && !Xhs41_1[47];
+	inTri[2]  = !Xhs12_2[47]  && !Xhs23_2[47]  && !Xhs31_2[47] ;// && !Xhs41_2[47];
+	inTri[3]  = !Xhs12_3[47]  && !Xhs23_3[47]  && !Xhs31_3[47] ;// && !Xhs41_3[47];
+	inTri[4]  = !Xhs12_4[47]  && !Xhs23_4[47]  && !Xhs31_4[47] ;// && !Xhs41_4[47];
+	inTri[5]  = !Xhs12_5[47]  && !Xhs23_5[47]  && !Xhs31_5[47] ;// && !Xhs41_5[47];
+	inTri[6]  = !Xhs12_6[47]  && !Xhs23_6[47]  && !Xhs31_6[47] ;// && !Xhs41_6[47];
+	inTri[7]  = !Xhs12_7[47]  && !Xhs23_7[47]  && !Xhs31_7[47] ;// && !Xhs41_7[47];
+	inTri[8]  = !Xhs12_8[47]  && !Xhs23_8[47]  && !Xhs31_8[47] ;// && !Xhs41_8[47];
+	inTri[9]  = !Xhs12_9[47]  && !Xhs23_9[47]  && !Xhs31_9[47] ;// && !Xhs41_9[47];
+	inTri[10] = !Xhs12_1[47]  && !Xhs23_1[47]  && !Xhs31_1[47] ;// && !Xhs41_1[47];
+	inTri[11] = !Xhs12_11[47] && !Xhs23_11[47] && !Xhs31_11[47];// && !Xhs41_11[47];
+	inTri[12] = !Xhs12_12[47] && !Xhs23_12[47] && !Xhs31_12[47];// && !Xhs41_12[47];
+	inTri[13] = !Xhs12_13[47] && !Xhs23_13[47] && !Xhs31_13[47];// && !Xhs41_13[47];
+	inTri[14] = !Xhs12_14[47] && !Xhs23_14[47] && !Xhs31_14[47];// && !Xhs41_14[47];
+	inTri[15] = !Xhs12_15[47] && !Xhs23_15[47] && !Xhs31_15[47];// && !Xhs41_15[47];
+	inTri[16] = !Xhs12_16[47] && !Xhs23_16[47] && !Xhs31_16[47];// && !Xhs41_16[47];
+	inTri[17] = !Xhs12_17[47] && !Xhs23_17[47] && !Xhs31_17[47];// && !Xhs41_17[47];
+	inTri[18] = !Xhs12_18[47] && !Xhs23_18[47] && !Xhs31_18[47];// && !Xhs41_18[47];
+	inTri[19] = !Xhs12_19[47] && !Xhs23_19[47] && !Xhs31_19[47];// && !Xhs41_19[47];
+	inTri[20] = !Xhs12_20[47] && !Xhs23_20[47] && !Xhs31_20[47];// && !Xhs41_20[47];
+	inTri[21] = !Xhs12_21[47] && !Xhs23_21[47] && !Xhs31_21[47];// && !Xhs41_21[47];
+	inTri[22] = !Xhs12_22[47] && !Xhs23_22[47] && !Xhs31_22[47];// && !Xhs41_22[47];
+	inTri[23] = !Xhs12_23[47] && !Xhs23_23[47] && !Xhs31_23[47];// && !Xhs41_23[47];
+	inTri[24] = !Xhs12_24[47] && !Xhs23_24[47] && !Xhs31_24[47];// && !Xhs41_24[47];
+	inTri[25] = !Xhs12_25[47] && !Xhs23_25[47] && !Xhs31_25[47];// && !Xhs41_25[47];
+	inTri[26] = !Xhs12_26[47] && !Xhs23_26[47] && !Xhs31_26[47];// && !Xhs41_26[47];
+	inTri[27] = !Xhs12_27[47] && !Xhs23_27[47] && !Xhs31_27[47];// && !Xhs41_27[47];
+	inTri[28] = !Xhs12_28[47] && !Xhs23_28[47] && !Xhs31_28[47];// && !Xhs41_28[47];
+	inTri[29] = !Xhs12_29[47] && !Xhs23_29[47] && !Xhs31_29[47];// && !Xhs41_29[47];
+	inTri[30] = !Xhs12_30[47] && !Xhs23_30[47] && !Xhs31_30[47];// && !Xhs41_30[47];
+	inTri[31] = !Xhs12_31[47] && !Xhs23_31[47] && !Xhs31_31[47];// && !Xhs41_31[47];
 	
 		 if (inTri[30:00]==0) leading_zeros = 31;
 	else if (inTri[29:00]==0) leading_zeros = 30;
