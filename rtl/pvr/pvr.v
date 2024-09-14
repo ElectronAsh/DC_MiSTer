@@ -538,9 +538,15 @@ ra_parser ra_parser_inst (
 	.poly_addr( poly_addr ),			// output [23:0]  poly_addr
 	.render_poly( render_poly ),		// output  render_poly
 	
+	.clear_fb( clear_fb ),				// output  clear_fb
+	.clear_fb_pend( clear_fb_pend ),	// input   clear_fb_done
+	
 	.poly_drawn( poly_drawn ),			// input  poly_drawn
 	.tile_prims_done( tile_prims_done )	// output tile_prims_done
 );
+
+wire clear_fb;
+wire clear_fb_pend;
 
 wire tile_prims_done;
 wire poly_drawn;
@@ -601,10 +607,13 @@ isp_parser isp_parser_inst (
 	.ra_entry_valid( ra_entry_valid ),	// New Region Array entry read / new tile.
 	.tile_prims_done( tile_prims_done ),// input tile_prims_done
 	
-	.poly_drawn( poly_drawn ),			// output poly_drawn
+	.poly_drawn( poly_drawn ),				// output poly_drawn
 	
 	.tilex( ra_cont_tilex ),
 	.tiley( ra_cont_tiley ),
+	
+	.clear_fb( clear_fb ),					// input  clear_fb
+	.clear_fb_pend( clear_fb_pend ),		// output clear_fb_done
 	
 	.TEXT_CONTROL( TEXT_CONTROL ),		// From TEXT_CONTROL reg. (0xE4 in PVR regs).
 	.PAL_RAM_CTRL( PAL_RAM_CTRL[1:0] ),	// From PAL_RAM_CTRL reg, bits [1:0].

@@ -1137,7 +1137,7 @@ sdram_old  sdram_old_inst(
 	.clk( clk_ram ),
 	.clkref( clk_sys ),
 	
-	.raddr( (hc + (vc * 640)) ),		// 25 bit byte address
+	.raddr( (hc + (vc * 640)) ),		// 24 bit WORD address
 	.rd( ce_pix ),							// Display requests read
 	.rd_rdy( rd_rdy ),
 	.dout( fb_dout ),

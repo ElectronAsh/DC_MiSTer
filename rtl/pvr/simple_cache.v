@@ -38,7 +38,7 @@ if (!reset_n) begin
 end
 else begin
 	if (ddram_rd_in) begin
-		pend_word_addr <= ddram_addr_in;
+		pend_word_addr <= ddram_addr_in;	// Backup the full request addr.
 		rd_pend <= 1'b1;
 	end
 

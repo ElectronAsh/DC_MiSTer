@@ -46,7 +46,10 @@ module isp_parser (
 	input pal_wr,
 	
 	input pal_rd,
-	output [31:0] pal_dout
+	output [31:0] pal_dout,
+	
+	input clear_fb,
+	output reg clear_fb_pend
 );
 
 reg [23:0] isp_vram_addr;
@@ -176,7 +179,7 @@ wire is_quad_array = opb_word[31:29]==3'b101;
 
 reg quad_done;
 
-reg [31:0] old_z;
+reg clear_z;
 
 reg [23:0] isp_vram_addr_last;
 
@@ -191,7 +194,8 @@ if (!reset_n) begin
 	poly_drawn <= 1'b0;
 	read_codebook <= 1'b0;
 	prev_tex_word_addr <= 21'h1FFFFF;	// Arbitrary address to start with.
-	old_z = 32'd0;
+	clear_fb_pend <= 1'b0;
+	clear_z <= 1'b1;
 end
 else begin
 	fb_we <= 1'b0;
@@ -201,8 +205,6 @@ else begin
 	
 	read_codebook <= 1'b0;
 	
-	if (tile_prims_done) old_z = 32'd0;
-
 	if (isp_vram_rd & !vram_wait) isp_vram_rd <= 1'b0;
 	if (isp_vram_wr & !vram_wait) isp_vram_wr <= 1'b0;
 	
@@ -518,7 +520,7 @@ else begin
 			isp_state <= isp_state + 8'd1;
 		end
 		
-		47: begin
+		47: if (!clear_z) begin
 			if (is_tri_strip && strip_cnt[0]) begin		// Swap verts A and B, for all ODD strip segments.
 				vert_a_x  <= vert_b_x;
 				vert_a_y  <= vert_b_y;
@@ -549,7 +551,7 @@ else begin
 			isp_state <= 8'd49;			// Draw the triangle!
 		end
 		
-		48: begin
+		48: if (!clear_z) begin
 			if (is_tri_strip) begin			// Triangle Strip.
 				strip_cnt <= strip_cnt + 3'd1;	// Increment to the next strip_mask bit.
 				isp_state <= 8'd1;
@@ -570,13 +572,11 @@ else begin
 							quad_done <= 1'b1;	// <- The next time we get to this state, we know the full Quad is drawn.
 						end
 						else begin
-							old_z <= IP_Z_INTERP;
 							poly_drawn <= 1'b1;	// Quad is done.
 							isp_state <= 8'd0;
 						end
 					end
 					else begin	// Triangle (or part of Array) is done.
-						old_z <= IP_Z_INTERP;
 						poly_drawn <= 1'b1;
 						isp_state <= 8'd0;
 					end
@@ -646,7 +646,7 @@ else begin
 		
 		52: if (vram_valid) begin
 			//if ( inTri[ x_ps[4:0] ] ) begin
-			if (inTriangle && IP_Z_INTERP>=old_z) begin
+			if (inTriangle && depth_allow) begin
 				fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
 				fb_writedata <= final_argb;
 				fb_we <= 1'b1;							// The (current) SDRAM controller does a Write on the Rising edge of fb_we, so need to pulse it.
@@ -656,9 +656,50 @@ else begin
 
 		default: ;
 	endcase
+	
+	if (clear_fb) begin
+		fb_addr <= 23'd0;
+		clear_fb_pend <= 1'b1;
+	end
+	else if (clear_fb_pend) begin
+		fb_writedata <= 32'h00000000;
+		fb_we <= ~fb_we;
+		if (fb_we) fb_addr <= fb_addr + 1;
+		if (fb_addr > (640*480)) begin
+			fb_we <= 1'b0;
+			clear_fb_pend <= 1'b0;
+		end
+	end
+	
+	if (tile_prims_done) clear_z <= 1'b1;	// All prim TYPES in this TILE have been processed!
+	else if (clear_done) clear_z <= 1'b0;
 end
 
 wire [7:0] vert_words = (two_volume&shadow) ? ((skip*2)+3) : (skip+3);
+
+
+// Internal Z-buffer...
+wire [9:0] z_buff_addr = x_ps[4:0] + (y_ps[4:0]*32);
+wire clear_done;
+wire depth_allow;
+
+z_buffer  z_buffer_inst(
+	.clock( clock ),
+	.reset_n( reset_n ),
+	
+	.clear_z( clear_z ),
+	.clear_done( clear_done),
+	
+	.z_buff_addr( z_buff_addr ),
+	.z_in( IP_Z_INTERP ),
+	.z_write_disable( z_write_disable ),
+	//.z_out( old_z ),
+	
+	.inTriangle( inTriangle ),
+	.depth_comp( depth_comp ),
+	.depth_allow( depth_allow )
+);
+
 
 
 wire signed [47:0] f_area = ((FX1_FIXED-FX3_FIXED) * (FY2_FIXED-FY3_FIXED)) - ((FY1_FIXED-FY3_FIXED) * (FX2_FIXED-FX3_FIXED));
@@ -1269,16 +1310,6 @@ else begin
 		if (allow_z_write[31]) z_col_31[ y_ps[4:0] ] <= IP_Z[31];
 	end
 end
-*/
-
-/*
-depth_compare depth_compare_inst0 (
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( old_z ),							// input [22:0]  old_z
-	.invW( IP_Z_INTERP ),					// input [22:0]  invW
-	.depth_allow( allow_z_write )			// output depth_allow
-);
-wire allow_z_write;
 */
 
 /*
