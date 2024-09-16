@@ -624,13 +624,13 @@ else begin
 					x_ps <= (tilex<<5) /*+ leading_zeros*/;
 					y_ps <= y_ps + 12'd1;
 					isp_state <= 8'd51;		// Had to add an extra clock tick, to allow the VRAM address and texture stuff to update.
-													// (fixed the thin vertical lines on the renders. ElectronAsh).
 				end
 				else begin	// Inc x_ps. Write pixel to Framebuffer if inTri bit is set.
-					//if (inTri[x_ps[4:0]] /*&& allow_z_write[x_ps[4:0]]*/) fb_we <= 1'b1;
 					x_ps <= x_ps + 12'd1;
-					isp_vram_rd <= 1'b1;
-					isp_state <= 8'd52;
+					if (inTriangle && depth_allow) begin
+						isp_vram_rd <= 1'b1;
+						isp_state <= 8'd52;
+					end
 				end
 			end
 			else begin	// End of tile, for current POLY.
@@ -639,19 +639,17 @@ else begin
 			end
 		end
 		
+		// Next row...
 		51: begin
-			x_ps <= (tilex<<5) /*+ leading_zeros*/;
-			isp_state <= 8'd50;	// Jump back,
-		end			
+			isp_state <= 8'd50;	// Jump back.
+		end
 		
+		// Next (visible) pixel...
 		52: if (vram_valid) begin
-			//if ( inTri[ x_ps[4:0] ] ) begin
-			if (inTriangle && depth_allow) begin
-				fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
-				fb_writedata <= final_argb;
-				fb_we <= 1'b1;							// The (current) SDRAM controller does a Write on the Rising edge of fb_we, so need to pulse it.
-			end											// ie. Can't just hold it high through multiple pixels.
-			isp_state <= 8'd50;
+			fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
+			fb_writedata <= final_argb;
+			fb_we <= 1'b1;							// The (current) SDRAM controller does a Write on the Rising edge of fb_we, so need to pulse it.		
+			isp_state <= 8'd50;	// Jump back.
 		end
 
 		default: ;
@@ -922,7 +920,7 @@ interp  interp_inst_z (
 	//.interp24( IP_Z[24] ), .interp25( IP_Z[25] ), .interp26( IP_Z[26] ), .interp27( IP_Z[27] ), .interp28( IP_Z[28] ), .interp29( IP_Z[29] ), .interp30( IP_Z[30] ), .interp31( IP_Z[31] )
 );
 */
-wire signed [31:0] IP_Z_INTERP = FZ3_FIXED;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
+wire signed [31:0] IP_Z_INTERP = FZ2_FIXED;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
 //wire signed [31:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
 
 

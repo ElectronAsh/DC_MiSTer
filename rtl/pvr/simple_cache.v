@@ -48,14 +48,14 @@ else begin
 	case (state)
 	0: begin
 		if (rd_pend) begin
-			if (pend_word_addr>={ddram_addr_out[28:2],2'd0} && pend_word_addr<={ddram_addr_out[28:2],2'd3}) begin	// cache hit...
-				ddram_readdata_out <= cache[ pend_word_addr[1:0] ];
+			if (pend_word_addr>={ddram_addr_out[28:3],3'd0} && pend_word_addr<={ddram_addr_out[28:3],3'd7}) begin	// cache hit...
+				ddram_readdata_out <= cache[ pend_word_addr[2:0] ];
 				ddram_valid_out <= 1'b1;
 				rd_pend <= 1'b0;
 			end
 			else begin	// cache miss...
-				ddram_addr_out <= {pend_word_addr[28:2],2'd0};	// Request from start block of 4 words.
-				ddram_burstcnt_out <= 8'd4;							// Request 4 WORDS from DDR3.
+				ddram_addr_out <= {pend_word_addr[28:3],3'd0};	// Request from start block of 8 words.
+				ddram_burstcnt_out <= 8'd8;							// Request 8 WORDS from DDR3.
 				ddram_rd_out <= 1'b1;
 				word_cnt <= 3'd0;
 				state <= state + 3'd1;
@@ -66,7 +66,7 @@ else begin
 	1: if (ddram_valid_in) begin
 		cache[ word_cnt ] <= ddram_readdata_in;
 		word_cnt <= word_cnt + 1;
-		if (word_cnt==3'd3) state <= 3'd0;
+		if (word_cnt==3'd7) state <= 3'd0;
 	end
 	
 	default: ;
