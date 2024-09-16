@@ -181,6 +181,8 @@ reg quad_done;
 
 reg clear_z;
 
+reg do_fb_write;
+
 reg [23:0] isp_vram_addr_last;
 
 always @(posedge clock or negedge reset_n)
@@ -196,6 +198,7 @@ if (!reset_n) begin
 	prev_tex_word_addr <= 21'h1FFFFF;	// Arbitrary address to start with.
 	clear_fb_pend <= 1'b0;
 	clear_z <= 1'b1;
+	do_fb_write <= 1'b0;
 end
 else begin
 	fb_we <= 1'b0;
@@ -204,6 +207,8 @@ else begin
 	poly_drawn <= 1'b0;
 	
 	read_codebook <= 1'b0;
+	
+	do_fb_write <= 1'b0;
 	
 	if (isp_vram_rd & !vram_wait) isp_vram_rd <= 1'b0;
 	if (isp_vram_wr & !vram_wait) isp_vram_wr <= 1'b0;
@@ -646,14 +651,18 @@ else begin
 		
 		// Next (visible) pixel...
 		52: if (vram_valid) begin
-			fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
-			fb_writedata <= final_argb;
-			fb_we <= 1'b1;							// The (current) SDRAM controller does a Write on the Rising edge of fb_we, so need to pulse it.		
+			do_fb_write <= 1'b1;	
 			isp_state <= 8'd50;	// Jump back.
 		end
 
 		default: ;
 	endcase
+	
+	if (do_fb_write) begin
+		fb_we <= 1'b1;
+		fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
+		fb_writedata <= final_argb;
+	end
 	
 	if (clear_fb) begin
 		fb_addr <= 23'd0;

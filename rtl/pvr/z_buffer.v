@@ -45,7 +45,7 @@ else begin
 			clear_pend <= 1'b1;
 		end
 		
-		if (inTriangle && depth_allow && !z_write_disable) z_buffer[ z_buff_addr ] <= z_in;
+		if (inTriangle && depth_allow && !z_write_disable) z_buffer[ z_buff_addr-1 ] <= z_in;
 	end
 	
 	old_z <= z_buffer[ z_buff_addr+1 ];		// TESTING. The +1 is a kludge, to lessen the vertical lines.

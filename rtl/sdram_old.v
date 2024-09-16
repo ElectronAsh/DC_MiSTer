@@ -121,7 +121,7 @@ always @(posedge clk) begin
 		ram_req <= 0;
 		wr <= 0;
 
-		if (we_ack != we) begin
+		if (/*we_ack !=*/ we) begin
 			ram_req <= 1;
 			wr <= 1;
 			{bank,a} <= waddr;
