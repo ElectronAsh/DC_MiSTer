@@ -604,13 +604,15 @@ else begin
 
 		50: begin
 			if (y_ps < (tiley<<5)+32) begin
-				x_ps <= x_ps + 12'd1;
 				if (x_ps == (tilex<<5)+32) begin
 					isp_state <= 8'd51;
 				end
-				else if (inTriangle && depth_allow) begin
-					isp_vram_rd <= 1'b1;
-					isp_state <= 8'd52;
+				else begin
+					x_ps <= x_ps + 12'd1;
+					if (inTriangle && depth_allow) begin
+						isp_vram_rd <= 1'b1;
+						isp_state <= 8'd52;
+					end
 				end
 				fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
 			end
