@@ -128,7 +128,7 @@ always @(posedge clk) begin
 			data <= din;
 		end
 		else
-		if (~old_rd & rd) begin
+		if (/*~old_rd &*/ rd) begin
 			rd_rdy <= 0;
 			ram_req <= 1;
 			wr <= 0;

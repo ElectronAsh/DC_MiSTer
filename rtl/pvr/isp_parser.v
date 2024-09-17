@@ -181,8 +181,6 @@ reg quad_done;
 
 reg clear_z;
 
-reg do_fb_write;
-
 reg [23:0] isp_vram_addr_last;
 
 always @(posedge clock or negedge reset_n)
@@ -198,7 +196,6 @@ if (!reset_n) begin
 	prev_tex_word_addr <= 21'h1FFFFF;	// Arbitrary address to start with.
 	clear_fb_pend <= 1'b0;
 	clear_z <= 1'b1;
-	do_fb_write <= 1'b0;
 end
 else begin
 	fb_we <= 1'b0;
@@ -207,9 +204,7 @@ else begin
 	poly_drawn <= 1'b0;
 	
 	read_codebook <= 1'b0;
-	
-	do_fb_write <= 1'b0;
-	
+
 	if (isp_vram_rd & !vram_wait) isp_vram_rd <= 1'b0;
 	if (isp_vram_wr & !vram_wait) isp_vram_wr <= 1'b0;
 	
@@ -602,67 +597,46 @@ else begin
 		49: begin
 			isp_vram_addr_last <= isp_vram_addr;
 			
-			// Half-edge constants (setup).
-			//int C1 = FDY12 * FX1 - FDX12 * FY1;
-			mult1 <= (FDY12_FIXED*FX1_FIXED)>>FRAC_BITS;
-			mult2 <= (FDX12_FIXED*FY1_FIXED)>>FRAC_BITS;
-
-			//int C2 = FDY23 * FX2 - FDX23 * FY2;
-			mult3 <= (FDY23_FIXED*FX2_FIXED)>>FRAC_BITS;
-			mult4 <= (FDX23_FIXED*FY2_FIXED)>>FRAC_BITS;
-
-			//int C3 = FDY31 * FX3 - FDX31 * FY3;
-			mult5 <= (FDY31_FIXED*FX3_FIXED)>>FRAC_BITS;
-			mult6 <= (FDX31_FIXED*FY3_FIXED)>>FRAC_BITS;
-			
-			//int C4 = FDY41 * FX4 - FDX41 * FY4;
-			mult7 <= (is_quad_array) ? (FDY41_FIXED*FX4_FIXED)>>FRAC_BITS : 1<<FRAC_BITS;
-			mult8 <= (is_quad_array) ? (FDX41_FIXED*FY4_FIXED)>>FRAC_BITS : 1<<FRAC_BITS;
+			// C1, C2 etc. calcs moved into inTriangle module now. ElectronAsh.
 
 			isp_state <= isp_state + 8'd1;
 		end
 
 		50: begin
 			if (y_ps < (tiley<<5)+32) begin
-				// inTri==0 check, gives us roughly 2 FPS speedup, by skipping rows with no span. ;)
-				if (x_ps == (tilex<<5)+32 /*|| x_ps[4:0]==32-trailing_zeros || inTri==32'b0*/) begin
-					x_ps <= (tilex<<5) /*+ leading_zeros*/;
-					y_ps <= y_ps + 12'd1;
-					isp_state <= 8'd51;		// Had to add an extra clock tick, to allow the VRAM address and texture stuff to update.
+				x_ps <= x_ps + 12'd1;
+				if (x_ps == (tilex<<5)+32) begin
+					isp_state <= 8'd51;
 				end
-				else begin	// Inc x_ps. Write pixel to Framebuffer if inTri bit is set.
-					x_ps <= x_ps + 12'd1;
-					if (inTriangle && depth_allow) begin
-						isp_vram_rd <= 1'b1;
-						isp_state <= 8'd52;
-					end
+				else if (inTriangle && depth_allow) begin
+					isp_vram_rd <= 1'b1;
+					isp_state <= 8'd52;
 				end
+				fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
 			end
 			else begin	// End of tile, for current POLY.
 				isp_vram_addr <= isp_vram_addr_last;
 				isp_state <= 8'd48;
 			end
 		end
-		
-		// Next row...
+
+		// Next row.
 		51: begin
+			y_ps <= y_ps + 12'd1;
+			x_ps <= (tilex<<5);
 			isp_state <= 8'd50;	// Jump back.
 		end
 		
 		// Next (visible) pixel...
 		52: if (vram_valid) begin
-			do_fb_write <= 1'b1;	
+			fb_we <= 1'b1;
+			fb_writedata <= final_argb;
 			isp_state <= 8'd50;	// Jump back.
 		end
 
 		default: ;
 	endcase
-	
-	if (do_fb_write) begin
-		fb_we <= 1'b1;
-		fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
-		fb_writedata <= final_argb;
-	end
+
 	
 	if (clear_fb) begin
 		fb_addr <= 23'd0;
@@ -670,8 +644,8 @@ else begin
 	end
 	else if (clear_fb_pend) begin
 		fb_writedata <= 32'h00000000;
-		fb_we <= ~fb_we;
-		if (fb_we) fb_addr <= fb_addr + 1;
+		fb_we <= 1'b1;
+		fb_addr <= fb_addr + 1;
 		if (fb_addr > (640*480)) begin
 			fb_we <= 1'b0;
 			clear_fb_pend <= 1'b0;
@@ -703,6 +677,8 @@ z_buffer  z_buffer_inst(
 	//.z_out( old_z ),
 	
 	.inTriangle( inTriangle ),
+	
+	.type_cnt( type_cnt ),		// From the RA. 0=Opaque, 1=Opaque Mod, 2=Trans, 3=Trans mod, 4=PunchThrough.
 	.depth_comp( depth_comp ),
 	.depth_allow( depth_allow )
 );
@@ -835,39 +811,19 @@ float_to_fixed  float_y4 (
 reg [10:0] x_ps;
 reg [10:0] y_ps;
 
-// Half-edge constants
-// Setup phase...
-//int C1 = FDY12 * FX1 - FDX12 * FY1;
-reg signed [63:0] mult1;
-reg signed [63:0] mult2;
-wire signed [47:0] C1 = (mult1 - mult2);
 
-//int C2 = FDY23 * FX2 - FDX23 * FY2;
-reg signed [63:0] mult3;
-reg signed [63:0] mult4;
-wire signed [47:0] C2 = (mult3 - mult4);
-
-//int C3 = FDY31 * FX3 - FDX31 * FY3;
-reg signed [63:0] mult5;
-reg signed [63:0] mult6;
-wire signed [47:0] C3 = (mult5 - mult6);
-
-//int C4 = FDY41 * FX4 - FDX41 * FY4;
-reg signed [63:0] mult7;
-reg signed [63:0] mult8;
-wire signed [47:0] C4 = (is_quad_array) ? (mult7 - mult8) : 1<<FRAC_BITS;	// 1? C4 is fixed-point, no? todo: FIX! ElectronAsh.
-
-//int Xhs12 = C1 + MUL_PREC(FDX12, y_ps<<FRAC_BITS, FRAC_BITS) - MUL_PREC(FDY12, x_ps<<FRAC_BITS, FRAC_BITS);
-//int Xhs23 = C2 + MUL_PREC(FDX23, y_ps<<FRAC_BITS, FRAC_BITS) - MUL_PREC(FDY23, x_ps<<FRAC_BITS, FRAC_BITS);
-//int Xhs31 = C3 + MUL_PREC(FDX31, y_ps<<FRAC_BITS, FRAC_BITS) - MUL_PREC(FDY31, x_ps<<FRAC_BITS, FRAC_BITS);
-
-// "Realtime" calcs, based on x_ps and y_ps...
-//
 inTri_calc  inTri_calc_inst (
-	.C1( C1 ),	// input signed [47:0]  C1
-	.C2( C2 ),	// input signed [47:0]  C2
-	.C3( C3 ),	// input signed [47:0]  C3
-	.C4( C4 ),	// input signed [47:0]  C4
+	.FX1( FX1_FIXED ),	// input signed [31:0]  FX1
+	.FX2( FX2_FIXED ),	// input signed [31:0]  FX2
+	.FX3( FX3_FIXED ),	// input signed [31:0]  FX3
+	.FX4( FX4_FIXED ),	// input signed [31:0]  FX4
+	
+	.FY1( FY1_FIXED ),	// input signed [31:0]  FY1
+	.FY2( FY2_FIXED ),	// input signed [31:0]  FY2
+	.FY3( FY3_FIXED ),	// input signed [31:0]  FY3
+	.FY4( FY4_FIXED ),	// input signed [31:0]  FY4
+	
+	.is_quad_array( is_quad_array ),
 	
 	.FDX12( FDX12_FIXED ),	// input signed [47:0]  FDX12
 	.FDX23( FDX23_FIXED ),	// input signed [47:0]  FDX23
@@ -882,21 +838,21 @@ inTri_calc  inTri_calc_inst (
 	.x_ps( x_ps ),
 	.y_ps( y_ps ),
 	
-	.inTriangle( inTriangle ),	// output inTriangle
-	
-	//.inTri( inTri ),	// output [31:0]  inTri
+	.inTriangle( inTriangle ),	// output  inTriangle
+	.inTri( inTri ),			// output [31:0]  inTri
 	
 	.leading_zeros( leading_zeros ),	// output [4:0]  leading_zeros
 	.trailing_zeros( trailing_zeros )	// output [4:0]  trailing_zeros
 );
 
-(*keep*)wire inTriangle;
-//(*keep*)wire [31:0] inTri;
+wire inTriangle;
+wire [31:0] inTri;
 
 wire [4:0] leading_zeros;
 wire [4:0] trailing_zeros;
 
-wire new_tile_row = isp_state==49 || isp_state==51 || isp_state==52;
+
+wire new_tile_row = isp_state==49 || isp_state==51 /*|| isp_state==52*/;
 
 // Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
 /*

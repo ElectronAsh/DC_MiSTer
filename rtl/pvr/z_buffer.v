@@ -15,6 +15,8 @@ module z_buffer (
 	output [31:0] z_out,
 	
 	input inTriangle,
+	
+	input [2:0] type_cnt,
 	input [2:0] depth_comp,
 	output wire depth_allow
 );
@@ -45,16 +47,30 @@ else begin
 			clear_pend <= 1'b1;
 		end
 		
-		if (inTriangle && depth_allow && !z_write_disable) z_buffer[ z_buff_addr-1 ] <= z_in;
+		if (inTriangle && depth_allow && !z_write_disable) z_buffer[ z_buff_addr ] <= z_in;
 	end
 	
 	old_z <= z_buffer[ z_buff_addr+1 ];		// TESTING. The +1 is a kludge, to lessen the vertical lines.
+														// Also probably needs this anyway, else some renders have lots of missing pixels / lines.
 end
 
 reg [31:0] old_z;
 
+// From reicast refsw-offline, for mode=depth_comp...
+/*
+        if (render_mode == RM_PUNCHTHROUGH)
+            mode = 6; // TODO: FIXME
+        else if (render_mode == RM_TRANSLUCENT)
+            mode = 3; // TODO: FIXME
+        else if (render_mode == RM_MODIFIER)
+            mode = 6;
+*/
+
+// From the RA. 0=Opaque, 1=Opaque Mod, 2=Trans, 3=Trans mod, 4=PunchThrough.
+wire [2:0] depth_comp_in = (type_cnt==4 || type_cnt==1 || type_cnt==3) ? 3'd6 : (type_cnt==2) ? 3'd3 : depth_comp;
+
 depth_compare depth_compare_inst (
-	.depth_comp( depth_comp ),		// input [2:0]  depth_comp
+	.depth_comp( depth_comp_in ),	// input [2:0]  depth_comp
 	.old_z( old_z ),					// input [31:0]  old_z
 	.invW( z_in ),						// input [31:0]  invW
 	.depth_allow( depth_allow )	// output depth_allow

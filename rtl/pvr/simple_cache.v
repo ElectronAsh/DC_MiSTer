@@ -28,8 +28,6 @@ reg [28:0] pend_word_addr;
 
 reg [2:0] state;
 
-wire cache_hit = ddram_addr_in>={ddram_addr_out[28:3],3'd0} && ddram_addr_in<={ddram_addr_out[28:3],3'd7};
-
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	state <= 3'd0;
@@ -47,7 +45,7 @@ else begin
 	case (state)
 	0: begin
 		if (ddram_rd_in || rd_pend) begin
-			if (cache_hit) begin	// cache hit...
+			if (ddram_addr_in>={ddram_addr_out[28:3],3'd0} && ddram_addr_in<={ddram_addr_out[28:3],3'd7}) begin	// cache hit...
 				ddram_readdata_out <= cache[ /*rd_pend ? pend_word_addr[2:0] :*/ ddram_addr_in[2:0] ];
 				ddram_valid_out <= 1'b1;
 				rd_pend <= 1'b0;
