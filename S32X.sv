@@ -1026,28 +1026,28 @@ wire vram_rd;
 wire vram_wr;
 
 wire [63:0] vram_dout;
-//wire [63:0] vram_din = DDRAM_DOUT;
-//wire vram_valid = DDRAM_DOUT_READY;
-wire [63:0] vram_din = CACHE_DOUT;
-wire vram_valid = CACHE_VALID;
+wire [63:0] vram_din = DDRAM_DOUT;
+wire vram_valid = DDRAM_DOUT_READY;
+//wire [63:0] vram_din = CACHE_DOUT;
+//wire vram_valid = CACHE_VALID;
 
 wire [28:0] DDRAM_BASE = 29'h06400000;	// 800MB >> 3. (DDRAM_BASE is the 64-bit WORD address!)
 
 assign DDRAM_CLK      = clk_sys;
-assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : CACHE_BURSTCNT;
-//assign DDRAM_ADDR     = ioctl_download ? DDRAM_BASE+ioctl_addr[21:2] : DDRAM_BASE+vram_addr[21:2];	// Limit the write/read addresses to 4MB!
-assign DDRAM_ADDR     = ioctl_download ? DDRAM_BASE+ioctl_addr[21:2] : DDRAM_BASE+CACHE_WORD_ADDR;	// Limit the write/read addresses to 4MB!
+assign DDRAM_BURSTCNT = /*ioctl_download ?*/ 8'd1 /*: CACHE_BURSTCNT*/;
+assign DDRAM_ADDR     = ioctl_download ? DDRAM_BASE+ioctl_addr[21:2] : DDRAM_BASE+vram_addr[21:2];	// Limit the write/read addresses to 4MB!
+//assign DDRAM_ADDR     = ioctl_download ? DDRAM_BASE+ioctl_addr[21:2] : DDRAM_BASE+CACHE_WORD_ADDR;	// Limit the write/read addresses to 4MB!
 assign DDRAM_DIN      = ioctl_download ? {rom_word32,rom_word32} : vram_dout;								// We are loading the 8MB VRAM dumps into each 32-bit half of DDR3 now.
 assign DDRAM_WE       = ioctl_download ? ddr_wr : /*vram_wr*/ 1'b0;											// This is so we can do texture reads of the full 64-bit word.
 assign DDRAM_BE       = ioctl_download ? download_be : 8'b11111111;
-//assign DDRAM_RD       = ioctl_download ? 1'b0 : vram_rd;
-assign DDRAM_RD       = ioctl_download ? 1'b0 : CACHE_RD;
+assign DDRAM_RD       = ioctl_download ? 1'b0 : vram_rd;
+//assign DDRAM_RD       = ioctl_download ? 1'b0 : CACHE_RD;
 
 wire [22:0] fb_addr;
 wire [31:0] fb_writedata;
 wire fb_we;
 
-
+/*
 simple_cache simple_cache_inst
 (
 	.clock( clk_sys ) ,								// input  clock
@@ -1077,7 +1077,7 @@ wire CACHE_RD;
 
 wire [63:0] CACHE_DOUT;
 wire CACHE_VALID;
-
+*/
 
 pvr pvr (
 	.clock( clk_sys ),			// input  clock
