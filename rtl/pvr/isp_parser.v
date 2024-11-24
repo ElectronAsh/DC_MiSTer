@@ -53,9 +53,9 @@ module isp_parser (
 );
 
 reg [23:0] isp_vram_addr;
-																										// Output thingy addr, when reading Texture or VQ codebook.
-assign isp_vram_addr_out = ((isp_state>=8'd49 && isp_state<=8'd54) || isp_state==5) ? vram_word_addr[21:0]<<2 :
-																												  isp_vram_addr;	// Output ISP Parser BYTE address.
+
+assign isp_vram_addr_out = ((isp_state>=8'd49 && isp_state<=8'd53) || isp_state==5) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
+																												  isp_vram_addr;					// Output ISP Parser BYTE address.
 
 // OL Word bit decodes...
 wire [5:0] strip_mask = {opb_word[25], opb_word[26], opb_word[27], opb_word[28], opb_word[29], opb_word[30]};	// For Triangle Strips only.
@@ -596,22 +596,22 @@ else begin
 
 		49: begin
 			isp_vram_addr_last <= isp_vram_addr;
-			
-			// C1, C2 etc. calcs moved into inTriangle module now. ElectronAsh.
-
 			isp_state <= isp_state + 8'd1;
 		end
 
 		50: begin
-			if (y_ps < (tiley<<5)+32) begin
-				if (x_ps == (tilex<<5)+32) begin
-					isp_state <= 8'd51;
+			if (y_ps < tiley_start+32) begin
+				if (x_ps==tilex_start+32 || x_ps[4:0]==32-trailing_zeros) begin
+					y_ps <= y_ps + 11'd1;	// Can't check leading_zeros until two clocks *after* incrementing y_ps.
+					x_ps <= tilex_start;		// Still need to set x_ps here, even though it gets set again in state 52!
+					isp_state <= 8'd51;		// Had to add an extra clock tick, to allow the VRAM address and texture stuff to update.
+													// (fixed the thin vertical lines on the renders. ElectronAsh).
 				end
 				else begin
 					x_ps <= x_ps + 12'd1;
-					if (inTriangle && depth_allow) begin
+					if (inTri[x_ps[4:0]] && depth_allow) begin
 						isp_vram_rd <= 1'b1;
-						isp_state <= 8'd52;
+						isp_state <= 8'd53;
 					end
 				end
 				fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
@@ -624,13 +624,16 @@ else begin
 
 		// Next row.
 		51: begin
-			y_ps <= y_ps + 12'd1;
-			x_ps <= (tilex<<5);
-			isp_state <= 8'd50;	// Jump back.
+			isp_state <= isp_state + 8'd1;
+		end
+
+		52: begin
+			x_ps <= tilex_start + leading_zeros;	// Definite speed-up when using leading_zeros here.
+			isp_state <= 8'd50;
 		end
 		
 		// Next (visible) pixel...
-		52: if (vram_valid) begin
+		53: if (vram_valid) begin
 			fb_we <= 1'b1;
 			fb_writedata <= final_argb;
 			isp_state <= 8'd50;	// Jump back.
@@ -658,6 +661,9 @@ else begin
 	else if (clear_done) clear_z <= 1'b0;
 end
 
+wire [10:0] tilex_start = {tilex, 5'b00000};
+wire [10:0] tiley_start = {tiley, 5'b00000};
+
 wire [7:0] vert_words = (two_volume&shadow) ? ((skip*2)+3) : (skip+3);
 
 
@@ -678,7 +684,7 @@ z_buffer  z_buffer_inst(
 	.z_write_disable( z_write_disable ),
 	//.z_out( old_z ),
 	
-	.inTriangle( inTriangle ),
+	.inTriangle( inTri[x_ps[4:0]] ),
 	
 	.type_cnt( type_cnt ),		// From the RA. 0=Opaque, 1=Opaque Mod, 2=Trans, 3=Trans mod, 4=PunchThrough.
 	.depth_comp( depth_comp ),
@@ -691,6 +697,7 @@ wire signed [47:0] f_area = ((FX1_FIXED-FX3_FIXED) * (FY2_FIXED-FY3_FIXED)) - ((
 wire sgn = (f_area<=0);
 
 // Vertex deltas...
+/*
 wire signed [47:0] FDX12_FIXED = (sgn) ? (FX1_FIXED - FX2_FIXED) : (FX2_FIXED - FX1_FIXED);
 wire signed [47:0] FDX23_FIXED = (sgn) ? (FX2_FIXED - FX3_FIXED) : (FX3_FIXED - FX2_FIXED);
 wire signed [47:0] FDX31_FIXED = (is_quad_array) ? sgn ? (FX3_FIXED - FX4_FIXED) : (FX4_FIXED - FX3_FIXED) : sgn ? (FX3_FIXED - FX1_FIXED) : (FX1_FIXED - FX3_FIXED);
@@ -700,7 +707,7 @@ wire signed [47:0] FDY12_FIXED = sgn ? (FY1_FIXED - FY2_FIXED) : (FY2_FIXED - FY
 wire signed [47:0] FDY23_FIXED = sgn ? (FY2_FIXED - FY3_FIXED) : (FY3_FIXED - FY2_FIXED);
 wire signed [47:0] FDY31_FIXED = (is_quad_array) ? sgn ? (FY3_FIXED - FY4_FIXED) : (FY4_FIXED - FY3_FIXED) : sgn ? (FY3_FIXED - FY1_FIXED) : (FY1_FIXED - FY3_FIXED);
 wire signed [47:0] FDY41_FIXED = (is_quad_array) ? sgn ? (FY4_FIXED - FY1_FIXED) : (FY1_FIXED - FY4_FIXED) : 0;
-
+*/
 
 // Vertex float-to-fixed conversion...
 (*keep*)wire signed [47:0] FX1_FIXED;
@@ -813,42 +820,38 @@ float_to_fixed  float_y4 (
 reg [10:0] x_ps;
 reg [10:0] y_ps;
 
+wire signed [31:0] FX1_SWAP = sgn ? FX1_FIXED : FX3_FIXED;
+wire signed [31:0] FY1_SWAP = sgn ? FY1_FIXED : FY3_FIXED;
+
+wire signed [31:0] FX2_SWAP = sgn ? FX2_FIXED : FX2_FIXED;	// Seems to (mostly) work for the new inTri calc for now, but needs investigating.
+wire signed [31:0] FY2_SWAP = sgn ? FY2_FIXED : FY2_FIXED;	// ?
+
+//wire signed [31:0] FX3_SWAP = is_quad_array ? sgn ? FX3_FIXED : FX4_FIXED : sgn ? FX3_FIXED : FX1_FIXED;
+//wire signed [31:0] FY3_SWAP = is_quad_array ? sgn ? FY3_FIXED : FY4_FIXED : sgn ? FY3_FIXED : FY1_FIXED;
+wire signed [31:0] FX3_SWAP = sgn ? FX3_FIXED : FX1_FIXED;
+wire signed [31:0] FY3_SWAP = sgn ? FY3_FIXED : FY1_FIXED;
 
 inTri_calc  inTri_calc_inst (
-	.FX1( FX1_FIXED ),	// input signed [31:0]  FX1
-	.FX2( FX2_FIXED ),	// input signed [31:0]  FX2
-	.FX3( FX3_FIXED ),	// input signed [31:0]  FX3
-	.FX4( FX4_FIXED ),	// input signed [31:0]  FX4
+	.FX1( FX1_SWAP ),	// input signed [31:0]  FX1
+	.FX2( FX2_SWAP ),	// input signed [31:0]  FX2
+	.FX3( FX3_SWAP ),	// input signed [31:0]  FX3
 	
-	.FY1( FY1_FIXED ),	// input signed [31:0]  FY1
-	.FY2( FY2_FIXED ),	// input signed [31:0]  FY2
-	.FY3( FY3_FIXED ),	// input signed [31:0]  FY3
-	.FY4( FY4_FIXED ),	// input signed [31:0]  FY4
-	
-	.is_quad_array( is_quad_array ),
-	
-	.FDX12( FDX12_FIXED ),	// input signed [47:0]  FDX12
-	.FDX23( FDX23_FIXED ),	// input signed [47:0]  FDX23
-	.FDX31( FDX31_FIXED ),	// input signed [47:0]  FDX31
-	.FDX41( FDX41_FIXED ),	// input signed [47:0]  FDX41
-	
-	.FDY12( FDY12_FIXED ),	// input signed [47:0]  FDX12
-	.FDY23( FDY23_FIXED ),	// input signed [47:0]  FDY23
-	.FDY31( FDY31_FIXED ),	// input signed [47:0]  FDY31
-	.FDY41( FDY41_FIXED ),	// input signed [47:0]  FDY41
+	.FY1( FY1_SWAP ),	// input signed [31:0]  FY1
+	.FY2( FY2_SWAP ),	// input signed [31:0]  FY2
+	.FY3( FY3_SWAP ),	// input signed [31:0]  FY3
 
 	.x_ps( x_ps ),
 	.y_ps( y_ps ),
 	
-	.inTriangle( inTriangle ),	// output  inTriangle
-	.inTri( inTri ),			// output [31:0]  inTri
+	//.inTriangle( inTriangle ),	// output inTriangle
+	.inTri( inTri ),	// output [31:0]  inTri
 	
 	.leading_zeros( leading_zeros ),	// output [4:0]  leading_zeros
 	.trailing_zeros( trailing_zeros )	// output [4:0]  trailing_zeros
 );
 
-wire inTriangle;
-wire [31:0] inTri;
+//(*keep*)wire inTriangle;
+(*keep*)wire [31:0] inTri;
 
 wire [4:0] leading_zeros;
 wire [4:0] trailing_zeros;
@@ -887,7 +890,7 @@ interp  interp_inst_z (
 	//.interp24( IP_Z[24] ), .interp25( IP_Z[25] ), .interp26( IP_Z[26] ), .interp27( IP_Z[27] ), .interp28( IP_Z[28] ), .interp29( IP_Z[29] ), .interp30( IP_Z[30] ), .interp31( IP_Z[31] )
 );
 */
-wire signed [31:0] IP_Z_INTERP = FZ2_FIXED;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
+wire signed [31:0] IP_Z_INTERP = FZ1_FIXED;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
 //wire signed [31:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
 
 

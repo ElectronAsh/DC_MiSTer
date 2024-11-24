@@ -47,8 +47,7 @@ else begin
 		if (ddram_rd_in || rd_pend) begin
 			if (ddram_addr_in>={ddram_addr_out[28:3],3'd0} && ddram_addr_in<={ddram_addr_out[28:3],3'd7}) begin	// cache hit...
 				ddram_readdata_out <= cache[ /*rd_pend ? pend_word_addr[2:0] :*/ ddram_addr_in[2:0] ];
-				ddram_valid_out <= 1'b1;
-				rd_pend <= 1'b0;
+				state <= 3'd2;
 			end
 			else begin	// cache miss...
 				ddram_addr_out <= {ddram_addr_in[28:3],3'd0};	// Request from start block of 8 words.
@@ -65,6 +64,12 @@ else begin
 		cache[ word_cnt ] <= ddram_readdata_in;
 		word_cnt <= word_cnt + 1;
 		if (word_cnt==3'd7) state <= 3'd0;
+	end
+	
+	2: begin
+		ddram_valid_out <= 1'b1;
+		rd_pend <= 1'b0;
+		state <= 3'd0;
 	end
 	
 	default: ;

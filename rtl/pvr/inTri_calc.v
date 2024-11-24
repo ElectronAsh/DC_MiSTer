@@ -2,19 +2,14 @@
 `default_nettype none
 
 module inTri_calc (
-	input signed [31:0] FX1, FX2, FX3, FX4,
-	input signed [31:0] FY1, FY2, FY3, FY4,
-	
-	input is_quad_array,
+	input signed [31:0] FX1, FY1,
+	input signed [31:0] FX2, FY2,
+	input signed [31:0] FX3, FY3,
 
-	input signed [47:0] FDX12, FDY12,
-	input signed [47:0] FDX23, FDY23,
-	input signed [47:0] FDX31, FDY31,
-	input signed [47:0] FDX41, FDY41,
+	input [10:0] x_ps,
+	input [10:0] y_ps,
 
-	input [10:0] x_ps, y_ps,
-
-	output reg inTriangle,
+	//output wire inTriangle,
 	
 	output reg [31:0] inTri,
 	
@@ -22,97 +17,25 @@ module inTri_calc (
     output reg [4:0] trailing_zeros
 );
 
-// No need to shift right after, since y_ps etc. are not fixed-point.
-//int C1 = FDY12 * FX1 - FDX12 * FY1;
-wire signed [63:0] c1 = ((FDY12*FX1)>>FRAC_BITS) - ((FDX12*FY1)>>FRAC_BITS);
-wire signed [63:0] c2 = ((FDY23*FX2)>>FRAC_BITS) - ((FDX23*FY2)>>FRAC_BITS);
-wire signed [63:0] c3 = ((FDY31*FX3)>>FRAC_BITS) - ((FDX31*FY3)>>FRAC_BITS);
-wire signed [63:0] c4 = ((FDY41*FX4)>>FRAC_BITS) - ((FDX41*FY4)>>FRAC_BITS);
+tri_vis  tri_vis_inst (
+	// Screen-space pixel coordinates (integer values)
+	.x_ps( x_ps ), 		// input [10:0] X coord
+	.y_ps( y_ps ), 		// input [10:0] Y coord
+	
+	// Fixed point format: 16.16 (16 bits integer, 16 bits fractional)
+	.FX1( FX1 ),	// input [31:0]  Triangle vertex 0
+	.FY1( FY1 ), 		
+	
+	.FX2( FX2 ),	// input [31:0]  Triangle vertex 1
+	.FY2( FY2 ), 		
 
-wire signed [47:0] c1_plus_dx12_mult_yps =                     c1 + (FDX12 * y_ps);
-wire signed [47:0] c2_plus_dx23_mult_yps =                     c2 + (FDX23 * y_ps);
-wire signed [47:0] c3_plus_dx31_mult_yps =                     c3 + (FDX31 * y_ps);
-wire signed [47:0] c4_plus_dx41_mult_yps = is_quad_array ? 0 : c4 + (FDX41 * y_ps);
+	.FX3( FX3 ),	// input [31:0]  Triangle vertex 2
+	.FY3( FY3 ), 		
+	
+	.inTri( inTri )	// output [31:0]  inTri (one bit per each pixel in a span).
+);
 
-
-// Single pixel at a time...
-wire signed [47:0] Xhs12 = c1_plus_dx12_mult_yps - (FDY12 * x_ps);
-wire signed [47:0] Xhs23 = c2_plus_dx23_mult_yps - (FDY23 * x_ps);
-wire signed [47:0] Xhs31 = c3_plus_dx31_mult_yps - (FDY31 * x_ps);
-wire signed [47:0] Xhs41 = c4_plus_dx41_mult_yps - (FDY41 * x_ps);
-assign inTriangle = !Xhs12[47] && !Xhs23[47] && !Xhs31[47] && !Xhs41[47];
-
-
-
-// 32 pixels at a time (a whole tile row)...
-/*
-wire signed [11:0] x_ps_0  = {1'b0, x_ps[10:5], 5'd0};
-wire signed [11:0] x_ps_1  = {1'b0, x_ps[10:5], 5'd1};
-wire signed [11:0] x_ps_2  = {1'b0, x_ps[10:5], 5'd2};
-wire signed [11:0] x_ps_3  = {1'b0, x_ps[10:5], 5'd3};
-wire signed [11:0] x_ps_4  = {1'b0, x_ps[10:5], 5'd4};
-wire signed [11:0] x_ps_5  = {1'b0, x_ps[10:5], 5'd5};
-wire signed [11:0] x_ps_6  = {1'b0, x_ps[10:5], 5'd6};
-wire signed [11:0] x_ps_7  = {1'b0, x_ps[10:5], 5'd7};
-wire signed [11:0] x_ps_8  = {1'b0, x_ps[10:5], 5'd8};
-wire signed [11:0] x_ps_9  = {1'b0, x_ps[10:5], 5'd9};
-wire signed [11:0] x_ps_10 = {1'b0, x_ps[10:5], 5'd10};
-wire signed [11:0] x_ps_11 = {1'b0, x_ps[10:5], 5'd11};
-wire signed [11:0] x_ps_12 = {1'b0, x_ps[10:5], 5'd12};
-wire signed [11:0] x_ps_13 = {1'b0, x_ps[10:5], 5'd13};
-wire signed [11:0] x_ps_14 = {1'b0, x_ps[10:5], 5'd14};
-wire signed [11:0] x_ps_15 = {1'b0, x_ps[10:5], 5'd15};
-wire signed [11:0] x_ps_16 = {1'b0, x_ps[10:5], 5'd16};
-wire signed [11:0] x_ps_17 = {1'b0, x_ps[10:5], 5'd17};
-wire signed [11:0] x_ps_18 = {1'b0, x_ps[10:5], 5'd18};
-wire signed [11:0] x_ps_19 = {1'b0, x_ps[10:5], 5'd19};
-wire signed [11:0] x_ps_20 = {1'b0, x_ps[10:5], 5'd20};
-wire signed [11:0] x_ps_21 = {1'b0, x_ps[10:5], 5'd21};
-wire signed [11:0] x_ps_22 = {1'b0, x_ps[10:5], 5'd22};
-wire signed [11:0] x_ps_23 = {1'b0, x_ps[10:5], 5'd23};
-wire signed [11:0] x_ps_24 = {1'b0, x_ps[10:5], 5'd24};
-wire signed [11:0] x_ps_25 = {1'b0, x_ps[10:5], 5'd25};
-wire signed [11:0] x_ps_26 = {1'b0, x_ps[10:5], 5'd26};
-wire signed [11:0] x_ps_27 = {1'b0, x_ps[10:5], 5'd27};
-wire signed [11:0] x_ps_28 = {1'b0, x_ps[10:5], 5'd28};
-wire signed [11:0] x_ps_29 = {1'b0, x_ps[10:5], 5'd29};
-wire signed [11:0] x_ps_30 = {1'b0, x_ps[10:5], 5'd30};
-wire signed [11:0] x_ps_31 = {1'b0, x_ps[10:5], 5'd31};
-
-always @(*) begin
-	inTri[0]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_0) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_0) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_0) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_0))>=0;
-	inTri[1]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_1) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_1) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_1) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_1))>=0;
-	inTri[2]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_2) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_2) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_2) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_2))>=0;
-	inTri[3]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_3) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_3) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_3) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_3))>=0;
-	inTri[4]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_4) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_4) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_4) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_4))>=0;
-	inTri[5]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_5) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_5) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_5) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_5))>=0;
-	inTri[6]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_6) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_6) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_6) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_6))>=0;
-	inTri[7]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_7) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_7) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_7) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_7))>=0;
-	inTri[8]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_8) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_8) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_8) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_8))>=0;
-	inTri[9]  = (c1_plus_dx12_mult_yps-(FDY12*x_ps_9) )>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_9) )>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_9) )>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_9))>=0;
-	inTri[10] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_10))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_10))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_10))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_10))>=0;
-	inTri[11] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_11))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_11))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_11))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_11))>=0;
-	inTri[12] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_12))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_12))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_12))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_12))>=0;
-	inTri[13] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_13))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_13))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_13))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_13))>=0;
-	inTri[14] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_14))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_14))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_14))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_14))>=0;
-	inTri[15] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_15))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_15))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_15))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_15))>=0;
-	inTri[16] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_16))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_16))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_16))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_16))>=0;
-	inTri[17] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_17))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_17))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_17))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_17))>=0;
-	inTri[18] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_18))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_18))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_18))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_18))>=0;
-	inTri[19] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_19))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_19))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_19))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_19))>=0;
-	inTri[20] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_20))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_20))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_20))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_20))>=0;
-	inTri[21] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_21))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_21))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_21))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_21))>=0;
-	inTri[22] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_22))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_22))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_22))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_22))>=0;
-	inTri[23] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_23))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_23))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_23))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_23))>=0;
-	inTri[24] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_24))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_24))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_24))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_24))>=0;
-	inTri[25] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_25))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_25))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_25))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_25))>=0;
-	inTri[26] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_26))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_26))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_26))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_26))>=0;
-	inTri[27] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_27))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_27))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_27))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_27))>=0;
-	inTri[28] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_28))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_28))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_28))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_28))>=0;
-	inTri[29] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_29))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_29))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_29))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_29))>=0;
-	inTri[30] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_30))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_30))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_30))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_30))>=0;
-	inTri[31] = (c1_plus_dx12_mult_yps-(FDY12*x_ps_31))>=0 && (c2_plus_dx23_mult_yps-(FDY23*x_ps_31))>=0 && (c3_plus_dx31_mult_yps-(FDY31*x_ps_31))>=0 && (c4_plus_dx41_mult_yps-(FDY41*x_ps_31))>=0;
-
+always @* begin	
 		 if (inTri[30:00]==0) leading_zeros = 31;
 	else if (inTri[29:00]==0) leading_zeros = 30;
 	else if (inTri[28:00]==0) leading_zeros = 29;
@@ -179,6 +102,92 @@ always @(*) begin
 	else if (inTri[31:31]==0) trailing_zeros = 1;
 	else trailing_zeros = 0;
 end
-*/
+
+endmodule
+
+
+module tri_vis (
+	input wire clock,
+	
+	// Screen-space pixel coordinates (integer values)
+	input wire signed [10:0] x_ps, 	// X coord
+	input wire signed [10:0] y_ps, 	// Y coord
+	
+	// Fixed point format: 16.16 (16 bits integer, 16 bits fractional)
+	input wire signed [31:0] FX1, FY1, // Triangle vertex 0
+	input wire signed [31:0] FX2, FY2, // Triangle vertex 1
+	input wire signed [31:0] FX3, FY3, // Triangle vertex 2
+	
+	// 1 bit per pixel indicating if it's inside triangle
+	output wire [31:0] inTri
+);
+
+// verilator lint_off UNOPTFLAT
+
+// Precalcs...
+//
+// Triangle Vert input values are fixed, and should be stable one clock cycle before rendering.
+//
+// Similar for y_ps, since (screen pixel) Y stays the same for the current tile row,
+// but we're calculating inTri for all 32 pixels in the tile row, so x_ps (screen pixel) X does change.
+//
+wire signed [63:0] cross_term2_p0 = ((y_ps<<FRAC_BITS) - FY1) * (FX2 - FX1);
+wire signed [63:0] cross_term2_p1 = ((y_ps<<FRAC_BITS) - FY2) * (FX3 - FX2);
+wire signed [63:0] cross_term2_p2 = ((y_ps<<FRAC_BITS) - FY3) * (FX1 - FX3);
+
+// Calculate edge vectors
+// (deltas of triangle Y verts.)
+wire signed [31:0] edge0_y = FY2 - FY1;
+wire signed [31:0] edge1_y = FY3 - FY2;
+wire signed [31:0] edge2_y = FY1 - FY3;
+
+wire [31:0] inedge_a;
+wire [31:0] inedge_b;
+wire [31:0] inedge_c;
+
+// Generate 32 parallel edge function evaluators
+// Pre-calculate base values outside generate block
+wire signed [31:0] base_dx0 = ({x_ps[10:5],5'd0} << FRAC_BITS) - FX1;
+wire signed [31:0] base_dx1 = ({x_ps[10:5],5'd0} << FRAC_BITS) - FX2;
+wire signed [31:0] base_dx2 = ({x_ps[10:5],5'd0} << FRAC_BITS) - FX3;
+
+// Pre-calculate base values with explicit sign handling
+wire signed [63:0] edge_eval0[31:0];
+wire signed [63:0] edge_eval1[31:0];
+wire signed [63:0] edge_eval2[31:0];
+
+// Ensure proper sign extension for initial calculation
+wire signed [63:0] base_prod0 = $signed(base_dx0) * $signed(edge0_y);
+wire signed [63:0] base_prod1 = $signed(base_dx1) * $signed(edge1_y);
+wire signed [63:0] base_prod2 = $signed(base_dx2) * $signed(edge2_y);
+
+// Ensure step values are properly sign extended when shifted 
+wire signed [63:0] edge0_step = $signed(edge0_y) << FRAC_BITS;
+wire signed [63:0] edge1_step = $signed(edge1_y) << FRAC_BITS;
+wire signed [63:0] edge2_step = $signed(edge2_y) << FRAC_BITS;
+
+// Initialize first values
+assign edge_eval0[0] = base_prod0;
+assign edge_eval1[0] = base_prod1;
+assign edge_eval2[0] = base_prod2;
+
+genvar i;
+generate
+    for (i = 1; i < 32; i = i + 1) begin : pixel_test
+        // Ensure signed addition for each step
+        assign edge_eval0[i] = $signed(edge_eval0[i-1]) + $signed(edge0_step);
+        assign edge_eval1[i] = $signed(edge_eval1[i-1]) + $signed(edge1_step);
+        assign edge_eval2[i] = $signed(edge_eval2[i-1]) + $signed(edge2_step);
+        
+        // Compare with cross terms using signed comparison
+        assign inedge_a[i] = $signed(edge_eval0[i]) - $signed(cross_term2_p0) >= 0;
+        assign inedge_b[i] = $signed(edge_eval1[i]) - $signed(cross_term2_p1) >= 0;
+        assign inedge_c[i] = $signed(edge_eval2[i]) - $signed(cross_term2_p2) >= 0;
+        
+        assign inTri[i] = inedge_a[i] && inedge_b[i] && inedge_c[i];
+    end
+endgenerate
+
+// verilator lint_on UNOPTFLAT
 
 endmodule
