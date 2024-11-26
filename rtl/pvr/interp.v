@@ -87,9 +87,8 @@ reg signed [47:0] c;		// Seems to work best as 48-bit? Investigate value ranges 
 
 reg signed [63:0] y_mult_FDDY_plus_c;
 
-always @(posedge clock) if (setup) begin
-//always @(*) begin
-	//  Aa = (FZ3 - FZ1) * (FY2 - FY1) - (FZ2 - FZ1) * (FY3 - FY1);
+always @(posedge clock) /*if (setup)*/ begin		// Keep as clocked!
+	// Aa = (FZ3 - FZ1) * (FY2 - FY1) - (FZ2 - FZ1) * (FY3 - FY1);
 	FZ3_sub_FZ1 = (FZ3 - FZ1);
 	FY2_sub_FY1 = (FY2 - FY1);
 	Aa_mult_1   = (FZ3_sub_FZ1 * FY2_sub_FY1) >>FRAC_BITS;
@@ -121,12 +120,12 @@ always @(posedge clock) if (setup) begin
 	FDDX_mult_FX1 = (FDDX * FX1) >>FRAC_BITS;
 	FDDY_mult_FY1 = (FDDY * FY1) >>FRAC_BITS;
 	c = FZ1 - FDDX_mult_FX1 - FDDY_mult_FY1;
-	
-	y_mult_FDDY_plus_c = (y_ps * FDDY) + c;
 end
 
 
 always @(*) begin
+	y_mult_FDDY_plus_c = (y_ps * FDDY) + c;		// TESTING !!
+
 	// Interp ("IP" in C-code PlaneStepper3)...
 	// (x * ddx) + (y * ddy) + c;
 	//

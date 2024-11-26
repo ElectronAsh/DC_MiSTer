@@ -538,15 +538,7 @@ else begin
 				vert_b_base_col_0 <= vert_a_base_col_0;
 				vert_b_off_col <= vert_a_off_col;
 			end
-			isp_entry_valid <= 1'b1;
-			
-			// Per-tile rendering.
-			// leading_zeros was often causing it to skip the first tile row, due to processing delay maybe?...
-			// (leading_zeros often starting as 31, which was skipping x_ps to the end of the first tile row.
-			//  this would causing horizontal lines across the whole image. ElectronAsh.)
-			x_ps <= (tilex<<5) /*+ leading_zeros*/;	// Disabled for now.
-			y_ps <= tiley<<5;
-			
+			isp_entry_valid <= 1'b1;			
 			isp_vram_addr <= isp_vram_addr + 4;	// I think this is needed, to make isp_vram_addr_last correct in isp_state 49!
 			isp_state <= 8'd49;			// Draw the triangle!
 		end
@@ -595,13 +587,23 @@ else begin
 		end
 
 		49: begin
+			// Per-tile rendering.
+			// leading_zeros was often causing it to skip the first tile row,
+			// causing horizontal lines across the whole image.
+			// Can't use leading_zeros here, because it is dependent on x_ps and y_ps. ElectronAsh.
+			x_ps <= tilex_start;
+			y_ps <= tiley_start;
+			
+			top_span_done <= 1'b0;
+			top_span <= 5'd0;
+			
 			isp_vram_addr_last <= isp_vram_addr;
 			isp_state <= isp_state + 8'd1;
 		end
 
 		50: begin
 			if (y_ps < tiley_start+32) begin
-				if (x_ps==tilex_start+32 || x_ps[4:0]==32-trailing_zeros) begin
+				if (x_ps==tilex_start+32 || x_ps[4:0]==32-trailing_zeros /*!inTri*/) begin
 					y_ps <= y_ps + 11'd1;	// Can't check leading_zeros until two clocks *after* incrementing y_ps.
 					x_ps <= tilex_start;		// Still need to set x_ps here, even though it gets set again in state 52!
 					isp_state <= 8'd51;		// Had to add an extra clock tick, to allow the VRAM address and texture stuff to update.
@@ -624,7 +626,23 @@ else begin
 
 		// Next row.
 		51: begin
-			isp_state <= isp_state + 8'd1;
+			// Speed up, by checking inTri (!top_span_done), to see which row the first span starts on.
+			// Then checking inTri again (top_span_done), to find the last span.
+			isp_state <= isp_state + 8'd1;	// Must keep this here, so it can be overridden below!
+			if (!top_span_done) begin
+				if (inTri) begin
+					top_span <= y_ps[4:0]-1;
+					top_span_done <= 1'b1;
+				end
+			end
+			else begin
+				if (inTri==32'd0) begin
+					bot_span <= y_ps[4:0]-1;
+					top_span_done <= 1'b0;
+					isp_vram_addr <= isp_vram_addr_last;
+					isp_state <= 8'd48;
+				end
+			end
 		end
 
 		52: begin
@@ -660,6 +678,12 @@ else begin
 	if (tile_prims_done) clear_z <= 1'b1;	// All prim TYPES in this TILE have been processed!
 	else if (clear_done) clear_z <= 1'b0;
 end
+
+
+reg top_span_done;
+reg [4:0] top_span;
+reg [4:0] bot_span;
+
 
 wire [10:0] tilex_start = {tilex, 5'b00000};
 wire [10:0] tiley_start = {tiley, 5'b00000};
