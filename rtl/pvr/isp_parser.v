@@ -628,20 +628,15 @@ else begin
 					isp_state <= 8'd52;		// (fixed the thin vertical lines on the renders. ElectronAsh).
 				end
 				else begin
+					x_ps <= x_ps + 12'd1;
 					if (inTri[x_ps[4:0]] && depth_allow) begin
 						//if (vram_word_addr != vram_word_addr_old) begin
 							//vram_word_addr_old <= vram_word_addr;
-							//isp_vram_rd <= 1'b1;
+							isp_vram_rd <= 1'b1;	// Read texel...
 						//end
 						//else no_tex_read <= 1'b1;
-						//isp_state <= 8'd53;
-						
-						if (!vram_wait) begin
-							isp_vram_rd <= 1'b1;
-							isp_state <= 8'd53;
-						end
+						isp_state <= 8'd53;
 					end
-					else x_ps <= x_ps + 12'd1;
 				end
 				fb_addr <= /*FB_R_SOF1 +*/ (x_ps+(y_ps*640));	// Framebuffer write address.
 			end
@@ -686,10 +681,12 @@ else begin
 
 		54: begin
 			fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
-			//fb_byteena <= (!fb_addr[0]) ? 8'b00110011 : 8'b11001100;
-			fb_byteena <= 8'b11000000 >> (fb_addr[1:0]<<1);
-			fb_we <= 1'b1;
-			if (!vram_wait) isp_state <= 8'd50;	// Jump back.
+			fb_byteena <= (!fb_addr[0]) ? 8'b00110011 : 8'b11001100;
+			//fb_byteena <= 8'b11000000 >> (fb_addr[1:0]<<1);
+			if (!vram_wait) begin
+				fb_we <= 1'b1;
+				isp_state <= 8'd50;	// Jump back.
+			end
 		end
 		
 		default: ;

@@ -1058,8 +1058,7 @@ wire [28:0] DDRAM_BASE = (32'h32000000 >>3);	// 800MB. (DDRAM_BASE is the 64-bit
 // Limit the write/read addresses to 4MB!
 wire [28:0] dl_word_addr   = DDRAM_BASE + ioctl_addr[21:2];
 wire [28:0] vram_word_addr = DDRAM_BASE +  vram_addr[21:2];
-//wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + fb_addr[21:1];
-wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + fb_addr[21:2];
+wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + fb_addr[21:1];
 
 wire [63:0] dl_writedata   = {rom_word32,rom_word32};
 
