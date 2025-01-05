@@ -19,6 +19,10 @@ module pvr (
 	
 	input [31:0] PARAM_BASE,
 	input [31:0] REGION_BASE,
+	
+	input [31:0] FB_R_SOF1,
+	input [31:0] FB_R_SOF2,
+	
 	input [31:0] FPU_PARAM_CFG,
 	input [31:0] TEXT_CONTROL,
 	input [31:0] PAL_RAM_CTRL,
@@ -36,7 +40,8 @@ module pvr (
 	output wire [63:0] vram_dout,
 	
 	output [22:0] fb_addr,
-	output [31:0] fb_writedata,
+	output [63:0] fb_writedata,
+	output [7:0] fb_byteena,
 	output fb_we
 );
 
@@ -154,8 +159,8 @@ reg [31:0] VO_BORDER_COL; 		// 16'h0040; RW  Border area color
 reg [31:0] FB_R_CTRL; 			// 16'h0044; RW  Frame buffer read control
 reg [31:0] FB_W_CTRL; 			// 16'h0048; RW  Frame buffer write control
 reg [31:0] FB_W_LINESTRIDE; 	// 16'h004C; RW  Frame buffer line stride
-reg [31:0] FB_R_SOF1; 			// 16'h0050; RW  Read start address for field - 1/strip - 1
-reg [31:0] FB_R_SOF2; 			// 16'h0054; RW  Read start address for field - 2/strip - 2
+//reg [31:0] FB_R_SOF1; 			// 16'h0050; RW  Read start address for field - 1/strip - 1
+//reg [31:0] FB_R_SOF2; 			// 16'h0054; RW  Read start address for field - 2/strip - 2
 
 reg [31:0] FB_R_SIZE; 			// 16'h005C; RW  Frame buffer XY size	
 reg [31:0] FB_W_SOF1; 			// 16'h0060; RW  Write start address for field - 1/strip - 1
@@ -261,8 +266,8 @@ else begin
 			FB_R_CTRL_addr: FB_R_CTRL <= pvr_din; 					// 16'h0044; RW  Frame buffer read control
 			FB_W_CTRL_addr: FB_W_CTRL <= pvr_din; 					// 16'h0048; RW  Frame buffer write control
 			FB_W_LINESTRIDE_addr: FB_W_LINESTRIDE <= pvr_din; 	// 16'h004C; RW  Frame buffer line stride
-			FB_R_SOF1_addr: FB_R_SOF1 <= pvr_din; 					// 16'h0050; RW  Read start address for field - 1/strip - 1
-			FB_R_SOF2_addr: FB_R_SOF2 <= pvr_din; 					// 16'h0054; RW  Read start address for field - 2/strip - 2
+			//FB_R_SOF1_addr: FB_R_SOF1 <= pvr_din; 					// 16'h0050; RW  Read start address for field - 1/strip - 1
+			//FB_R_SOF2_addr: FB_R_SOF2 <= pvr_din; 					// 16'h0054; RW  Read start address for field - 2/strip - 2
 
 			FB_R_SIZE_addr: FB_R_SIZE <= pvr_din; 					// 16'h005C; RW  Frame buffer XY size	
 			FB_W_SOF1_addr: FB_W_SOF1 <= pvr_din; 					// 16'h0060; RW  Write start address for field - 1/strip - 1
@@ -572,8 +577,8 @@ else begin
 end
 
 assign vram_addr = (isp_switch) ? isp_vram_addr_out : ra_vram_addr;
-assign vram_rd   = (isp_switch) ? isp_vram_rd : ra_vram_rd;
-assign vram_wr   = (isp_switch) ? isp_vram_wr : ra_vram_wr;
+assign vram_rd   = (isp_switch) ? isp_vram_rd       : ra_vram_rd;
+assign vram_wr   = (isp_switch) ? isp_vram_wr       : ra_vram_wr;
 assign vram_dout = isp_vram_dout;
 
 
@@ -599,7 +604,8 @@ isp_parser isp_parser_inst (
 	.tex_vram_din( vram_din ),				// full 64-bit input [63:0]
 	
 	.fb_addr( fb_addr ),						// output [22:0]  fb_addr
-	.fb_writedata( fb_writedata ),		// output [31:0]  fb_writedata
+	.fb_writedata( fb_writedata ),		// output [63:0]  fb_writedata
+	.fb_byteena( fb_byteena ),				// output [7:0]  fb_byteena
 	.fb_we( fb_we ),							// output  fb_we
 	
 	.isp_entry_valid( isp_entry_valid ),// output  isp_entry_valid
@@ -614,6 +620,9 @@ isp_parser isp_parser_inst (
 	
 	.clear_fb( clear_fb ),					// input  clear_fb
 	.clear_fb_pend( clear_fb_pend ),		// output clear_fb_done
+	
+	.FB_R_SOF1( FB_R_SOF1 ),
+	.FB_R_SOF2( FB_R_SOF2 ),
 	
 	.TEXT_CONTROL( TEXT_CONTROL ),		// From TEXT_CONTROL reg. (0xE4 in PVR regs).
 	.PAL_RAM_CTRL( PAL_RAM_CTRL[1:0] ),	// From PAL_RAM_CTRL reg, bits [1:0].

@@ -58,7 +58,7 @@ end
 reg [31:0] old_z;
 
 // From the RA. 0=Opaque, 1=Opaque Mod, 2=Trans, 3=Trans mod, 4=PunchThrough.
-wire [2:0] depth_comp_in = (type_cnt==4 || type_cnt==1 || type_cnt==3) ? 3'd6 : (type_cnt==2) ? 3'd3 : depth_comp;
+wire [2:0] depth_comp_in = /*(type_cnt==4 || type_cnt==1 || type_cnt==3) ? 3'd6 : (type_cnt==2) ? 3'd3 :*/ depth_comp;
 
 depth_compare depth_compare_inst (
 	.depth_comp( depth_comp_in ),	// input [2:0]  depth_comp

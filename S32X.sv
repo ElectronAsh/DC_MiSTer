@@ -22,6 +22,8 @@
 
 //`define SH4_HAT
 
+`define MISTER_FB
+
 module emu
 (
 	//Master input clock
@@ -53,9 +55,9 @@ module emu
 `ifdef MISTER_FB
 	// Use framebuffer in DDRAM
 	// FB_FORMAT:
-	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
-	//    [3]   : 0=16bits 565 1=16bits 1555
 	//    [4]   : 0=RGB  1=BGR (for 16/24/32 modes)
+	//    [3]   : 0=16bits 565 1=16bits 1555
+	//    [2:0] : 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
 	//
 	// FB_STRIDE either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
 	output        FB_EN,
@@ -213,6 +215,20 @@ module emu
 	input         OSD_STATUS
 );
 
+
+wire [23:0] FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
+
+assign FB_EN     = status[5];
+assign FB_BASE   = (DDRAM_BASE<<3) + (FB_R_SOF1[22:0] << 1);
+assign FB_WIDTH  = 12'd640;
+assign FB_HEIGHT = 12'd480;
+assign FB_FORMAT = 5'b1_0_110;	// [4] 0=RGB 1=BGR. [3] 0=16bit 565, 1=16bit 1555. [2:0] 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp.
+assign FB_STRIDE = 14'd2560;		// Either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
+assign FB_FORCE_BLANK = 0;
+
+//wire [2:0] bpp = (status[6]==1'b0) ? 3'b100 :	// 16bpp
+//												 	3'b110;	// 32bpp
+
 /*
 assign {UART_RTS, UART_TXD, UART_DTR} = 0;
 assign BUTTONS   = osd_btn;
@@ -299,17 +315,18 @@ localparam CONF_STR = {
 	"FC2,BIN,Load PVR Regs;",
 	"FC3,BIN,Load VRAM Dump;",
 	"-;",
-	"P1,Audio & Video;", 
- 	"P1O[2],Video Standard,PAL,NTSC;",
+	"O[5],Display DDR FB,Off,SOF1;",
 	"-;",
+	"-;",
+	"-;",
+	"P1,Audio & Video;", 
+ 	"-;",
 	"P1O[5:4],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"P1O[10:8],Scandoubler Fx,None,HQ2x-320,HQ2x-160,CRT 25%,CRT 50%,CRT 75%;",
 	"d1P1O[32],Vertical Crop,No,Yes;",
 	"P1O[31:30],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1-;",
-	
 	"-;",
-	"O[3],Swap Joysticks,No,Yes;",
 	"-;",
 	"T[0],Reset;",
 	"J,A,B,X,Y,LS,RS,Start;",
@@ -841,6 +858,10 @@ wire [31:0] bios_data = (sh4_addr[25:2]==32'd0)   ? word0  :
 																	 word119;
 */
 
+
+//wire clk_sys = CLK_50M;	// SDRAM Framebuffer disabled now - Writing direct to DDR3.
+								// So we can finally speed up the core!
+
 wire clk_sys;
 wire clk_ram;
 wire locked;
@@ -850,11 +871,12 @@ pll pll
 	.refclk(CLK_50M),
 	.rst(0),
 	.outclk_0(clk_sys),
-	.outclk_1(clk_ram),
+	//.outclk_1(clk_ram),
 	//.reconfig_to_pll(reconfig_to_pll),
 	//.reconfig_from_pll(reconfig_from_pll),
 	.locked(locked)
 );
+
 
 /*
 wire [63:0] reconfig_to_pll;
@@ -1013,8 +1035,8 @@ assign DDRAM_RD       = ioctl_download ? 1'b0 : read;
 (*keep*)wire ta_tex_cs   = req_addr>=29'h11000000 && req_addr<=29'h117fffff;
 */
 
-wire pvr_reg_cs = (boot0_loading | pvr_dump_loading);	// BYTE Address!
-wire [15:0] pvr_addr = ioctl_addr[21:0];
+wire pvr_reg_cs = (boot0_loading || pvr_dump_loading);
+wire [15:0] pvr_addr = ioctl_addr[21:0];	// BYTE Address!
 wire [31:0] pvr_din = rom_word32;
 //wire pvr_wr = pvr_wr_rising;
 wire pvr_rd = 1'b0;
@@ -1031,20 +1053,28 @@ wire vram_valid = DDRAM_DOUT_READY;
 //wire [63:0] vram_din = CACHE_DOUT;
 //wire vram_valid = CACHE_VALID;
 
-wire [28:0] DDRAM_BASE = 29'h06400000;	// 800MB >> 3. (DDRAM_BASE is the 64-bit WORD address!)
+wire [28:0] DDRAM_BASE = (32'h32000000 >>3);	// 800MB. (DDRAM_BASE is the 64-bit WORD address!)
+
+// Limit the write/read addresses to 4MB!
+wire [28:0] dl_word_addr   = DDRAM_BASE + ioctl_addr[21:2];
+wire [28:0] vram_word_addr = DDRAM_BASE +  vram_addr[21:2];
+//wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + fb_addr[21:1];
+wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + fb_addr[21:2];
+
+wire [63:0] dl_writedata   = {rom_word32,rom_word32};
 
 assign DDRAM_CLK      = clk_sys;
 assign DDRAM_BURSTCNT = /*ioctl_download ?*/ 8'd1 /*: CACHE_BURSTCNT*/;
-assign DDRAM_ADDR     = ioctl_download ? DDRAM_BASE+ioctl_addr[21:2] : DDRAM_BASE+vram_addr[21:2];	// Limit the write/read addresses to 4MB!
-//assign DDRAM_ADDR     = ioctl_download ? DDRAM_BASE+ioctl_addr[21:2] : DDRAM_BASE+CACHE_WORD_ADDR;	// Limit the write/read addresses to 4MB!
-assign DDRAM_DIN      = ioctl_download ? {rom_word32,rom_word32} : vram_dout;								// We are loading the 8MB VRAM dumps into each 32-bit half of DDR3 now.
-assign DDRAM_WE       = ioctl_download ? ddr_wr : /*vram_wr*/ 1'b0;											// This is so we can do texture reads of the full 64-bit word.
-assign DDRAM_BE       = ioctl_download ? download_be : 8'b11111111;
+assign DDRAM_ADDR     = ioctl_download ? dl_word_addr : fb_we ? fb_word_addr : vram_word_addr;
+assign DDRAM_DIN      = ioctl_download ? dl_writedata : fb_we ? fb_writedata : vram_dout;			// We are loading the 8MB VRAM dumps into each 32-bit half of DDR3 now.
+assign DDRAM_WE       = ioctl_download ? ddr_wr       : fb_we ? 1'b1         : vram_wr;			// This is so we can do texture reads of the full 64-bit word.
+assign DDRAM_BE       = ioctl_download ? download_be  : fb_we ? fb_byteena   : 8'b11111111;
 assign DDRAM_RD       = ioctl_download ? 1'b0 : vram_rd;
-//assign DDRAM_RD       = ioctl_download ? 1'b0 : CACHE_RD;
+//assign DDRAM_RD     = ioctl_download ? 1'b0 : CACHE_RD;
 
 wire [22:0] fb_addr;
-wire [31:0] fb_writedata;
+wire [63:0] fb_writedata;
+wire [7:0] fb_byteena;
 wire fb_we;
 
 /*
@@ -1097,6 +1127,10 @@ pvr pvr (
 	
 	.PARAM_BASE( pvr_ptr[    'h20>>2 ] ),
 	.REGION_BASE( pvr_ptr[   'h2c>>2 ] ),
+	
+	.FB_R_SOF1( pvr_ptr['h50>>2] ),
+	.FB_R_SOF2( pvr_ptr['h54>>2] ),
+	
 	.FPU_PARAM_CFG( pvr_ptr[ 'h7c>>2 ] ),
 	.TEXT_CONTROL( pvr_ptr[  'hE4>>2 ] ),
 	.PAL_RAM_CTRL( pvr_ptr[  'h108>>2 ] ),
@@ -1113,11 +1147,13 @@ pvr pvr (
 	
 	// Framebuffer (Display) output...
 	.fb_addr( fb_addr ),					// output [22:0]  fb_addr
-	.fb_writedata( fb_writedata ),	// output [31:0]  fb_writedata
+	.fb_writedata( fb_writedata ),	// output [63:0]  fb_writedata
+	.fb_byteena( fb_byteena ),			// output [7:0] fb_byteena
 	.fb_we( fb_we )						// output  fb_we
 );
 
 wire [15:0] fb_dout;
+/*
 wire rd_rdy;
 wire we_ack;
 
@@ -1148,10 +1184,13 @@ sdram_old  sdram_old_inst(
 	.be( 2'b11 ),
 	.we_ack( we_ack )
 );
+*/
 
+//wire [2:0] scale = status[3:1];
+wire [2:0] scale = 3'd0;
 
-wire [2:0] scale = status[3:1];
-wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
+//wire [2:0] sl = scale ? scale - 1'd1 : 3'd0;
+wire [2:0] sl = 3'd0;
 
 assign CLK_VIDEO = clk_sys;
 assign VGA_SL = 1'b0;

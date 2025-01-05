@@ -103,7 +103,7 @@ else begin
 		0: begin
 			draw_last_tile <= 1'b0;
 			if (ra_trig) begin
-				clear_fb <= 1'b1;
+				//clear_fb <= 1'b1;
 				ra_state <= ra_state + 8'd1;
 			end
 		end

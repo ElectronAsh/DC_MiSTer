@@ -23,6 +23,8 @@
 `define MISTER_DISABLE_YC
 `define MISTER_DISABLE_ADAPTIVE
 
+`define MISTER_FB
+
 module sys_top
 (
 	/////////// CLOCK //////////

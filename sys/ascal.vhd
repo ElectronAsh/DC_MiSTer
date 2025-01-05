@@ -523,8 +523,7 @@ ARCHITECTURE rtl OF ascal IS
 				RETURN shift(32 TO 119) & pix.r & pix.g & pix.b & x"00";
 			WHEN OTHERS => -- 16bpp 565
 				RETURN shift(16 TO 119) &
-					pix.g(4 DOWNTO 2) & pix.r(7 DOWNTO 3) &
-					pix.b(7 DOWNTO 3) & pix.g(7 DOWNTO 5);
+					pix.g(4 DOWNTO 2) & pix.r(7 DOWNTO 3) & pix.b(7 DOWNTO 3) & pix.g(7 DOWNTO 5);
 		END CASE;
 	END FUNCTION;
 
@@ -555,8 +554,7 @@ ARCHITECTURE rtl OF ascal IS
 				END IF;
 			WHEN OTHERS => -- 16bpp 565
 				IF (N_DW=128 AND (acpt MOD 8)=7) OR (N_DW=64 AND (acpt MOD 4)=3) THEN
-					dw:=shift(128-N_DW+8 TO 119) & pix.g(4 DOWNTO 2) & pix.r(7 DOWNTO 3) &
-							 pix.b(7 DOWNTO 3) & pix.g(7 DOWNTO 5);
+					dw:=shift(128-N_DW+8 TO 119) & pix.g(4 DOWNTO 2) & pix.r(7 DOWNTO 3) & pix.b(7 DOWNTO 3) & pix.g(7 DOWNTO 5);
 				END IF;
 		END CASE;
 		RETURN dw;
@@ -651,7 +649,8 @@ ARCHITECTURE rtl OF ascal IS
 	END FUNCTION;
 
 	FUNCTION shift_opix (shift  : unsigned(0 TO N_DW+15);
-											 format : unsigned(5 DOWNTO 0)) RETURN type_pix IS
+								format : unsigned(5 DOWNTO 0);
+								o_fb_ena : std_logic) RETURN type_pix IS
 	BEGIN
 		CASE format(3 DOWNTO 0) IS
 			WHEN "0100" => -- 16bpp 565
@@ -663,11 +662,18 @@ ARCHITECTURE rtl OF ascal IS
 						  g=>shift(14 TO 15) & shift(0 TO 2) & shift(14 TO 15) & shift(0),
 						  r=>shift(3 TO 7) & shift(3 TO 5));
 			WHEN "0101" | "0110" =>  -- 24bpp / 32bpp
-				RETURN (r=>shift(0 TO 7),g=>shift(8 TO 15),b=>shift(16 TO 23));
-
+					-- Testing. Interpret AsCAL FB as 16-bit when "o_fb_ena" is High, for direct display of the Dreamcast PVR2 VRAM FB.
+            IF o_fb_ena = '1' THEN
+                RETURN (b=>shift(8 TO 12) & shift(8 TO 10),
+                       g=>shift(13 TO 15) & shift(0 TO 2) & shift(13 TO 14),
+                       r=>shift(3 TO 7) & shift(3 TO 5) );
+            ELSE
+                RETURN (r=>shift(0 TO 7),	-- Interpret as 32-bit, for normal output from the core, via ASCAL's FB.
+                       g=>shift(8 TO 15),
+                       b=>shift(16 TO 23) );
+            END IF;
 			WHEN OTHERS =>
 				RETURN (r=>shift(0 TO 7),g=>shift(8 TO 15),b=>shift(16 TO 23));
-
 		END CASE;
 	END FUNCTION;
 
@@ -2206,7 +2212,7 @@ BEGIN
 			IF o_sh3='1' THEN
 				shift_v:=shift_opack(o_acpt4,o_shift,o_dr,o_format);
 				o_shift<=shift_v;
-				o_hpixs<=shift_opix(shift_v,o_format);
+				o_hpixs<=shift_opix(shift_v,o_format,o_fb_ena);
 			END IF;
 
 			IF o_sh4='1' THEN

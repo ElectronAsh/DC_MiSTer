@@ -1,7 +1,12 @@
+
 `timescale 1ns / 1ps
 `default_nettype none
 
-parameter FRAC_BITS = 8'd13;
+parameter FRAC_BITS   = 8'd12;
+parameter Z_FRAC_BITS = 8'd12;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
+
+parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS);
+
 
 module isp_parser (
 	input clock,
@@ -27,7 +32,8 @@ module isp_parser (
 	output reg isp_entry_valid,
 	
 	output reg [22:0] fb_addr,
-	output reg [31:0] fb_writedata,
+	output reg [63:0] fb_writedata,
+	output reg [7:0] fb_byteena,
 	output reg fb_we,
 
 	input ra_entry_valid,
@@ -37,6 +43,9 @@ module isp_parser (
 
 	input reg [5:0] tilex,
 	input reg [5:0] tiley,
+	
+	input [31:0] FB_R_SOF1,
+	input [31:0] FB_R_SOF2,
 	
 	input [31:0] TEXT_CONTROL,	// From TEXT_CONTROL reg.
 	input  [1:0] PAL_RAM_CTRL,	// From PAL_RAM_CTRL reg, bits [1:0].
@@ -54,8 +63,8 @@ module isp_parser (
 
 reg [23:0] isp_vram_addr;
 
-assign isp_vram_addr_out = ((isp_state>=8'd49 && isp_state<=8'd53) || isp_state==5) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
-																												  isp_vram_addr;					// Output ISP Parser BYTE address.
+assign isp_vram_addr_out = ((isp_state>=8'd49 && isp_state<=8'd54) || isp_state==5) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
+																													isp_vram_addr;					// Output ISP Parser BYTE address.
 
 // OL Word bit decodes...
 wire [5:0] strip_mask = {opb_word[25], opb_word[26], opb_word[27], opb_word[28], opb_word[29], opb_word[30]};	// For Triangle Strips only.
@@ -103,7 +112,7 @@ wire scan_order = tcw_word[26];
 wire stride_flag = tcw_word[25];
 wire [20:0] tex_word_addr = tcw_word[20:0];		// 64-bit WORD address! (but only shift <<2 when accessing 32-bit "halves" of VRAM).
 
-reg [20:0] prev_tex_word_addr;
+reg [20:0] tex_base_word_addr_old;
 
 reg [31:0] tsp2_inst;
 reg [31:0] tex2_cont;
@@ -183,6 +192,9 @@ reg clear_z;
 
 reg [23:0] isp_vram_addr_last;
 
+reg no_tex_read;
+(*noprune*)reg isp_vram_rd_pend;
+
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	isp_state <= 8'd0;
@@ -193,9 +205,12 @@ if (!reset_n) begin
 	quad_done <= 1'b1;
 	poly_drawn <= 1'b0;
 	read_codebook <= 1'b0;
-	prev_tex_word_addr <= 21'h1FFFFF;	// Arbitrary address to start with.
+	tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
 	clear_fb_pend <= 1'b0;
 	clear_z <= 1'b1;
+	vram_word_addr_old <= 22'h3fffff;
+	no_tex_read <= 1'b0;
+	isp_vram_rd_pend <= 1'b0;
 end
 else begin
 	fb_we <= 1'b0;
@@ -208,6 +223,8 @@ else begin
 	if (isp_vram_rd & !vram_wait) isp_vram_rd <= 1'b0;
 	if (isp_vram_wr & !vram_wait) isp_vram_wr <= 1'b0;
 	
+	no_tex_read <= 1'b0;
+	
 	case (isp_state)
 		0: begin
 			if (render_poly) begin
@@ -219,6 +236,7 @@ else begin
 				vert_d_z <= 32'd0;
 				vert_d_u0 <= 32'd0;
 				vert_d_v0 <= 32'd0;
+				vram_word_addr_old <= 22'h3fffff;
 				isp_state <= isp_state + 8'd1;
 			end
 		end
@@ -257,8 +275,8 @@ else begin
 		3: if (vram_valid) begin tsp_inst <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
 		4: if (vram_valid) begin
 			tcw_word <= isp_vram_din;
-			if (isp_vram_din[30] && prev_tex_word_addr != isp_vram_din[20:0]) begin	// Quite a big speed-up, just by checking if the texture addr has changed.
-				prev_tex_word_addr <= isp_vram_din[20:0];										// No point reading the codebook again, if the texture addr is the same as the last poly.
+			if (isp_vram_din[30] && tex_base_word_addr_old != isp_vram_din[20:0]) begin	// Quite a big speed-up, just by checking if the texture BASE addr has changed.
+				tex_base_word_addr_old <= isp_vram_din[20:0];										// No point reading the codebook again, if the texture BASE addr is the same as the last prim.
 				read_codebook <= 1'b1;	// Read VQ Code Book if TCW bit 30 is set.
 				isp_state <= 8'd80;
 			end
@@ -603,20 +621,29 @@ else begin
 
 		50: begin
 			if (y_ps < tiley_start+32) begin
-				if (x_ps==tilex_start+32 || x_ps[4:0]==32-trailing_zeros /*!inTri*/) begin
+				if (x_ps==tilex_start+32 /*|| x_ps[4:0]==32-trailing_zeros*/ /*!inTri*/) begin
 					y_ps <= y_ps + 11'd1;	// Can't check leading_zeros until two clocks *after* incrementing y_ps.
 					x_ps <= tilex_start;		// Still need to set x_ps here, even though it gets set again in state 52!
-					isp_state <= 8'd51;		// Had to add an extra clock tick, to allow the VRAM address and texture stuff to update.
-													// (fixed the thin vertical lines on the renders. ElectronAsh).
+					//isp_state <= 8'd51;		// Had to add an extra clock tick, to allow the VRAM address and texture stuff to update.
+					isp_state <= 8'd52;		// (fixed the thin vertical lines on the renders. ElectronAsh).
 				end
 				else begin
-					x_ps <= x_ps + 12'd1;
 					if (inTri[x_ps[4:0]] && depth_allow) begin
-						isp_vram_rd <= 1'b1;
-						isp_state <= 8'd53;
+						//if (vram_word_addr != vram_word_addr_old) begin
+							//vram_word_addr_old <= vram_word_addr;
+							//isp_vram_rd <= 1'b1;
+						//end
+						//else no_tex_read <= 1'b1;
+						//isp_state <= 8'd53;
+						
+						if (!vram_wait) begin
+							isp_vram_rd <= 1'b1;
+							isp_state <= 8'd53;
+						end
 					end
+					else x_ps <= x_ps + 12'd1;
 				end
-				fb_addr <= x_ps + (y_ps * 640);	// Framebuffer write address.
+				fb_addr <= /*FB_R_SOF1 +*/ (x_ps+(y_ps*640));	// Framebuffer write address.
 			end
 			else begin	// End of tile, for current POLY.
 				isp_vram_addr <= isp_vram_addr_last;
@@ -625,6 +652,7 @@ else begin
 		end
 
 		// Next row.
+		/*
 		51: begin
 			// Speed up, by checking inTri (!top_span_done), to see which row the first span starts on.
 			// Then checking inTri again (top_span_done), to find the last span.
@@ -644,29 +672,42 @@ else begin
 				end
 			end
 		end
+		*/
 
 		52: begin
-			x_ps <= tilex_start + leading_zeros;	// Definite speed-up when using leading_zeros here.
+			x_ps <= tilex_start /*+ leading_zeros*/;	// Definite speed-up when using leading_zeros here.
 			isp_state <= 8'd50;
 		end
 		
 		// Next (visible) pixel...
-		53: if (vram_valid) begin
-			fb_we <= 1'b1;
-			fb_writedata <= final_argb;
-			isp_state <= 8'd50;	// Jump back.
+		53: if (vram_valid /*|| no_tex_read*/) begin
+			isp_state <= 8'd54;
 		end
 
+		54: begin
+			fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
+			//fb_byteena <= (!fb_addr[0]) ? 8'b00110011 : 8'b11001100;
+			fb_byteena <= 8'b11000000 >> (fb_addr[1:0]<<1);
+			fb_we <= 1'b1;
+			if (!vram_wait) isp_state <= 8'd50;	// Jump back.
+		end
+		
 		default: ;
 	endcase
+	
+	if (isp_vram_rd) isp_vram_rd_pend     <= 1'b1;
+	else if (vram_valid) isp_vram_rd_pend <= 1'b0;
 
+	/*
+	// FB Clear disabled in ra_parser atm. 
 	
 	if (clear_fb) begin
 		fb_addr <= 23'd0;
 		clear_fb_pend <= 1'b1;
 	end
 	else if (clear_fb_pend) begin
-		fb_writedata <= 32'h00000000;
+		fb_writedata <= 64'd0;
+		fb_byteena <= 8'hff;
 		fb_we <= 1'b1;
 		fb_addr <= fb_addr + 1;
 		if (fb_addr > (640*480)) begin
@@ -674,11 +715,14 @@ else begin
 			clear_fb_pend <= 1'b0;
 		end
 	end
+	*/
 	
 	if (tile_prims_done) clear_z <= 1'b1;	// All prim TYPES in this TILE have been processed!
 	else if (clear_done) clear_z <= 1'b0;
 end
 
+
+wire [15:0] pix_565 = {final_argb[23:19],final_argb[15:10],final_argb[7:3]};
 
 reg top_span_done;
 reg [4:0] top_span;
@@ -715,23 +759,6 @@ z_buffer  z_buffer_inst(
 	.depth_allow( depth_allow )
 );
 
-
-
-wire signed [47:0] f_area = ((FX1_FIXED-FX3_FIXED) * (FY2_FIXED-FY3_FIXED)) - ((FY1_FIXED-FY3_FIXED) * (FX2_FIXED-FX3_FIXED));
-wire sgn = (f_area<=0);
-
-// Vertex deltas...
-/*
-wire signed [47:0] FDX12_FIXED = (sgn) ? (FX1_FIXED - FX2_FIXED) : (FX2_FIXED - FX1_FIXED);
-wire signed [47:0] FDX23_FIXED = (sgn) ? (FX2_FIXED - FX3_FIXED) : (FX3_FIXED - FX2_FIXED);
-wire signed [47:0] FDX31_FIXED = (is_quad_array) ? sgn ? (FX3_FIXED - FX4_FIXED) : (FX4_FIXED - FX3_FIXED) : sgn ? (FX3_FIXED - FX1_FIXED) : (FX1_FIXED - FX3_FIXED);
-wire signed [47:0] FDX41_FIXED = (is_quad_array) ? sgn ? (FX4_FIXED - FX1_FIXED) : (FX1_FIXED - FX4_FIXED) : 0;
-
-wire signed [47:0] FDY12_FIXED = sgn ? (FY1_FIXED - FY2_FIXED) : (FY2_FIXED - FY1_FIXED);
-wire signed [47:0] FDY23_FIXED = sgn ? (FY2_FIXED - FY3_FIXED) : (FY3_FIXED - FY2_FIXED);
-wire signed [47:0] FDY31_FIXED = (is_quad_array) ? sgn ? (FY3_FIXED - FY4_FIXED) : (FY4_FIXED - FY3_FIXED) : sgn ? (FY3_FIXED - FY1_FIXED) : (FY1_FIXED - FY3_FIXED);
-wire signed [47:0] FDY41_FIXED = (is_quad_array) ? sgn ? (FY4_FIXED - FY1_FIXED) : (FY1_FIXED - FY4_FIXED) : 0;
-*/
 
 // Vertex float-to-fixed conversion...
 (*keep*)wire signed [47:0] FX1_FIXED;
@@ -844,41 +871,28 @@ float_to_fixed  float_y4 (
 reg [10:0] x_ps;
 reg [10:0] y_ps;
 
-wire signed [31:0] FX1_SWAP = sgn ? FX1_FIXED : FX3_FIXED;
-wire signed [31:0] FY1_SWAP = sgn ? FY1_FIXED : FY3_FIXED;
-
-wire signed [31:0] FX2_SWAP = sgn ? FX2_FIXED : FX2_FIXED;	// Seems to (mostly) work for the new inTri calc for now, but needs investigating.
-wire signed [31:0] FY2_SWAP = sgn ? FY2_FIXED : FY2_FIXED;	// ?
-
-//wire signed [31:0] FX3_SWAP = is_quad_array ? sgn ? FX3_FIXED : FX4_FIXED : sgn ? FX3_FIXED : FX1_FIXED;
-//wire signed [31:0] FY3_SWAP = is_quad_array ? sgn ? FY3_FIXED : FY4_FIXED : sgn ? FY3_FIXED : FY1_FIXED;
-wire signed [31:0] FX3_SWAP = sgn ? FX3_FIXED : FX1_FIXED;
-wire signed [31:0] FY3_SWAP = sgn ? FY3_FIXED : FY1_FIXED;
 
 inTri_calc  inTri_calc_inst (
-	.FX1( FX1_SWAP ),	// input signed [31:0]  FX1
-	.FX2( FX2_SWAP ),	// input signed [31:0]  FX2
-	.FX3( FX3_SWAP ),	// input signed [31:0]  FX3
+	.FX1_FIXED( FX1_FIXED ),	// input signed [47:0]  FX1
+	.FX2_FIXED( FX2_FIXED ),	// input signed [47:0]  FX2
+	.FX3_FIXED( FX3_FIXED ),	// input signed [47:0]  FX3
 	
-	.FY1( FY1_SWAP ),	// input signed [31:0]  FY1
-	.FY2( FY2_SWAP ),	// input signed [31:0]  FY2
-	.FY3( FY3_SWAP ),	// input signed [31:0]  FY3
+	.FY1_FIXED( FY1_FIXED ),	// input signed [47:0]  FY1
+	.FY2_FIXED( FY2_FIXED ),	// input signed [47:0]  FY2
+	.FY3_FIXED( FY3_FIXED ),	// input signed [47:0]  FY3
 
 	.x_ps( x_ps ),
 	.y_ps( y_ps ),
 	
 	//.inTriangle( inTriangle ),	// output inTriangle
-	.inTri( inTri ),	// output [31:0]  inTri
-	
-	.leading_zeros( leading_zeros ),	// output [4:0]  leading_zeros
-	.trailing_zeros( trailing_zeros )	// output [4:0]  trailing_zeros
+	.inTri( inTri )	// output [31:0]  inTri
 );
 
 //(*keep*)wire inTriangle;
 (*keep*)wire [31:0] inTri;
 
-wire [4:0] leading_zeros;
-wire [4:0] trailing_zeros;
+//wire [4:0] leading_zeros;
+//wire [4:0] trailing_zeros;
 
 
 wire new_tile_row = isp_state==49 || isp_state==51 /*|| isp_state==52*/;
@@ -928,21 +942,20 @@ wire signed [63:0] u3_mult_width = FU3_FIXED * tex_u_size_full;
 
 interp  interp_inst_u (
 	.clock( clock ),			// input  clock
-	.setup( new_tile_row ),	// input  setup
 	
 	.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
 
-	.FX1( FX1_FIXED ),		// input signed [31:0] x1
-	.FX2( FX2_FIXED ),		// input signed [31:0] x2
-	.FX3( FX3_FIXED ),		// input signed [31:0] x3
+	.FX1( FX1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x1
+	.FX2( FX2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x2
+	.FX3( FX3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x3
 	
-	.FY1( FY1_FIXED ),		// input signed [31:0] y1
-	.FY2( FY2_FIXED ),		// input signed [31:0] y2
-	.FY3( FY3_FIXED ),		// input signed [31:0] y3
+	.FY1( FY1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y1
+	.FY2( FY2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y2
+	.FY3( FY3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y3
 	
-	.FZ1( (u1_mult_width * FZ1_FIXED) >>FRAC_BITS ),	// input signed [31:0] z1
-	.FZ2( (u2_mult_width * FZ2_FIXED) >>FRAC_BITS ),	// input signed [31:0] z2
-	.FZ3( (u3_mult_width * FZ3_FIXED) >>FRAC_BITS ),	// input signed [31:0] z3
+	.FZ1( (u1_mult_width * FZ1_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z1
+	.FZ2( (u2_mult_width * FZ2_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z2
+	.FZ3( (u3_mult_width * FZ3_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z3
 	
 	.x_ps( x_ps ),		// input [10:0] x_ps
 	.y_ps( y_ps ),		// input [10:0] y_ps
@@ -968,21 +981,20 @@ wire signed [63:0] v3_mult_height = FV3_FIXED * tex_v_size_full;
 
 interp  interp_inst_v (
 	.clock( clock ),			// input  clock
-	.setup( new_tile_row ),	// input  setup
 	
 	.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
 
-	.FX1( FX1_FIXED ),		// input signed [31:0] x1
-	.FX2( FX2_FIXED ),		// input signed [31:0] x2
-	.FX3( FX3_FIXED ),		// input signed [31:0] x3
+	.FX1( FX1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x1
+	.FX2( FX2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x2
+	.FX3( FX3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x3
 	
-	.FY1( FY1_FIXED ),		// input signed [31:0] y1
-	.FY2( FY2_FIXED ),		// input signed [31:0] y2
-	.FY3( FY3_FIXED ),		// input signed [31:0] y3
+	.FY1( FY1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y1
+	.FY2( FY2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y2
+	.FY3( FY3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y3
 	
-	.FZ1( (v1_mult_height * FZ1_FIXED) >>FRAC_BITS ),	// input signed [31:0] z1
-	.FZ2( (v2_mult_height * FZ2_FIXED) >>FRAC_BITS ),	// input signed [31:0] z2
-	.FZ3( (v3_mult_height * FZ3_FIXED) >>FRAC_BITS ),	// input signed [31:0] z3
+	.FZ1( (v1_mult_height * FZ1_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z1
+	.FZ2( (v2_mult_height * FZ2_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z2
+	.FZ3( (v3_mult_height * FZ3_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z3
 	
 	.x_ps( x_ps ),		// input [10:0] x_ps
 	.y_ps( y_ps ),		// input [10:0] y_ps
@@ -1072,40 +1084,29 @@ always @(*) begin
 end
 */
 
-wire signed [31:0] u_div_z = IP_U_INTERP / IP_Z_INTERP;
-wire signed [31:0] v_div_z = IP_V_INTERP / IP_Z_INTERP;
-
 // Highest value is 1024 (8<<7) so we need 11 bits to store it! ElectronAsh.
 wire [10:0] tex_u_size_full = (8<<tex_u_size);
 wire [10:0] tex_v_size_full = (8<<tex_v_size);
 
-/*
-	if (pp_Clamp) {			// clamp
-		if (coord < 0) coord = 0;
-		else if (coord >= size) coord = size-1;
-	}
-	else if (pp_Flip) {		// flip
-		coord &= size*2-1;
-		if (coord & size) coord ^= size*2-1;
-	}
-	else coord &= size-1;
-*/
-wire [9:0] u_clamp = (tex_u_clamp && u_div_z>=tex_u_size_full) ? tex_u_size_full-1 :
-											 (tex_u_clamp && u_div_z[31]) ? 10'd0 :
-																					  u_div_z;
+wire signed [10:0] u_div_z = (IP_U_INTERP<<<FRAC_DIFF) / IP_Z_INTERP;
+wire signed [10:0] v_div_z = (IP_V_INTERP<<<FRAC_DIFF) / IP_Z_INTERP;
 
-wire [9:0] v_clamp = (tex_v_clamp && v_div_z>=tex_v_size_full) ? tex_v_size_full-1 :
-											 (tex_v_clamp && v_div_z[31]) ? 10'd0 :
-																					  v_div_z;
+wire [9:0] u_clamped = (tex_u_clamp && u_div_z>=tex_u_size_full) ? tex_u_size_full-1 :	// Clamp, if U > texture width.
+							  (tex_u_clamp && u_div_z[10]) ? 10'd0 :									// Zero U coord if u_div_z is negative.
+													u_div_z;														// Else, don't clamp nor zero.
 
-wire [9:0] u_masked  = u_clamp&((tex_u_size_full*2)-1);
-wire [9:0] v_masked  = v_clamp&((tex_v_size_full*2)-1);
+wire [9:0] v_clamped = (tex_v_clamp && v_div_z>=tex_v_size_full) ? tex_v_size_full-1 :	// Clamp, if V > texture height.
+							  (tex_v_clamp && v_div_z[10]) ? 10'd0 :									// Zero U coord if u_div_z is negative.
+													v_div_z;														// Else, don't clamp nor zero.
 
-wire [9:0] u_mask_flip = (u_masked&tex_u_size_full) ? u_div_z^((tex_u_size_full*2)-1) : u_masked;
-wire [9:0] v_mask_flip = (v_masked&tex_v_size_full) ? v_div_z^((tex_u_size_full*2)-1) : v_masked;
+wire [9:0] u_masked  = u_clamped&((tex_u_size_full<<1)-1);	// Mask with TWICE the texture width?
+wire [9:0] v_masked  = v_clamped&((tex_v_size_full<<1)-1);	// Mask with TWICE the texture height?
 
-wire [9:0] u_flipped = (tex_u_flip) ? u_mask_flip : u_div_z&(tex_u_size_full-1);
-wire [9:0] v_flipped = (tex_v_flip) ? v_mask_flip : v_div_z&(tex_v_size_full-1);
+wire [9:0] u_mask_flip = (u_masked&tex_u_size_full) ? u_div_z^((tex_u_size_full<<1)-1) : u_div_z;
+wire [9:0] v_mask_flip = (v_masked&tex_v_size_full) ? v_div_z^((tex_v_size_full<<1)-1) : v_div_z;
+
+wire [9:0] u_flipped = (tex_u_clamp) ? u_clamped : (tex_u_flip) ? u_mask_flip : u_div_z&(tex_u_size_full-1);
+wire [9:0] v_flipped = (tex_v_clamp) ? v_clamped : (tex_v_flip) ? v_mask_flip : v_div_z&(tex_v_size_full-1);
 
 
 texture_address  texture_address_inst (
@@ -1152,6 +1153,7 @@ wire codebook_wait;
 //reg [9:0] sim_vi;
 
 wire [21:0] vram_word_addr;
+reg [21:0] vram_word_addr_old;
 
 wire [31:0] texel_argb;
 wire [31:0] final_argb;

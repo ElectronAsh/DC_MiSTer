@@ -114,28 +114,34 @@ reg [19:0] texel_word_offs;
 
 reg [9:3] twop_upper_bits;
 
-always @(*) begin
-	twop_upper_bits = (tex_u_size==tex_v_size) || (is_twid && mip_map) ? 7'b0 :		// Square texture. (VQ textures are always square, then tex_v_size is ignored).
+// TESTING this as a clocked always block, to try to save some logic.
+// 
+// The renders on the sim look best with this whole module using combo logic, but obviously that's not ideal on the FPGA.
+//
+always @(posedge clock) begin
+	twop_upper_bits <= (tex_u_size==tex_v_size) || (is_twid && mip_map) ? 7'b0 :		// Square texture. (VQ textures are always square, then tex_v_size is ignored).
 														  (tex_u_size > tex_v_size) ? ui[9:3] :	// U is larger than V.
 																								vi[9:3];		// V is larger than U.
 	
 	case ((tex_u_size > tex_v_size) ? tex_v_size : tex_u_size)
-		0: twop = {twop_upper_bits[9:3], twop_full[5:0]};	// U or V size 8 
-		1: twop = {twop_upper_bits[9:4], twop_full[7:0]};	// U or V size 16
-		2: twop = {twop_upper_bits[9:5], twop_full[9:0]};	// U or V size 32
-		3: twop = {twop_upper_bits[9:6], twop_full[11:0]};	// U or V size 64
-		4: twop = {twop_upper_bits[9:7], twop_full[13:0]};	// U or V size 128
-		5: twop = {twop_upper_bits[9:8], twop_full[15:0]};	// U or V size 256
-		6: twop = {twop_upper_bits[9]  , twop_full[17:0]};	// U or V size 512
-		7: twop = twop_full[19:0];							// U or V size 1024
+		0: twop <= {twop_upper_bits[9:3], twop_full[5:0]};	// U or V size 8 
+		1: twop <= {twop_upper_bits[9:4], twop_full[7:0]};	// U or V size 16
+		2: twop <= {twop_upper_bits[9:5], twop_full[9:0]};	// U or V size 32
+		3: twop <= {twop_upper_bits[9:6], twop_full[11:0]};	// U or V size 64
+		4: twop <= {twop_upper_bits[9:7], twop_full[13:0]};	// U or V size 128
+		5: twop <= {twop_upper_bits[9:8], twop_full[15:0]};	// U or V size 256
+		6: twop <= {twop_upper_bits[9]  , twop_full[17:0]};	// U or V size 512
+		7: twop <= twop_full[19:0];							// U or V size 1024
 	endcase
 	
 	//$display("ui: %d  vi: %d  tex_u_size (raw): %d  tex_v_size (raw): %d  twop 0x%08X  twop_full: 0x%08X", ui, vi, tex_u_size, tex_v_size, twop, twop_full);
 end
 
 
-reg [19:0] mipmap_byte_offs_vq;
+wire [19:0] norm_offs_1024 = 20'haaab0;
+
 reg [19:0] mipmap_byte_offs_norm;
+//reg [19:0] mipmap_byte_offs_vq;	// The VQ mipmap offset table is just norm[]>>3, so I ditched the table.
 //reg [19:0] mipmap_byte_offs_pal;	// The palette mipmap offset table is just norm[]>>1, so I ditched the table.
 
 reg [19:0] mipmap_byte_offs;
@@ -146,137 +152,126 @@ reg [19:0] mipmap_byte_offs;
 //
 //wire [35:0] stride_full = 16<<stride;	// stride 0==invalid (default?). stride 1=32. stride 2=64. stride 3=96. stride 4=128, and so-on.
 
-always @(*) begin
+always @(posedge clock) begin
 	// NOTE: Need to add 3 to tex_u_size in all of these LUTs, because the mipmap table starts at a 1x1 texture size, but tex_u_size==0 is the 8x8 texture size.
 	case (tex_u_size+3)
-		0:  mipmap_byte_offs_norm = 20'h6; 		// 1 texel
-		1:  mipmap_byte_offs_norm = 20'h8; 		// 2 texels
-		2:  mipmap_byte_offs_norm = 20'h10; 	// 4 texels
-		3:  mipmap_byte_offs_norm = 20'h30; 	// 8 texels
-		4:  mipmap_byte_offs_norm = 20'hb0; 	// 16 texels
-		5:  mipmap_byte_offs_norm = 20'h2b0; 	// 32 texels
-		6:  mipmap_byte_offs_norm = 20'hab0; 	// 64 texels
-		7:  mipmap_byte_offs_norm = 20'h2ab0; 	// 128 texels
-		8:  mipmap_byte_offs_norm = 20'haab0; 	// 256 texels
-		9:  mipmap_byte_offs_norm = 20'h2aab0; 	// 512 texels
-		10: mipmap_byte_offs_norm = 20'haaab0; 	// 1024 texels
+		0:  mipmap_byte_offs_norm <= 20'h6;		// 1 texel
+		1:  mipmap_byte_offs_norm <= 20'h8;		// 2 texels
+		2:  mipmap_byte_offs_norm <= 20'h10; 	// 4 texels
+		3:  mipmap_byte_offs_norm <= norm_offs_1024[05:0];	//    20'h30; 	// 8 texels
+		4:  mipmap_byte_offs_norm <= norm_offs_1024[07:0];	//    20'hb0; 	// 16 texels
+		5:  mipmap_byte_offs_norm <= norm_offs_1024[09:0];	//   20'h2b0; 	// 32 texels
+		6:  mipmap_byte_offs_norm <= norm_offs_1024[11:0];	//   20'hab0; 	// 64 texels
+		7:  mipmap_byte_offs_norm <= norm_offs_1024[13:0];	//  20'h2ab0; 	// 128 texels
+		8:  mipmap_byte_offs_norm <= norm_offs_1024[15:0];	//  20'haab0; 	// 256 texels
+		9:  mipmap_byte_offs_norm <= norm_offs_1024[17:0];	// 20'h2aab0; 	// 512 texels
+		10: mipmap_byte_offs_norm <= norm_offs_1024[19:0];	// 20'haaab0; 	// 1024 texels
 	endcase
-
-	case (tex_u_size+3)
-		0:  mipmap_byte_offs_vq = 20'h0; 		// 1 texel
-		1:  mipmap_byte_offs_vq = 20'h1; 		// 2 texels
-		2:  mipmap_byte_offs_vq = 20'h2; 		// 4 texels
-		3:  mipmap_byte_offs_vq = 20'h6; 		// 8 texels
-		4:  mipmap_byte_offs_vq = 20'h16; 		// 16 texels
-		5:  mipmap_byte_offs_vq = 20'h56; 		// 32 texels
-		6:  mipmap_byte_offs_vq = 20'h156; 		// 64 texels
-		7:  mipmap_byte_offs_vq = 20'h556; 		// 128 texels
-		8:  mipmap_byte_offs_vq = 20'h1556; 	// 256 texels
-		9:  mipmap_byte_offs_vq = 20'h5556; 	// 512 texels
-		10: mipmap_byte_offs_vq = 20'h15556; 	// 1024 texels
-	endcase
-
+	
 	// mipmap table mux (or zero offset, for non-mipmap)...
-	mipmap_byte_offs = (!is_mipmap) ? 0 :
-								 (vq_comp) ? mipmap_byte_offs_vq :
-					(is_pal4 | is_pal8) ? (mipmap_byte_offs_norm>>1) : // Note: The mipmap byte offset table for Palettes is just mipmap_byte_offs_norm[]>>1.
+	mipmap_byte_offs <= (!is_mipmap) ? 0 :
+						  (vq_comp) ? (mipmap_byte_offs_norm>>3) :	// Note: The mipmap byte offset table for VQ textures is just mipmap_byte_offs_norm[]>>3.
+			 (is_pal4 | is_pal8) ? (mipmap_byte_offs_norm>>1) :	// Note: The mipmap byte offset table for PAL4 or PAL8 is just mipmap_byte_offs_norm[]>>1.
 												  mipmap_byte_offs_norm;
 	
 	// Twiddled or Non-Twiddled).
-	twop_or_not = (vq_comp) ? ((12'd2048 + mipmap_byte_offs)<<2) + twop :
+	twop_or_not <= (vq_comp) ? ((12'd2048 + mipmap_byte_offs)<<2) + twop :
 		  (is_pal4 || is_pal8 || is_twid) ? (mipmap_byte_offs>>1) + twop :		// I haven't figured out why this needs the >>1 yet. Oh well.
 														mipmap_byte_offs + non_twid_addr;
 													 
 	// Shift twop_or_not, based on the number of nibbles, bytes, or words to read from each 64-bit vram_din word.
-	texel_word_offs = (vq_comp) ? (twop_or_not)>>5 : // VQ = 32 TEXELS per 64-bit VRAM word. (1 BYTE per FOUR Texels).
+	texel_word_offs <= (vq_comp) ? (twop_or_not)>>5 : // VQ = 32 TEXELS per 64-bit VRAM word. (1 BYTE per FOUR Texels).
 							(is_pal4) ? (twop_or_not)>>4 : // PAL4   = 16 TEXELS per 64-bit word. (4BPP).
 							(is_pal8) ? (twop_or_not)>>3 : // PAL8   = 8  TEXELS per 64-bit word. (8BPP).
 											(twop_or_not)>>2;	 // Uncomp = 4  TEXELS per 64-bit word (16BPP).
 	
 	// Generate the 64-bit VRAM WORD address using either the Code Book READ index, or texel_word_offs;
-	vram_word_addr = tex_word_addr + ((codebook_wait) ? cb_word_index : texel_word_offs);
+	vram_word_addr <= tex_word_addr + ((codebook_wait) ? cb_word_index : texel_word_offs);
 	
-	vram_byte_sel = (vq_comp) ? twop_or_not[4:2] :	// VQ.
+	vram_byte_sel <= (vq_comp) ? twop_or_not[4:2] :	// VQ.
 						 (is_pal4) ? twop_or_not[3:1] :	// PAL4.
 										 twop_or_not[2:0];	// PAL8.
 					
 	case (vram_byte_sel)
-		0:  pal8_byte = vram_din[07:00];
-		1:  pal8_byte = vram_din[15:08];
-		2:  pal8_byte = vram_din[23:16];
-		3:  pal8_byte = vram_din[31:24];
-		4:  pal8_byte = vram_din[39:32];
-		5:  pal8_byte = vram_din[47:40];
-		6:  pal8_byte = vram_din[55:48];
-		7:  pal8_byte = vram_din[63:56];
+		0:  pal8_byte <= vram_din[07:00];
+		1:  pal8_byte <= vram_din[15:08];
+		2:  pal8_byte <= vram_din[23:16];
+		3:  pal8_byte <= vram_din[31:24];
+		4:  pal8_byte <= vram_din[39:32];
+		5:  pal8_byte <= vram_din[47:40];
+		6:  pal8_byte <= vram_din[55:48];
+		7:  pal8_byte <= vram_din[63:56];
 	endcase
 	
-	pal4_nib = (!twop_or_not[0]) ? pal8_byte[3:0] : pal8_byte[7:4];
+	pal4_nib <= (!twop_or_not[0]) ? pal8_byte[3:0] : pal8_byte[7:4];
 	
 	// Read 16BPP from either the Code Book for VQ, or direct from VRAM.
 	cb_or_direct = (vq_comp) ? code_book[pal8_byte] : vram_din;
 	case (twop_or_not[1:0])
-		0: pix16 = cb_or_direct[15:00];
-		1: pix16 = cb_or_direct[31:16];
-		2: pix16 = cb_or_direct[47:32];
-		3: pix16 = cb_or_direct[63:48];
+		0: pix16 <= cb_or_direct[15:00];
+		1: pix16 <= cb_or_direct[31:16];
+		2: pix16 <= cb_or_direct[47:32];
+		3: pix16 <= cb_or_direct[63:48];
 	endcase
 	
+	/*
 	case (PAL_RAM_CTRL)
 		0: pal_final = { {8{pal_raw[15]}},    pal_raw[14:10],pal_raw[14:12], pal_raw[09:05],pal_raw[09:07], pal_raw[04:00],pal_raw[04:02] };// ARGB 1555
 		1: pal_final = {            8'hff,    pal_raw[15:11],pal_raw[15:13], pal_raw[10:05],pal_raw[10:09], pal_raw[04:00],pal_raw[04:02] };//  RGB 565
 		2: pal_final = { {2{pal_raw[15:12]}}, {2{pal_raw[11:08]}},           {2{pal_raw[07:04]}},           {2{pal_raw[03:00]}} };			// ARGB 4444
 		3: pal_final = pal_raw;		// ARGB 8888. (the full 32-bit wide Palette entry is used directly).
 	endcase
+	*/
 	
 	// Convert all texture pixel formats to ARGB8888.
 	// (fill missing lower colour bits using some of the upper colour bits.)
 	case (pix_fmt)
-		0: texel_argb = { {8{pix16[15]}},    pix16[14:10],pix16[14:12], pix16[09:05],pix16[09:07], pix16[04:00],pix16[04:02] };	// ARGB 1555
-		1: texel_argb = {          8'hff,    pix16[15:11],pix16[15:13], pix16[10:05],pix16[10:09], pix16[04:00],pix16[04:02] };	//  RGB 565
-		2: texel_argb = { {2{pix16[15:12]}}, {2{pix16[11:08]}},         {2{pix16[07:04]}},         {2{pix16[03:00]}} };			// ARGB 4444
-		3: texel_argb = pix16;		// TODO. YUV422 (32-bit Y8 U8 Y8 V8).
-		4: texel_argb = pix16;		// TODO. Bump Map (16-bit S8 R8).
-		5: texel_argb = pal_final;	// PAL4 or PAL8 can be ARGB1555, RGB565, ARGB4444, or even ARGB8888.
-		6: texel_argb = pal_final;	// Palette format read from PAL_RAM_CTRL[1:0].
-		7: texel_argb = { {8{pix16[15]}},    pix16[14:10],pix16[14:12], pix16[09:05],pix16[09:07], pix16[04:00],pix16[04:02] };	// Reserved (considered ARGB 1555).
+		0: texel_argb <= { {8{pix16[15]}},    pix16[14:10],pix16[14:12], pix16[09:05],pix16[09:07], pix16[04:00],pix16[04:02] };	// ARGB 1555
+		1: texel_argb <= {          8'hff,    pix16[15:11],pix16[15:13], pix16[10:05],pix16[10:09], pix16[04:00],pix16[04:02] };	//  RGB 565
+		2: texel_argb <= { {2{pix16[15:12]}}, {2{pix16[11:08]}},         {2{pix16[07:04]}},         {2{pix16[03:00]}} };			// ARGB 4444
+		3: texel_argb <= pix16;		// TODO. YUV422 (32-bit Y8 U8 Y8 V8).
+		4: texel_argb <= pix16;		// TODO. Bump Map (16-bit S8 R8).
+		//5: texel_argb = pal_final;	// PAL4 or PAL8 can be ARGB1555, RGB565, ARGB4444, or even ARGB8888.
+		//6: texel_argb = pal_final;	// Palette format read from PAL_RAM_CTRL[1:0].
+		7: texel_argb <= { {8{pix16[15]}},    pix16[14:10],pix16[14:12], pix16[09:05],pix16[09:07], pix16[04:00],pix16[04:02] };	// Reserved (considered ARGB 1555).
+		default: texel_argb <= pix16;	// Just to show anything at all, if some of the above cases are disabled. ElectronAsh.
 	endcase
 	
-	r_tex_mult_base_div_256 = (texel_argb[23:16] * base_argb[23:16]) /256;
-	g_tex_mult_base_div_256 = (texel_argb[15:08] * base_argb[15:08]) /256;
-	b_tex_mult_base_div_256 = (texel_argb[07:00] * base_argb[07:00]) /256;
+	r_tex_mult_base_div_256 <= (texel_argb[23:16] * base_argb[23:16]) /256;
+	g_tex_mult_base_div_256 <= (texel_argb[15:08] * base_argb[15:08]) /256;
+	b_tex_mult_base_div_256 <= (texel_argb[07:00] * base_argb[07:00]) /256;
 
 	case (shade_inst)
 		0: begin				// Decal.
-			blend_argb[31:24] = texel_argb[31:24];	// Blend Alpha <- Texel Alpha.  Texel_RGB + Offset_RGB.
-			blend_argb[23:16] = texel_argb[23:16];	// Red.
-			blend_argb[15:08] = texel_argb[15:08];	// Green.
-			blend_argb[07:00] = texel_argb[07:00];	// Blue.
+			blend_argb[31:24] <= texel_argb[31:24];	// Blend Alpha <- Texel Alpha.  Texel_RGB + Offset_RGB.
+			blend_argb[23:16] <= texel_argb[23:16];	// Red.
+			blend_argb[15:08] <= texel_argb[15:08];	// Green.
+			blend_argb[07:00] <= texel_argb[07:00];	// Blue.
 		end
 		
 		1: begin				// Modulate.
-			blend_argb[31:24] = texel_argb[31:24];	// Blend Alpha <- Texel Alpha.  (Texel_RGB * Base_RGB) + Offset_RGB.
-			blend_argb[23:16] = r_tex_mult_base_div_256;	// Red.
-			blend_argb[15:08] = g_tex_mult_base_div_256;	// Green.
-			blend_argb[07:00] = b_tex_mult_base_div_256;	// Blue.
+			blend_argb[31:24] <= texel_argb[31:24];	// Blend Alpha <- Texel Alpha.  (Texel_RGB * Base_RGB) + Offset_RGB.
+			blend_argb[23:16] <= r_tex_mult_base_div_256;	// Red.
+			blend_argb[15:08] <= g_tex_mult_base_div_256;	// Green.
+			blend_argb[07:00] <= b_tex_mult_base_div_256;	// Blue.
 		end
 		
 		2: begin				// Decal Alpha.
-			blend_argb[31:24] = base_argb[31:24];	// Blend Alpha <- Base Alpha.  (Texel_RGB * Texel_Alpha) + (Base_RGB * (255-Texel_Alpha)) + Offset_RGB.
-			blend_argb[23:16] = ((texel_argb[23:16] * texel_argb[31:24]) /256) + ((base_argb[23:16] * (255-texel_argb[31:24])) /256);	// Red.
-			blend_argb[15:08] = ((texel_argb[15:08] * texel_argb[31:24]) /256) + ((base_argb[15:08] * (255-texel_argb[31:24])) /256);	// Green.
-			blend_argb[07:00] = ((texel_argb[07:00] * texel_argb[31:24]) /256) + ((base_argb[07:00] * (255-texel_argb[31:24])) /256);	// Blue.
+			blend_argb[31:24] <= base_argb[31:24];	// Blend Alpha <- Base Alpha.  (Texel_RGB * Texel_Alpha) + (Base_RGB * (255-Texel_Alpha)) + Offset_RGB.
+			blend_argb[23:16] <= ((texel_argb[23:16] * texel_argb[31:24]) /256) + ((base_argb[23:16] * (255-texel_argb[31:24])) /256);	// Red.
+			blend_argb[15:08] <= ((texel_argb[15:08] * texel_argb[31:24]) /256) + ((base_argb[15:08] * (255-texel_argb[31:24])) /256);	// Green.
+			blend_argb[07:00] <= ((texel_argb[07:00] * texel_argb[31:24]) /256) + ((base_argb[07:00] * (255-texel_argb[31:24])) /256);	// Blue.
 		end
 		
 		3: begin				// Modulate Alpha.
-			blend_argb[31:24] = (texel_argb[31:24] * base_argb[31:24]) /256;	// (Texel_ARGB * Base_ARGB) + Offset_RGB.
-			blend_argb[23:16] = r_tex_mult_base_div_256;	// Red.
-			blend_argb[15:08] = g_tex_mult_base_div_256;	// Green.
-			blend_argb[07:00] = b_tex_mult_base_div_256;	// Blue.
+			blend_argb[31:24] <= (texel_argb[31:24] * base_argb[31:24]) /256;	// (Texel_ARGB * Base_ARGB) + Offset_RGB.
+			blend_argb[23:16] <= r_tex_mult_base_div_256;	// Red.
+			blend_argb[15:08] <= g_tex_mult_base_div_256;	// Green.
+			blend_argb[07:00] <= b_tex_mult_base_div_256;	// Blue.
 		end
 	endcase
 
-	final_argb = (texture) ? blend_offs_argb : base_argb;
+	final_argb <= (texture) ? blend_offs_argb : base_argb;
 end
 
 reg [23:0] r_tex_mult_base_div_256;
@@ -285,6 +280,7 @@ reg [23:0] b_tex_mult_base_div_256;
 
 reg [31:0] blend_argb;
 
+/*
 wire [8:0] blend_plus_offs_r = blend_argb[23:16] + offs_argb[23:16];
 wire [8:0] blend_plus_offs_g = blend_argb[15:08] + offs_argb[15:08];
 wire [8:0] blend_plus_offs_b = blend_argb[07:00] + offs_argb[07:00];
@@ -294,12 +290,14 @@ wire [7:0] offs_g_clamped = (blend_plus_offs_g[8]) ? 8'd255 : blend_plus_offs_g[
 wire [7:0] offs_b_clamped = (blend_plus_offs_b[8]) ? 8'd255 : blend_plus_offs_b[7:0];
 
 wire [31:0] blend_offs_argb = {blend_argb[31:24], offs_r_clamped, offs_g_clamped, offs_b_clamped};
+*/
+wire [31:0] blend_offs_argb = blend_argb;	// TESTING! - Disable offset colour. This was causing lots of issues.
 
 
 reg [2:0] vram_byte_sel;
 reg [63:0] cb_or_direct;
 
-
+/*
 wire [9:0] my_pal_addr = (pal_wr) ? pal_addr :								// Writes, from SH4/sim.
 								(is_pal4) ? {pal_selector[5:0], pal4_nib} :	// PAL4
 												{pal_selector[5:4], pal8_byte};	// PAL8
@@ -313,6 +311,7 @@ pal_ram  pal_ram_inst (
 );
 reg [31:0] pal_raw;
 reg [31:0] pal_final;
+*/
 
 
 // VQ Code Book. 256 64-bit Words.
