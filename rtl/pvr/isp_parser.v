@@ -2,8 +2,8 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-parameter FRAC_BITS   = 8'd12;
-parameter Z_FRAC_BITS = 8'd12;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
+parameter FRAC_BITS   = 8'd11;
+parameter Z_FRAC_BITS = 8'd11;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
 
 parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS);
 
@@ -573,11 +573,13 @@ else begin
 					if (is_quad_array) begin	// Quad Array (maybe) done.
 						if (!quad_done) begin	// Second half of Quad not done yet...
 							// Swap some verts and UV stuff, for the second half of a Quad. (kludge!)
+							/*
 							vert_b_x <= vert_d_x;
 							vert_b_y <= vert_d_y;
 							//vert_b_z <= vert_d_z;
 							vert_b_u0 <= vert_a_u0;
 							vert_b_v0 <= vert_c_v0;
+							*/
 							isp_state <= 8'd47;	// Draw the second half of the Quad.
 														// isp_entry_valid will tell the C code to latch the
 														// params again, and convert to fixed-point.
@@ -656,7 +658,7 @@ else begin
 		end
 		
 		54: begin
-			fb_addr <= /*FB_R_SOF1 +*/ ((x_ps-1)+(y_ps*640));
+			fb_addr <= /*FB_R_SOF1 +*/ (x_ps+(y_ps*640));
 			fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
 			fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
 			fb_we <= 1'b1;
@@ -759,15 +761,21 @@ float_to_fixed  float_v1 (
 	.fixed( FV1_FIXED )		// output [47:0]  fixed
 );
 
+wire signed [47:0] vert_b_x_in  = (is_quad_array && quad_done) ? vert_d_x : vert_b_x;
+wire signed [47:0] vert_b_y_in  = (is_quad_array && quad_done) ? vert_d_y : vert_b_y;
+//wire signed [47:0] vert_b_z_in  = (is_quad_array && quad_done) ? vert_d_z : vert_b_z;
+wire signed [47:0] vert_b_u0_in = (is_quad_array && quad_done) ? vert_a_u0 : vert_b_u0;
+wire signed [47:0] vert_b_v0_in = (is_quad_array && quad_done) ? vert_c_v0 : vert_b_v0;
+
 (*keep*)wire signed [47:0] FX2_FIXED;
 float_to_fixed  float_x2 (
-	.float_in( vert_b_x ),	// input [31:0]  float_in
+	.float_in( vert_b_x_in ),	// input [31:0]  float_in
 	.FRAC_BITS( FRAC_BITS ),
 	.fixed( FX2_FIXED )		// output [47:0]  fixed
 );
 (*keep*)wire signed [47:0] FY2_FIXED;
 float_to_fixed  float_y2 (
-	.float_in( vert_b_y ),	// input [31:0]  float_in
+	.float_in( vert_b_y_in ),	// input [31:0]  float_in
 	.FRAC_BITS( FRAC_BITS ),
 	.fixed( FY2_FIXED )		// output [47:0]  fixed
 );
@@ -779,13 +787,13 @@ float_to_fixed  float_z2 (
 );
 (*keep*)wire signed [47:0] FU2_FIXED;
 float_to_fixed  float_u2 (
-	.float_in( vert_b_u0 ),	// input [31:0]  float_in
+	.float_in( vert_b_u0_in ),	// input [31:0]  float_in
 	.FRAC_BITS( FRAC_BITS ),
 	.fixed( FU2_FIXED )		// output [47:0]  fixed
 );
 (*keep*)wire signed [47:0] FV2_FIXED;
 float_to_fixed  float_v2 (
-	.float_in( vert_b_v0 ),	// input [31:0]  float_in
+	.float_in( vert_b_v0_in ),	// input [31:0]  float_in
 	.FRAC_BITS( FRAC_BITS ),
 	.fixed( FV2_FIXED )		// output [47:0]  fixed
 );
@@ -859,13 +867,10 @@ inTri_calc  inTri_calc_inst (
 (*keep*)wire [31:0] inTri;
 
 
-wire new_tile_row = isp_state==49 || isp_state==51 /*|| isp_state==52*/;
-
 // Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
 
 interp  interp_inst_z (
 	.clock( clock ),			// input  clock
-	.setup( new_tile_row ),	// input  setup
 	
 	.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
 

@@ -3,7 +3,6 @@
 
 module interp (
 	input clock,
-	input setup,
 
 	input [7:0] FRAC_BITS,
 
@@ -53,41 +52,44 @@ struct PlaneStepper3
 
 // Setup...
 //  Aa = (FZ3 - FZ1) * (FY2 - FY1) - (FZ2 - FZ1) * (FY3 - FY1);
-reg signed [31:0] FZ3_sub_FZ1;
+reg signed [31:0] FZ3_sub_FZ1;	// Can work as 32-bit? (if input verts are 32-bit?)
 reg signed [31:0] FY2_sub_FY1;
-reg signed [63:0] Aa_mult_1;
 reg signed [31:0] FZ2_sub_FZ1;
 reg signed [31:0] FY3_sub_FY1;
-reg signed [63:0] Aa_mult_2;
+reg signed [47:0] Aa_mult_1;	// Works OK as 48-bit?
+reg signed [47:0] Aa_mult_2;
+
 reg signed [47:0] Aa;		// This must be > 48-bit, to get the Daytona logos to render correctly.
-									// But will then use a LOT of logic, for the divide.
+									// But will then use a LOT of FPGA logic for the divide.
 
 // Ba = (FX3 - FX1) * (FZ2 - FZ1) - (FX2 - FX1) * (FZ3 - FZ1);
-reg signed [31:0] FX3_sub_FX1;
-reg signed [63:0] Ba_mult_1;
+reg signed [31:0] FX3_sub_FX1;	// Can work as 32-bit? (if input verts are 32-bit?)
 reg signed [31:0] FX2_sub_FX1;
-reg signed [63:0] Ba_mult_2;
+reg signed [47:0] Ba_mult_1;	// Works OK as 48-bit?
+reg signed [47:0] Ba_mult_2;
+
 reg signed [47:0] Ba;		// This must be > 48-bit, to get the Daytona logos to render correctly.
-									// But will then use a LOT of logic, for the divide.
+									// But will then use a LOT of FPGA logic for the divide.
 
 // C = (FX2 - FX1) * (FY3 - FY1) - (FX3 - FX1) * (FY2 - FY1);
-reg signed [63:0] C_mult_1;
+reg signed [63:0] C_mult_1;		// Must be > 48-bit??
 reg signed [63:0] C_mult_2;
-reg signed [47:0] C;		// Seems to work best as 48-bit? Investigate value ranges later. ElectronAsh.
+reg signed [47:0] BIG_C;		// Seems to work best as 48-bit? Investigate value ranges later. ElectronAsh.
 
 // ddx = Aa / C;
 // ddy = Ba / C;
-reg signed [31:0] FDDX;
+reg signed [31:0] FDDX;	// Can work as 32-bit? (if input verts are 32-bit?)
 reg signed [31:0] FDDY;
 
 // c = (FZ1 - ddx * FX1 - ddy * FY1);
-reg signed [47:0] FDDX_mult_FX1;
+reg signed [47:0] FDDX_mult_FX1;	// Can work as 48-bit?
 reg signed [47:0] FDDY_mult_FY1;
-reg signed [47:0] c;		// Seems to work best as 48-bit? Investigate value ranges later. ElectronAsh.
 
-reg signed [63:0] y_mult_FDDY_plus_c;
+reg signed [31:0] small_c;			// Can work OK as 32-bit?
 
-//always @(posedge clock) begin		// Keep as clocked!
+reg signed [47:0] y_mult_FDDY_plus_c;	// Can work as 48-bit?
+
+//always @(posedge clock) begin
 always @(*) begin
 	// Aa = (FZ3 - FZ1) * (FY2 - FY1) - (FZ2 - FZ1) * (FY3 - FY1);
 	FZ3_sub_FZ1 = (FZ3 - FZ1);
@@ -110,22 +112,22 @@ always @(*) begin
 	// C = (FX2 - FX1) * (FY3 - FY1) - (FX3 - FX1) * (FY2 - FY1);
 	C_mult_1 = (FX2_sub_FX1 * FY3_sub_FY1) >>FRAC_BITS;
 	C_mult_2 = (FX3_sub_FX1 * FY2_sub_FY1) >>FRAC_BITS;
-	C = C_mult_2 - C_mult_1;  // Swapped the order of subtraction, so we can ditch the neg sign on -C below...
+	BIG_C = C_mult_2 - C_mult_1;  // Swapped the order of subtraction, so we can ditch the neg sign on -C below...
 
 	// ddx = Aa / C;
 	// ddy = Ba / C;
-	FDDX = (Aa<<FRAC_BITS) / C;
-	FDDY = (Ba<<FRAC_BITS) / C;
+	FDDX = (Aa<<FRAC_BITS) / BIG_C;
+	FDDY = (Ba<<FRAC_BITS) / BIG_C;
 	
 	// c = (FZ1 - ddx * FX1 - ddy * FY1);
 	FDDX_mult_FX1 = (FDDX * FX1) >>FRAC_BITS;
 	FDDY_mult_FY1 = (FDDY * FY1) >>FRAC_BITS;
-	c = FZ1 - FDDX_mult_FX1 - FDDY_mult_FY1;
+	small_c = FZ1 - FDDX_mult_FX1 - FDDY_mult_FY1;
 end
 
 
 always @(*) begin
-	y_mult_FDDY_plus_c = (y_ps * FDDY) + c;		// TESTING !!
+	y_mult_FDDY_plus_c = (y_ps * FDDY) + small_c;		// TESTING !!
 
 	// Interp ("IP" in C-code PlaneStepper3)...
 	// (x * ddx) + (y * ddy) + c;
