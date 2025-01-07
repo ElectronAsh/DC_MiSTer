@@ -63,7 +63,7 @@ module isp_parser (
 
 reg [23:0] isp_vram_addr;
 
-assign isp_vram_addr_out = ((isp_state>=8'd49 && isp_state<=8'd54) || isp_state==5) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
+assign isp_vram_addr_out = ((isp_state>=8'd49 && isp_state<=8'd53) || isp_state==5) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
 																													isp_vram_addr;					// Output ISP Parser BYTE address.
 
 // OL Word bit decodes...
@@ -213,7 +213,7 @@ if (!reset_n) begin
 	isp_vram_rd_pend <= 1'b0;
 end
 else begin
-	fb_we <= 1'b0;
+	//fb_we <= 1'b0;
 	
 	isp_entry_valid <= 1'b0;
 	poly_drawn <= 1'b0;
@@ -222,6 +222,8 @@ else begin
 
 	if (isp_vram_rd & !vram_wait) isp_vram_rd <= 1'b0;
 	if (isp_vram_wr & !vram_wait) isp_vram_wr <= 1'b0;
+	
+	if (fb_we && !vram_wait) fb_we <= 1'b0;
 	
 	no_tex_read <= 1'b0;
 	
@@ -606,14 +608,8 @@ else begin
 
 		49: begin
 			// Per-tile rendering.
-			// leading_zeros was often causing it to skip the first tile row,
-			// causing horizontal lines across the whole image.
-			// Can't use leading_zeros here, because it is dependent on x_ps and y_ps. ElectronAsh.
 			x_ps <= tilex_start;
 			y_ps <= tiley_start;
-			
-			top_span_done <= 1'b0;
-			top_span <= 5'd0;
 			
 			isp_vram_addr_last <= isp_vram_addr;
 			isp_state <= isp_state + 8'd1;
@@ -621,24 +617,23 @@ else begin
 
 		50: begin
 			if (y_ps < tiley_start+32) begin
-				if (x_ps==tilex_start+32 /*|| x_ps[4:0]==32-trailing_zeros*/ /*!inTri*/) begin
+				if (x_ps==tilex_start+32 /*|| /*!inTri*/) begin
 					y_ps <= y_ps + 11'd1;	// Can't check leading_zeros until two clocks *after* incrementing y_ps.
 					x_ps <= tilex_start;		// Still need to set x_ps here, even though it gets set again in state 52!
-					//isp_state <= 8'd51;		// Had to add an extra clock tick, to allow the VRAM address and texture stuff to update.
-					isp_state <= 8'd52;		// (fixed the thin vertical lines on the renders. ElectronAsh).
-				end
+					isp_state <= isp_state + 1'd1;	// Had to add an extra clock tick, to allow the VRAM address and texture stuff to update.
+				end											// (fixed the thin vertical lines on the renders. ElectronAsh).
 				else begin
 					x_ps <= x_ps + 12'd1;
 					if (inTri[x_ps[4:0]] && depth_allow) begin
-						//if (vram_word_addr != vram_word_addr_old) begin
-							//vram_word_addr_old <= vram_word_addr;
+						//if (texture && (vram_word_addr != vram_word_addr_old)) begin
+							vram_word_addr_old <= vram_word_addr;
 							isp_vram_rd <= 1'b1;	// Read texel...
 						//end
 						//else no_tex_read <= 1'b1;
-						isp_state <= 8'd53;
+						isp_state <= 8'd52;
 					end
 				end
-				fb_addr <= /*FB_R_SOF1 +*/ (x_ps+(y_ps*640));	// Framebuffer write address.
+				fb_addr <= (x_ps+(y_ps*640));	// Framebuffer write address.
 			end
 			else begin	// End of tile, for current POLY.
 				isp_vram_addr <= isp_vram_addr_last;
@@ -646,47 +641,26 @@ else begin
 			end
 		end
 
-		// Next row.
-		/*
 		51: begin
-			// Speed up, by checking inTri (!top_span_done), to see which row the first span starts on.
-			// Then checking inTri again (top_span_done), to find the last span.
-			isp_state <= isp_state + 8'd1;	// Must keep this here, so it can be overridden below!
-			if (!top_span_done) begin
-				if (inTri) begin
-					top_span <= y_ps[4:0]-1;
-					top_span_done <= 1'b1;
-				end
-			end
-			else begin
-				if (inTri==32'd0) begin
-					bot_span <= y_ps[4:0]-1;
-					top_span_done <= 1'b0;
-					isp_vram_addr <= isp_vram_addr_last;
-					isp_state <= 8'd48;
-				end
-			end
-		end
-		*/
-
-		52: begin
-			x_ps <= tilex_start /*+ leading_zeros*/;	// Definite speed-up when using leading_zeros here.
+			x_ps <= tilex_start;
 			isp_state <= 8'd50;
 		end
 		
 		// Next (visible) pixel...
-		53: if (vram_valid /*|| no_tex_read*/) begin
-			isp_state <= 8'd54;
+		52: if (vram_valid /*|| no_tex_read*/) begin
+			isp_state <= isp_state + 1'd1;
 		end
-
+		
+		53: begin
+			isp_state <= isp_state + 1'd1;
+		end
+		
 		54: begin
+			fb_addr <= /*FB_R_SOF1 +*/ ((x_ps-1)+(y_ps*640));
 			fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
-			fb_byteena <= (!fb_addr[0]) ? 8'b00110011 : 8'b11001100;
-			//fb_byteena <= 8'b11000000 >> (fb_addr[1:0]<<1);
-			if (!vram_wait) begin
-				fb_we <= 1'b1;
-				isp_state <= 8'd50;	// Jump back.
-			end
+			fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
+			fb_we <= 1'b1;
+			isp_state <= 8'd50;	// Jump back.
 		end
 		
 		default: ;
@@ -721,10 +695,6 @@ end
 
 wire [15:0] pix_565 = {final_argb[23:19],final_argb[15:10],final_argb[7:3]};
 
-reg top_span_done;
-reg [4:0] top_span;
-reg [4:0] bot_span;
-
 
 wire [10:0] tilex_start = {tilex, 5'b00000};
 wire [10:0] tiley_start = {tiley, 5'b00000};
@@ -742,7 +712,7 @@ z_buffer  z_buffer_inst(
 	.reset_n( reset_n ),
 	
 	.clear_z( clear_z ),
-	.clear_done( clear_done),
+	.clear_done( clear_done ),
 	
 	.z_buff_addr( z_buff_addr ),
 	.z_in( IP_Z_INTERP ),
@@ -888,14 +858,11 @@ inTri_calc  inTri_calc_inst (
 //(*keep*)wire inTriangle;
 (*keep*)wire [31:0] inTri;
 
-//wire [4:0] leading_zeros;
-//wire [4:0] trailing_zeros;
-
 
 wire new_tile_row = isp_state==49 || isp_state==51 /*|| isp_state==52*/;
 
 // Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
-/*
+
 interp  interp_inst_z (
 	.clock( clock ),			// input  clock
 	.setup( new_tile_row ),	// input  setup
@@ -924,8 +891,8 @@ interp  interp_inst_z (
 	//.interp16( IP_Z[16] ), .interp17( IP_Z[17] ), .interp18( IP_Z[18] ), .interp19( IP_Z[19] ), .interp20( IP_Z[20] ), .interp21( IP_Z[21] ), .interp22( IP_Z[22] ), .interp23( IP_Z[23] ),
 	//.interp24( IP_Z[24] ), .interp25( IP_Z[25] ), .interp26( IP_Z[26] ), .interp27( IP_Z[27] ), .interp28( IP_Z[28] ), .interp29( IP_Z[29] ), .interp30( IP_Z[30] ), .interp31( IP_Z[31] )
 );
-*/
-wire signed [31:0] IP_Z_INTERP = FZ1_FIXED;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
+
+wire signed [31:0] IP_Z_INTERP /*= FZ1_FIXED*/;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
 //wire signed [31:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
 
 
@@ -1007,79 +974,6 @@ interp  interp_inst_v (
 wire signed [31:0] IP_V_INTERP /*= FV2_FIXED * tex_v_size_full*/;
 //wire signed [31:0] IP_V [0:31];	// [0:31] is the tile COLUMN.
 
-/*
-always @(*) begin
-	case (x_ps[4:0])
-		 0:	u_div_z_fixed = (IP_U[0] <<FRAC_BITS) / IP_Z[0];
-		 1:	u_div_z_fixed = (IP_U[1] <<FRAC_BITS) / IP_Z[1];
-		 2:	u_div_z_fixed = (IP_U[2] <<FRAC_BITS) / IP_Z[2];
-		 3:	u_div_z_fixed = (IP_U[3] <<FRAC_BITS) / IP_Z[3];
-		 4:	u_div_z_fixed = (IP_U[4] <<FRAC_BITS) / IP_Z[4];
-		 5:	u_div_z_fixed = (IP_U[5] <<FRAC_BITS) / IP_Z[5];
-		 6:	u_div_z_fixed = (IP_U[6] <<FRAC_BITS) / IP_Z[6];
-		 7:	u_div_z_fixed = (IP_U[7] <<FRAC_BITS) / IP_Z[7];
-		 8:	u_div_z_fixed = (IP_U[8] <<FRAC_BITS) / IP_Z[8];
-		 9:	u_div_z_fixed = (IP_U[9] <<FRAC_BITS) / IP_Z[9];
-		10:	u_div_z_fixed = (IP_U[10]<<FRAC_BITS) / IP_Z[10];
-		11:	u_div_z_fixed = (IP_U[11]<<FRAC_BITS) / IP_Z[11];
-		12:	u_div_z_fixed = (IP_U[12]<<FRAC_BITS) / IP_Z[12];
-		13:	u_div_z_fixed = (IP_U[13]<<FRAC_BITS) / IP_Z[13];
-		14:	u_div_z_fixed = (IP_U[14]<<FRAC_BITS) / IP_Z[14];
-		15:	u_div_z_fixed = (IP_U[15]<<FRAC_BITS) / IP_Z[15];
-		16:	u_div_z_fixed = (IP_U[16]<<FRAC_BITS) / IP_Z[16];
-		17:	u_div_z_fixed = (IP_U[17]<<FRAC_BITS) / IP_Z[17];
-		18:	u_div_z_fixed = (IP_U[18]<<FRAC_BITS) / IP_Z[18];
-		19:	u_div_z_fixed = (IP_U[19]<<FRAC_BITS) / IP_Z[19];
-		20:	u_div_z_fixed = (IP_U[20]<<FRAC_BITS) / IP_Z[20];
-		21:	u_div_z_fixed = (IP_U[21]<<FRAC_BITS) / IP_Z[21];
-		22:	u_div_z_fixed = (IP_U[22]<<FRAC_BITS) / IP_Z[22];
-		23:	u_div_z_fixed = (IP_U[23]<<FRAC_BITS) / IP_Z[23];
-		24:	u_div_z_fixed = (IP_U[24]<<FRAC_BITS) / IP_Z[24];
-		25:	u_div_z_fixed = (IP_U[25]<<FRAC_BITS) / IP_Z[25];
-		26:	u_div_z_fixed = (IP_U[26]<<FRAC_BITS) / IP_Z[26];
-		27:	u_div_z_fixed = (IP_U[27]<<FRAC_BITS) / IP_Z[27];
-		28:	u_div_z_fixed = (IP_U[28]<<FRAC_BITS) / IP_Z[28];
-		29:	u_div_z_fixed = (IP_U[29]<<FRAC_BITS) / IP_Z[29];
-		30:	u_div_z_fixed = (IP_U[30]<<FRAC_BITS) / IP_Z[30];
-		31:	u_div_z_fixed = (IP_U[31]<<FRAC_BITS) / IP_Z[31];
-	endcase
-
-	case (x_ps[4:0])
-		 0:	v_div_z_fixed = (IP_V[0] <<FRAC_BITS) / IP_Z[0];
-		 1:	v_div_z_fixed = (IP_V[1] <<FRAC_BITS) / IP_Z[1];
-		 2:	v_div_z_fixed = (IP_V[2] <<FRAC_BITS) / IP_Z[2];
-		 3:	v_div_z_fixed = (IP_V[3] <<FRAC_BITS) / IP_Z[3];
-		 4:	v_div_z_fixed = (IP_V[4] <<FRAC_BITS) / IP_Z[4];
-		 5:	v_div_z_fixed = (IP_V[5] <<FRAC_BITS) / IP_Z[5];
-		 6:	v_div_z_fixed = (IP_V[6] <<FRAC_BITS) / IP_Z[6];
-		 7:	v_div_z_fixed = (IP_V[7] <<FRAC_BITS) / IP_Z[7];
-		 8:	v_div_z_fixed = (IP_V[8] <<FRAC_BITS) / IP_Z[8];
-		 9:	v_div_z_fixed = (IP_V[9] <<FRAC_BITS) / IP_Z[9];
-		10:	v_div_z_fixed = (IP_V[10]<<FRAC_BITS) / IP_Z[10];
-		11:	v_div_z_fixed = (IP_V[11]<<FRAC_BITS) / IP_Z[11];
-		12:	v_div_z_fixed = (IP_V[12]<<FRAC_BITS) / IP_Z[12];
-		13:	v_div_z_fixed = (IP_V[13]<<FRAC_BITS) / IP_Z[13];
-		14:	v_div_z_fixed = (IP_V[14]<<FRAC_BITS) / IP_Z[14];
-		15:	v_div_z_fixed = (IP_V[15]<<FRAC_BITS) / IP_Z[15];
-		16:	v_div_z_fixed = (IP_V[16]<<FRAC_BITS) / IP_Z[16];
-		17:	v_div_z_fixed = (IP_V[17]<<FRAC_BITS) / IP_Z[17];
-		18:	v_div_z_fixed = (IP_V[18]<<FRAC_BITS) / IP_Z[18];
-		19:	v_div_z_fixed = (IP_V[19]<<FRAC_BITS) / IP_Z[19];
-		20:	v_div_z_fixed = (IP_V[20]<<FRAC_BITS) / IP_Z[20];
-		21:	v_div_z_fixed = (IP_V[21]<<FRAC_BITS) / IP_Z[21];
-		22:	v_div_z_fixed = (IP_V[22]<<FRAC_BITS) / IP_Z[22];
-		23:	v_div_z_fixed = (IP_V[23]<<FRAC_BITS) / IP_Z[23];
-		24:	v_div_z_fixed = (IP_V[24]<<FRAC_BITS) / IP_Z[24];
-		25:	v_div_z_fixed = (IP_V[25]<<FRAC_BITS) / IP_Z[25];
-		26:	v_div_z_fixed = (IP_V[26]<<FRAC_BITS) / IP_Z[26];
-		27:	v_div_z_fixed = (IP_V[27]<<FRAC_BITS) / IP_Z[27];
-		28:	v_div_z_fixed = (IP_V[28]<<FRAC_BITS) / IP_Z[28];
-		29:	v_div_z_fixed = (IP_V[29]<<FRAC_BITS) / IP_Z[29];
-		30:	v_div_z_fixed = (IP_V[30]<<FRAC_BITS) / IP_Z[30];
-		31:	v_div_z_fixed = (IP_V[31]<<FRAC_BITS) / IP_Z[31];
-	endcase
-end
-*/
 
 // Highest value is 1024 (8<<7) so we need 11 bits to store it! ElectronAsh.
 wire [10:0] tex_u_size_full = (8<<tex_u_size);
@@ -1154,7 +1048,6 @@ reg [21:0] vram_word_addr_old;
 
 wire [31:0] texel_argb;
 wire [31:0] final_argb;
-//wire [31:0] final_argb = {8'hff, vert_b_base_col_0[23:0]};
 
 
 // The registers below make up our 32x32 internal Z buffer.

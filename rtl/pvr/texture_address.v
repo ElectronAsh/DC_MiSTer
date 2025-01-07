@@ -214,25 +214,23 @@ always @(posedge clock) begin
 		3: pix16 <= cb_or_direct[63:48];
 	endcase
 	
-	/*
 	case (PAL_RAM_CTRL)
 		0: pal_final = { {8{pal_raw[15]}},    pal_raw[14:10],pal_raw[14:12], pal_raw[09:05],pal_raw[09:07], pal_raw[04:00],pal_raw[04:02] };// ARGB 1555
 		1: pal_final = {            8'hff,    pal_raw[15:11],pal_raw[15:13], pal_raw[10:05],pal_raw[10:09], pal_raw[04:00],pal_raw[04:02] };//  RGB 565
 		2: pal_final = { {2{pal_raw[15:12]}}, {2{pal_raw[11:08]}},           {2{pal_raw[07:04]}},           {2{pal_raw[03:00]}} };			// ARGB 4444
 		3: pal_final = pal_raw;		// ARGB 8888. (the full 32-bit wide Palette entry is used directly).
 	endcase
-	*/
 	
 	// Convert all texture pixel formats to ARGB8888.
 	// (fill missing lower colour bits using some of the upper colour bits.)
 	case (pix_fmt)
 		0: texel_argb <= { {8{pix16[15]}},    pix16[14:10],pix16[14:12], pix16[09:05],pix16[09:07], pix16[04:00],pix16[04:02] };	// ARGB 1555
 		1: texel_argb <= {          8'hff,    pix16[15:11],pix16[15:13], pix16[10:05],pix16[10:09], pix16[04:00],pix16[04:02] };	//  RGB 565
-		2: texel_argb <= { {2{pix16[15:12]}}, {2{pix16[11:08]}},         {2{pix16[07:04]}},         {2{pix16[03:00]}} };			// ARGB 4444
+		2: texel_argb <= { {2{pix16[15:12]}}, {2{pix16[11:08]}},         {2{pix16[07:04]}},         {2{pix16[03:00]}} };				// ARGB 4444
 		3: texel_argb <= pix16;		// TODO. YUV422 (32-bit Y8 U8 Y8 V8).
 		4: texel_argb <= pix16;		// TODO. Bump Map (16-bit S8 R8).
-		//5: texel_argb = pal_final;	// PAL4 or PAL8 can be ARGB1555, RGB565, ARGB4444, or even ARGB8888.
-		//6: texel_argb = pal_final;	// Palette format read from PAL_RAM_CTRL[1:0].
+		5: texel_argb <= pal_final;	// PAL4 or PAL8 can be ARGB1555, RGB565, ARGB4444, or even ARGB8888.
+		6: texel_argb <= pal_final;	// Palette format read from PAL_RAM_CTRL[1:0].
 		7: texel_argb <= { {8{pix16[15]}},    pix16[14:10],pix16[14:12], pix16[09:05],pix16[09:07], pix16[04:00],pix16[04:02] };	// Reserved (considered ARGB 1555).
 		default: texel_argb <= pix16;	// Just to show anything at all, if some of the above cases are disabled. ElectronAsh.
 	endcase
@@ -297,7 +295,7 @@ wire [31:0] blend_offs_argb = blend_argb;	// TESTING! - Disable offset colour. T
 reg [2:0] vram_byte_sel;
 reg [63:0] cb_or_direct;
 
-/*
+
 wire [9:0] my_pal_addr = (pal_wr) ? pal_addr :								// Writes, from SH4/sim.
 								(is_pal4) ? {pal_selector[5:0], pal4_nib} :	// PAL4
 												{pal_selector[5:4], pal8_byte};	// PAL8
@@ -311,7 +309,7 @@ pal_ram  pal_ram_inst (
 );
 reg [31:0] pal_raw;
 reg [31:0] pal_final;
-*/
+
 
 
 // VQ Code Book. 256 64-bit Words.

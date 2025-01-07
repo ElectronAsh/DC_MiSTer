@@ -218,12 +218,15 @@ module emu
 
 wire [23:0] FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
 
-assign FB_EN     = status[5];
+wire bgr       = status[6];
+wire [2:0] bpp = !status[7] ? 3'b100 : 3'b110;
+
+assign FB_EN     = 1'b1;
 assign FB_BASE   = (DDRAM_BASE<<3) + (FB_R_SOF1[22:0] << 1);
 assign FB_WIDTH  = 12'd640;
 assign FB_HEIGHT = 12'd480;
-assign FB_FORMAT = 5'b1_0_110;	// [4] 0=RGB 1=BGR. [3] 0=16bit 565, 1=16bit 1555. [2:0] 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp.
-assign FB_STRIDE = 14'd2560;		// Either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
+assign FB_FORMAT = {bgr,1'b0,bpp};	// [4] 0=RGB 1=BGR. [3] 0=16bit 565, 1=16bit 1555. [2:0] 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp.
+assign FB_STRIDE = 14'd1280<<status[8];	// Either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
 assign FB_FORCE_BLANK = 0;
 
 //wire [2:0] bpp = (status[6]==1'b0) ? 3'b100 :	// 16bpp
@@ -315,9 +318,10 @@ localparam CONF_STR = {
 	"FC2,BIN,Load PVR Regs;",
 	"FC3,BIN,Load VRAM Dump;",
 	"-;",
-	"O[5],Display DDR FB,Off,SOF1;",
-	"-;",
-	"-;",
+	"O[6],FB Format,RGB,BGR;",
+	"O[7],FB BPP,16bpp,32bpp;",
+	"O[8],FB Stride,1280,2560;",
+	"O[9],Addr shift,0,1;",
 	"-;",
 	"P1,Audio & Video;", 
  	"-;",
@@ -1042,7 +1046,7 @@ wire [31:0] pvr_din = rom_word32;
 wire pvr_rd = 1'b0;
 wire [31:0] pvr_dout;
 
-wire vram_wait = DDRAM_BUSY;
+//wire vram_wait = DDRAM_BUSY;
 wire [23:0] vram_addr;
 wire vram_rd;
 wire vram_wr;
@@ -1058,7 +1062,8 @@ wire [28:0] DDRAM_BASE = (32'h32000000 >>3);	// 800MB. (DDRAM_BASE is the 64-bit
 // Limit the write/read addresses to 4MB!
 wire [28:0] dl_word_addr   = DDRAM_BASE + ioctl_addr[21:2];
 wire [28:0] vram_word_addr = DDRAM_BASE +  vram_addr[21:2];
-wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + fb_addr[21:1];
+
+wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + (fb_addr[21:1]>>status[9]);
 
 wire [63:0] dl_writedata   = {rom_word32,rom_word32};
 
@@ -1136,7 +1141,10 @@ pvr pvr (
 	.TA_ALLOC_CTRL( pvr_ptr[ 'h140>>2 ] ),
 	
 	// VRAM (vertex/texture access) interface...
-	.vram_wait( vram_wait ),	// input  vram_wait
+	
+	//.vram_wait( vram_wait ),	// input  vram_wait
+	.vram_wait( DDRAM_BUSY ),	// input  vram_wait
+	
 	.vram_rd( vram_rd ),			// output  vram_rd
 	.vram_wr( vram_wr ),			// output  vram_wr
 	.vram_addr( vram_addr ),	// output [23:0]  vram_addr
