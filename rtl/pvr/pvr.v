@@ -1,3 +1,4 @@
+
 `timescale 1ns / 1ps
 `default_nettype none
 
@@ -449,30 +450,6 @@ always @(posedge clock) begin
 	endcase
 end
 
-/*
-wire [21:0] param_req_addr = (vram_addr>>2);
-wire param_read = 1'b0;
-
-wire [31:0] param_dout;
-wire param_data_ready;
-
-param_cache  param_cache_inst (
-	.reset_n( reset_n ),
-	.clock( clock ),
-
-	.param_req_addr( param_req_addr ),			// input [21:0]  param_req_addr
-	.param_read( param_read ),					// input  param_read
-	
-	.ddram_waitrequest( ddram_waitrequest ),	// input  ddram_waitrequest
-	.ddram_addr( ddram_addr ),					// output [21:0]  ddram_addr
-	.ddram_read_burst( ddram_read_burst ),		// output  ddram_read_burst
-	.ddram_readdata( ddram_readdata ),			// input [31:0]  ddram_readdata
-	.ddram_readdata_valid( ddram_readdata_valid ),	// input  ddram_readdata_valid
-	
-	.param_dout( param_dout ),					// output [31:0]  param_dout
-	.param_data_ready( param_data_ready )		// output  param_data_ready
-);
-*/
 
 wire ra_trig = 1'b1;
 
@@ -483,7 +460,7 @@ wire [31:0] ra_vram_din = (!ra_vram_addr[22]) ? vram_din[31:0] : vram_din[63:32]
 
 wire [31:0] ra_control;
 wire ra_cont_last;
-wire ra_cont_zclear;
+wire ra_cont_zclear_n;
 wire ra_cont_flush;
 wire [5:0] ra_cont_tiley;
 wire [5:0] ra_cont_tilex;
@@ -500,8 +477,11 @@ wire [31:0] opb_word;
 
 wire [23:0] poly_addr;
 wire render_poly;
+wire render_to_tile;
 
 wire [2:0] type_cnt;
+
+wire isp_idle = (isp_state==8'd0);
 
 ra_parser ra_parser_inst (
 	.clock( clock ),		// input  clock
@@ -523,12 +503,15 @@ ra_parser ra_parser_inst (
 	
 	.ra_control( ra_control ),			// output [31:0]  ra_control
 	.ra_cont_last( ra_cont_last ),		// output ra_cont_last
-	.ra_cont_zclear( ra_cont_zclear ),	// output ra_cont_zclear
+	.ra_cont_zclear_n( ra_cont_zclear_n ),	// output ra_cont_zclear
 	.ra_cont_flush( ra_cont_flush ),	// output ra_cont_flush
 	.ra_cont_tiley( ra_cont_tiley ),	// output [5:0]  ra_cont_tiley
 	.ra_cont_tilex( ra_cont_tilex ),	// output [5:0]  ra_cont_tilex
 
+	.ra_new_tile_start( ra_new_tile_start ),	// output  ra_new_tile_start
 	.type_cnt( type_cnt ),				// output [2:0]  type_cnt
+	
+	.isp_idle( isp_idle ),
 
 	.ra_opaque( ra_opaque ),			// output [31:0]  ra_opaque
 	.ra_opaque_mod( ra_opaque_mod ),	// output [31:0]  ra_opaque_mod
@@ -542,16 +525,22 @@ ra_parser ra_parser_inst (
 	
 	.poly_addr( poly_addr ),			// output [23:0]  poly_addr
 	.render_poly( render_poly ),		// output  render_poly
+	.render_to_tile( render_to_tile ),	// output  render_to_tile
 	
 	.clear_fb( clear_fb ),				// output  clear_fb
 	.clear_fb_pend( clear_fb_pend ),	// input   clear_fb_done
 	
 	.poly_drawn( poly_drawn ),			// input  poly_drawn
-	.tile_prims_done( tile_prims_done )	// output tile_prims_done
+	.tile_prims_done( tile_prims_done ),	// output tile_prims_done
+	
+	.tile_accum_done( tile_accum_done )	// input  tile_accum_done
 );
 
 wire clear_fb;
 wire clear_fb_pend;
+
+wire ra_new_tile_start;
+wire tile_accum_done;
 
 wire tile_prims_done;
 wire poly_drawn;
@@ -572,8 +561,8 @@ if (!reset_n) begin
 	isp_switch <= 1'b0;
 end
 else begin
-	if (render_poly) isp_switch <= 1'b1;
-	if (poly_drawn) isp_switch <= 1'b0;
+	if (render_poly || render_to_tile)  isp_switch <= 1'b1;
+	if (poly_drawn  || tile_accum_done) isp_switch <= 1'b0;
 end
 
 assign vram_addr = (isp_switch) ? isp_vram_addr_out : ra_vram_addr;
@@ -581,6 +570,9 @@ assign vram_rd   = (isp_switch) ? isp_vram_rd       : ra_vram_rd;
 assign vram_wr   = (isp_switch) ? isp_vram_wr       : ra_vram_wr;
 assign vram_dout = isp_vram_dout;
 
+wire [7:0] isp_state;
+
+wire [31:0] pal_dout;
 
 isp_parser isp_parser_inst (
 	.clock( clock ),						// input  clock
@@ -590,433 +582,55 @@ isp_parser isp_parser_inst (
 	
 	.type_cnt( type_cnt ),				// input [2:0]  type_cnt
 	
-	.poly_addr( poly_addr ),			// input [23:0]  poly_addr
-	.render_poly( render_poly ),		// input  render_poly
+	.ra_cont_zclear_n( ra_cont_zclear_n ),	// input  ra_cont_zclear_n
+	.poly_addr( poly_addr ),					// input [23:0]  poly_addr
+	.render_poly( render_poly ),				// input  render_poly
+	.render_to_tile( render_to_tile ),		// input  render_to_tile
 	
-	.vram_wait( vram_wait ),			// input  vram_wait
-	.vram_valid( vram_valid ),			// input  vram_valid
-	.isp_vram_rd( isp_vram_rd ),		// output  isp_vram_rd
-	.isp_vram_wr( isp_vram_wr ),		// output  isp_vram_wr
+	.vram_wait( vram_wait ),						// input  vram_wait
+	.vram_valid( vram_valid ),						// input  vram_valid
+	.isp_vram_rd( isp_vram_rd ),					// output  isp_vram_rd
+	.isp_vram_wr( isp_vram_wr ),					// output  isp_vram_wr
 	.isp_vram_addr_out( isp_vram_addr_out ),	// output [23:0]  isp_vram_addr_out
-	.isp_vram_din( isp_vram_din ),		// input  [31:0]  isp_vram_din
-	.isp_vram_dout( isp_vram_dout ),		// output  [31:0]  isp_vram_dout
+	.isp_vram_din( isp_vram_din ),				// input  [31:0]  isp_vram_din
+	.isp_vram_dout( isp_vram_dout ),				// output  [31:0]  isp_vram_dout
 	
-	.tex_vram_din( vram_din ),				// full 64-bit input [63:0]
+	.tex_vram_din( vram_din ),						// full 64-bit input [63:0]
 	
-	.fb_addr( fb_addr ),						// output [22:0]  fb_addr
-	.fb_writedata( fb_writedata ),		// output [63:0]  fb_writedata
-	.fb_byteena( fb_byteena ),				// output [7:0]  fb_byteena
-	.fb_we( fb_we ),							// output  fb_we
+	.fb_addr( fb_addr ),								// output [22:0]  fb_addr
+	.fb_writedata( fb_writedata ),				// output [63:0]  fb_writedata
+	.fb_byteena( fb_byteena ),						// output [7:0]  fb_byteena
+	.fb_we( fb_we ),									// output  fb_we
 	
-	.isp_entry_valid( isp_entry_valid ),// output  isp_entry_valid
+	.isp_entry_valid( isp_entry_valid ),		// output  isp_entry_valid
 	
-	.ra_entry_valid( ra_entry_valid ),	// New Region Array entry read / new tile.
-	.tile_prims_done( tile_prims_done ),// input tile_prims_done
+	.ra_new_tile_start( ra_new_tile_start ),	// input  ra_new_tile_start
+	.ra_entry_valid( ra_entry_valid ),			// New Region Array entry read / new tile.
+	.tile_prims_done( tile_prims_done ),		// input tile_prims_done
 	
-	.poly_drawn( poly_drawn ),				// output poly_drawn
+	.poly_drawn( poly_drawn ),						// output poly_drawn
+	.tile_accum_done( tile_accum_done ),		// output  tile_accum_done
 	
 	.tilex( ra_cont_tilex ),
 	.tiley( ra_cont_tiley ),
 	
-	.clear_fb( clear_fb ),					// input  clear_fb
-	.clear_fb_pend( clear_fb_pend ),		// output clear_fb_done
+	.clear_fb( clear_fb ),						// input  clear_fb
+	.clear_fb_pend( clear_fb_pend ),			// output clear_fb_done
 	
 	.FB_R_SOF1( FB_R_SOF1 ),
 	.FB_R_SOF2( FB_R_SOF2 ),
 	
-	.TEXT_CONTROL( TEXT_CONTROL ),		// From TEXT_CONTROL reg. (0xE4 in PVR regs).
-	.PAL_RAM_CTRL( PAL_RAM_CTRL[1:0] ),	// From PAL_RAM_CTRL reg, bits [1:0].
+	.TEXT_CONTROL( TEXT_CONTROL ),			// From TEXT_CONTROL reg. (0xE4 in PVR regs).
+	.PAL_RAM_CTRL( PAL_RAM_CTRL[1:0] ),		// From PAL_RAM_CTRL reg, bits [1:0].
 	
-	.pal_addr( pvr_addr[11:2] ),	// input [9:0]  pal_addr
-	.pal_din( pvr_din ),				// input [31:0]  pal_din
+	.pal_addr( pvr_addr[11:2] ),							// input [9:0]  pal_addr
+	.pal_din( pvr_din ),										// input [31:0]  pal_din
 	.pal_wr( pvr_addr[15:12]==4'b0001 && pvr_wr ),	// input  pal_wr
-	.pal_rd( pvr_rd ),				// input  pal_rd
-	.pal_dout( pal_dout )			// output [31:0]  pal_dout
-);
-
-wire [31:0] pal_dout;
-
-
-/*
-wire ta_fifo_full;
-wire ta_fifo_empty;
-wire [8:0] ta_fifo_words;
-
-wire [31:0] ta_fifo_din = pvr_din;
-wire [31:0] ta_fifo_dout;
-
-// TA Command List FIFO...
-fifo fifo_inst (
-	.clk_i( clock ),				// input  clk_i
-	.reset_n_i( reset_n ),			// input  reset_n_i (active-LOW)
+	.pal_rd( pvr_rd ),										// input  pal_rd
+	.pal_dout( pal_dout ),									// output [31:0]  pal_dout
 	
-	.write_i( ta_fifo_wr ),			// input  write_i
-	.packet_i( ta_fifo_din ),		// input  [31:0] packet_i
-	  
-	.read_i( ta_fifo_read ),		// input  read_i
-	.packet_o( ta_fifo_dout ),		// output  [31:0] packet_o
-	
-	.fifoFull_o( ta_fifo_full ),	// output  fifoFull_o
-	.fifoEmpty_o( ta_fifo_empty ),	// output  fifoEmpty_o
-	
-	.writePtr( ta_fifo_words )		// output  [8:0] writePtr
+	.isp_state( isp_state )									// output [7:0]  isp_state
 );
-
-
-// TA FIFO read state machine...
-reg [7:0] ta_state;
-
-reg ta_fifo_read;
-
-reg [31:0] ta_command;
-
-always @(posedge clock or negedge reset_n)
-if (!reset_n) begin
-	ta_state <= 8'd0;
-	ta_fifo_read <= 1'b0;
-end
-else begin
-	ta_fifo_read <= 1'b0;
-
-	case (ta_state)
-		0: begin
-			if (ta_fifo_words>=8) begin
-				ta_state <= ta_state + 8'd1;
-			end
-			//end
-		end
-		
-		1: begin
-			
-			ta_state <= ta_state + 1;
-		end
-		
-		2: begin
-			ta_command <= vram_din;
-			ta_state <= ta_state + 1;
-		end
-		
-		3: begin
-			// 	 +-----------------+	
-			// bit: | 31-29 |  28-0   |
-			// name:|  cmd  | options |
-			// 	 +-----------------+
-			// cmd: 0 - END_OF_LIST
-			// 	    1 - USER_CLIP
-			// 	    2 - ???
-			// 	    3 - ???
-			// 	    4 - POLYGON / MODIFIER_VOLUME
-			// 	    5 - SPRITE
-			// 	    6 - ???
-			// 	    7 - VERTEX
-		
-			case (ta_command[31:29])
-				0: begin	// END_OF_LIST.
-					ta_state <= 8'd0;
-				end
-				
-				1: begin	// USER_CLIP.
-				
-				end
-
-				2: ta_state <= 8'd0;	// not used.
-				3: ta_state <= 8'd0;	// not used.
-
-				4: begin	// POLYGON / MODIFIER_VOLUME.
-				
-				end
-
-				5: begin	// SPRITE.
-				
-				end
-
-				6: ta_state <= 8'd0;	// not used.
-
-				7: begin	// VERTEX
-				
-				end
-				default: ;
-			endcase
-
-			ta_state <= ta_state + 1;
-		end
-		
-		4: begin
-			ta_state <= 8'd0;					// Done!
-		end
-		
-		default: ;
-	endcase
-
-end
-*/
-
-
-/*
-parameter FPU_ADD = 2'd0;
-parameter FPU_SUB = 2'd1;
-parameter FPU_DIV = 2'd2;
-parameter FPU_MUL = 2'd3;
-
-reg [31:0] fpu_a;
-reg [31:0] fpu_b;
-reg [1:0] fpu_op;
-wire [31:0] fpu_res;
-my_fpu  my_fpu_inst(
-	.clk( clock ),
-	.A( fpu_a ),
-	.B( fpu_b ),
-	.op( fpu_op ),	// 0=ADD, 1=SUB, 2=DIV, 3=MUL.
-	.O( fpu_res )
-);
-
-
-//	X1: 43AF5F3B 350.743988  X2: 43A1A798 323.309326  X3: 43AFB9B7 351.450897  X4: 00000000 0.000000
-//	Y1: 43DE6D90 444.855957  Y2: 43E744E2 462.538147  Y3: 43DBF411 439.906769  Y4: 00000000 0.000000
-//	area: 42F68F27 123.279594
-
-//	X1: 43A1A798 323.309326  X2: 43AFB9B7 351.450897  X3: 43A03B11 320.461456  X4: 00000000 0.000000
-//	Y1: 43E744E2 462.538147  Y2: 43DBF411 439.906769  Y3: 43D94FF1 434.624542  Y4: 00000000 0.000000
-//	area: C4547EF7 -849.983826
-
-
-wire [31:0] v1_x = 32'h43AF5F3B;
-wire [31:0] v2_x = 32'h43A1A798;
-wire [31:0] v3_x = 32'h43AFB9B7;
-wire [31:0] v4_x = 32'h00000000;
-wire [31:0] x1 = FLUSH_NAN(v1_x);
-wire [31:0] x2 = FLUSH_NAN(v2_x);
-wire [31:0] x3 = FLUSH_NAN(v3_x);
-//wire [31:0] x4 = v4 ? FLUSH_NAN(v4_X) : 0;
-
-
-wire [31:0] v1_y = 32'h43DE6D90;
-wire [31:0] v2_y = 32'h43E744E2;
-wire [31:0] v3_y = 32'h43DBF411;
-wire [31:0] v4_y = 32'h00000000;
-wire [31:0] y1 = FLUSH_NAN(v1_y);
-wire [31:0] y2 = FLUSH_NAN(v2_y);
-wire [31:0] y3 = FLUSH_NAN(v3_y);
-//wire [31:0] y4 = v4 ? FLUSH_NAN(v4_y) : 0;
-
-
-reg [31:0] x1_sub_x3;
-reg [31:0] y2_sub_y3;
-reg [31:0] y1_sub_y3;
-reg [31:0] x2_sub_x3;
-
-reg [31:0] x1x3_mul_y2y3;
-reg [31:0] y1y3_mul_x2x3;
-
-//wire [31:0] area = ((X1 - X3) * (Y2 - Y3) - (Y1 - Y3) * (X2 - X3));
-
-reg [31:0] area;
-
-reg trig_calcs;
-reg [7:0] calc_state;
-
-reg [7:0] delay;
-parameter delay_amt = 8'd1;
-
-always @(posedge clock or negedge reset_n)
-if (!reset_n) begin
-	trig_calcs <= 1'b0;
-	calc_state <= 8'd0;
-end
-else begin
-
-	case (calc_state)
-		0: begin
-			//if (trig_calcs) begin
-			begin
-				fpu_a <= x1;
-				fpu_b <= x3;
-				fpu_op <= FPU_SUB;
-				delay <= delay_amt;
-				calc_state <= calc_state + 8'd1;
-			end
-		end
-		
-		1: begin
-			if (delay>0) delay <= delay - 8'd1;
-			else begin
-				delay <= delay_amt;
-				calc_state <= calc_state + 8'd1;
-			end
-		end
-		
-		2: begin
-			x1_sub_x3 <= fpu_res;
-		
-			fpu_a <= y2;
-			fpu_b <= y3;
-			fpu_op <= FPU_SUB;
-			calc_state <= calc_state + 8'd1;
-		end
-		
-		3: begin
-			if (delay>0) delay <= delay - 8'd1;
-			else begin
-				delay <= delay_amt;
-				calc_state <= calc_state + 8'd1;
-			end
-		end
-		
-		4: begin
-			y2_sub_y3 <= fpu_res;
-		
-			fpu_a <= y1;
-			fpu_b <= y3;
-			fpu_op <= FPU_SUB;
-			calc_state <= calc_state + 8'd1;
-		end
-		
-		5: begin
-			if (delay>0) delay <= delay - 8'd1;
-			else begin
-				delay <= delay_amt;
-				calc_state <= calc_state + 8'd1;
-			end
-		end
-		
-		6: begin
-			y1_sub_y3 <= fpu_res;
-		
-			fpu_a <= x2;
-			fpu_b <= x3;
-			fpu_op <= FPU_SUB;
-			calc_state <= calc_state + 8'd1;
-		end
-
-		7: begin
-			if (delay>0) delay <= delay - 8'd1;
-			else begin
-				delay <= delay_amt;
-				calc_state <= calc_state + 8'd1;
-			end
-		end
-		
-		8: begin
-			x2_sub_x3 <= fpu_res;
-			
-			fpu_a <= x1_sub_x3;
-			fpu_b <= y2_sub_y3;
-			fpu_op <= FPU_MUL;
-			calc_state <= calc_state + 8'd1;
-		end
-
-		9: begin
-			if (delay>0) delay <= delay - 8'd1;
-			else begin
-				delay <= delay_amt;
-				calc_state <= calc_state + 8'd1;
-			end
-		end
-		
-		10: begin
-			x1x3_mul_y2y3 <= fpu_res;
-		
-			fpu_a <= y1_sub_y3;
-			fpu_b <= x2_sub_x3;
-			fpu_op <= FPU_MUL;
-			calc_state <= calc_state + 8'd1;
-		end
-
-		11: begin
-			if (delay>0) delay <= delay - 8'd1;
-			else begin
-				delay <= delay_amt;
-				calc_state <= calc_state + 8'd1;
-			end
-		end
-		
-		12: begin
-			y1y3_mul_x2x3 <= fpu_res;
-			calc_state <= calc_state + 8'd1;
-		end
-
-		13: begin				
-			fpu_a <= x1x3_mul_y2y3;
-			fpu_b <= fpu_res;
-			fpu_op <= FPU_SUB;
-			calc_state <= calc_state + 8'd1;
-		end
-		
-		14: begin
-			if (delay>0) delay <= delay - 8'd1;
-			else begin
-				delay <= delay_amt;
-				calc_state <= calc_state + 8'd1;
-			end
-		end
-		
-		15: begin
-			area <= fpu_res;
-		end
-		
-		default: ;
-	endcase
-end
-
-wire sgn = !area[31];
-*/
-
-endmodule
-
-/*
-module fifo #(
-  parameter PACKET_WIDTH = 32,
-  parameter FIFO_DEPTH   = 256, 
-  parameter PTR_MSB      = 8,
-  parameter ADDR_MSB     = 7
-  )
-  (
-	  input                           clk_i,
-	  input                           reset_n_i,
-	  input                           read_i,
-	  input                           write_i,
-	  input        [PACKET_WIDTH-1:0] packet_i,
-	  output logic [PACKET_WIDTH-1:0] packet_o,
-	  output logic                    fifoFull_o,
-	  output logic                    fifoEmpty_o,
-	  output logic [PTR_MSB:0]        writePtr
-  );
-  
-  logic [PACKET_WIDTH-1:0] memory [0:FIFO_DEPTH-1];
-  logic [       PTR_MSB:0] readPtr;
-  //logic [       PTR_MSB:0] writePtr;
-  wire  [      ADDR_MSB:0] writeAddr = writePtr[ADDR_MSB:0];
-  wire  [      ADDR_MSB:0] readAddr = readPtr[ADDR_MSB:0]; 
-  
-always_ff@(posedge clk_i or negedge reset_n_i)begin
-if(~reset_n_i)begin
-	readPtr     <= '0;
-	writePtr    <= '0;
-end
-else begin
-	if(write_i && ~fifoFull_o)begin
-		memory[writeAddr] <= packet_i;
-		writePtr         <= writePtr + 1;
-	end
-	if(read_i && ~fifoEmpty_o)begin
-		packet_o <= memory[readAddr];
-		readPtr <= readPtr + 1;
-	end
-end
-end
-  
-assign fifoEmpty_o = (writePtr == readPtr) ? 1'b1: 1'b0;
-assign fifoFull_o  = ((writePtr[ADDR_MSB:0] == readPtr[ADDR_MSB:0])&(writePtr[PTR_MSB] != readPtr[PTR_MSB])) ? 1'b1 : 1'b0;
 
 
 endmodule
-
-
-function [31:0] FLUSH_NAN;  
-	input [31:0] in;  
-	begin  
-		FLUSH_NAN = (in[30:23]==8'd255 && in[22:0]!=0) ? 32'h00000000 :	// If the input value is NaN, return zero.
-																	in;	// Else, return the input value.
-	end
-endfunction
-*/

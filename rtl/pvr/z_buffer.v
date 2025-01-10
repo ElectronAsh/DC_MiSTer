@@ -6,7 +6,6 @@ module z_buffer (
 	input reset_n,
 	
 	input clear_z,
-	input clear_z_pix,
 	output reg clear_done,
 	
 	input [9:0] z_buff_addr,
@@ -48,11 +47,11 @@ else begin
 			clear_pend <= 1'b1;
 		end
 		
-		if (clear_z_pix) z_buffer[ z_buff_addr ] <= 32'd0;
-		else if (inTriangle && depth_allow && !z_write_disable) z_buffer[ z_buff_addr ] <= z_in;
+		if (inTriangle && depth_allow && !z_write_disable) z_buffer[ z_buff_addr ] <= z_in;
 	end
 	
-	old_z <= z_buffer[ z_buff_addr+1 ];		// TESTING. The +1 is a kludge, to lessen the vertical lines.
+	//old_z <= z_buffer[ z_buff_addr+1 ];		// TESTING. The +1 is a kludge, to lessen the vertical lines.
+	old_z <= z_buffer[ z_buff_addr ];
 end
 
 reg [31:0] old_z;
@@ -62,9 +61,9 @@ wire [2:0] depth_comp_in = /*(type_cnt==4 || type_cnt==1 || type_cnt==3) ? 3'd6 
 
 depth_compare depth_compare_inst (
 	.depth_comp( depth_comp_in ),	// input [2:0]  depth_comp
-	.old_z( old_z ),				// input [31:0]  old_z
-	.invW( z_in ),					// input [31:0]  invW
-	.depth_allow( depth_allow )		// output depth_allow
+	.old_z( old_z ),					// input [31:0]  old_z
+	.IP_Z( z_in ),						// input [31:0]  IP_Z
+	.depth_allow( depth_allow )	// output depth_allow
 );
 
 endmodule

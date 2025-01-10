@@ -21,12 +21,12 @@ module interp (
 	input [10:0] x_ps,
 	input [10:0] y_ps,
 	
-	output reg signed [31:0] interp//,
+	output reg signed [31:0] interp,
 	
-	//output reg signed [31:0] interp0,  interp1,  interp2,  interp3,  interp4,  interp5,  interp6,  interp7,
-	//output reg signed [31:0] interp8,  interp9,  interp10, interp11, interp12, interp13, interp14, interp15,
-	//output reg signed [31:0] interp16, interp17, interp18, interp19, interp20, interp21, interp22, interp23,
-	//output reg signed [31:0] interp24, interp25, interp26, interp27, interp28, interp29, interp30, interp31
+	output reg signed [31:0] interp0,  interp1,  interp2,  interp3,  interp4,  interp5,  interp6,  interp7,
+	output reg signed [31:0] interp8,  interp9,  interp10, interp11, interp12, interp13, interp14, interp15,
+	output reg signed [31:0] interp16, interp17, interp18, interp19, interp20, interp21, interp22, interp23,
+	output reg signed [31:0] interp24, interp25, interp26, interp27, interp28, interp29, interp30, interp31
 );
 
 /*
@@ -89,8 +89,8 @@ reg signed [31:0] small_c;			// Can work OK as 32-bit?
 
 reg signed [47:0] y_mult_FDDY_plus_c;	// Can work as 48-bit?
 
-//always @(posedge clock) begin
-always @(*) begin
+always @(posedge clock) begin
+//always @(*) begin
 	// Aa = (FZ3 - FZ1) * (FY2 - FY1) - (FZ2 - FZ1) * (FY3 - FY1);
 	FZ3_sub_FZ1 = (FZ3 - FZ1);
 	FY2_sub_FY1 = (FY2 - FY1);
@@ -134,6 +134,43 @@ always @(*) begin
 	//
 	// No need to shift the result right, as x_ps and y_ps are not fixed-point...
 	interp = (x_ps * FDDX) + y_mult_FDDY_plus_c;
+	
+	// Use accumulation instead of repeated multiplications.
+	interp0  = ({x_ps[10:5],5'd0} * FDDX) + y_mult_FDDY_plus_c;	// Calc for first COLUMN (pixel) only.
+	interp1  = interp0  + FDDX;											// Add X Delta for the rest of the Columns.
+	interp2  = interp1  + FDDX;
+	interp3  = interp2  + FDDX;
+	interp4  = interp3  + FDDX;
+	interp5  = interp4  + FDDX;
+	interp6  = interp5  + FDDX;
+	interp7  = interp6  + FDDX;
+	interp8  = interp7  + FDDX;
+	interp9  = interp8  + FDDX;
+	interp10 = interp9  + FDDX;
+	interp11 = interp10 + FDDX;
+	interp12 = interp11 + FDDX;
+	interp13 = interp12 + FDDX;
+	interp14 = interp13 + FDDX;
+	interp15 = interp14 + FDDX;
+
+	//interp16 = ({x_ps[10:5],5'd16} * FDDX) + y_mult_FDDY_plus_c;
+	interp16 = interp15 + FDDX;
+	interp17 = interp16 + FDDX;
+	interp18 = interp17 + FDDX;
+	interp19 = interp18 + FDDX;
+	interp20 = interp19 + FDDX;
+	interp21 = interp20 + FDDX;
+	interp22 = interp21 + FDDX;
+	interp23 = interp22 + FDDX;
+	interp24 = interp23 + FDDX;
+	interp25 = interp24 + FDDX;
+	interp26 = interp25 + FDDX;
+	interp27 = interp26 + FDDX;
+	interp28 = interp27 + FDDX;
+	interp29 = interp28 + FDDX;
+	interp30 = interp29 + FDDX;
+	interp31 = interp30 + FDDX;
+
 	/*
 	interp0  = ({x_ps[9:5],5'd00} * FDDX) + y_mult_FDDY_plus_c;
 	interp1  = ({x_ps[9:5],5'd01} * FDDX) + y_mult_FDDY_plus_c;

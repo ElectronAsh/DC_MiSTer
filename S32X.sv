@@ -1046,7 +1046,7 @@ wire [31:0] pvr_din = rom_word32;
 wire pvr_rd = 1'b0;
 wire [31:0] pvr_dout;
 
-//wire vram_wait = DDRAM_BUSY;
+wire vram_wait = DDRAM_BUSY;
 wire [23:0] vram_addr;
 wire vram_rd;
 wire vram_wr;
@@ -1142,8 +1142,7 @@ pvr pvr (
 	
 	// VRAM (vertex/texture access) interface...
 	
-	//.vram_wait( vram_wait ),	// input  vram_wait
-	.vram_wait( DDRAM_BUSY ),	// input  vram_wait
+	.vram_wait( vram_wait ),	// input  vram_wait
 	
 	.vram_rd( vram_rd ),			// output  vram_rd
 	.vram_wr( vram_wr ),			// output  vram_wr

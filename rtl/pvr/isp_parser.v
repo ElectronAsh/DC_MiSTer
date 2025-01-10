@@ -16,8 +16,10 @@ module isp_parser (
 	
 	input [2:0] type_cnt,
 	
+	input ra_cont_zclear_n,
 	input [23:0] poly_addr,
 	input render_poly,
+	input render_to_tile,
 	
 	input vram_wait,
 	input vram_valid,
@@ -36,10 +38,12 @@ module isp_parser (
 	output reg [7:0] fb_byteena,
 	output reg fb_we,
 
+	input ra_new_tile_start,
 	input ra_entry_valid,
 	input tile_prims_done,
 	
 	output reg poly_drawn,
+	output reg tile_accum_done,
 
 	input reg [5:0] tilex,
 	input reg [5:0] tiley,
@@ -58,7 +62,9 @@ module isp_parser (
 	output [31:0] pal_dout,
 	
 	input clear_fb,
-	output reg clear_fb_pend
+	output reg clear_fb_pend,
+	
+	output reg [7:0] isp_state
 );
 
 reg [23:0] isp_vram_addr;
@@ -113,6 +119,8 @@ wire stride_flag = tcw_word[25];
 wire [20:0] tex_word_addr = tcw_word[20:0];		// 64-bit WORD address! (but only shift <<2 when accessing 32-bit "halves" of VRAM).
 
 reg [20:0] tex_base_word_addr_old;
+
+reg [20:0] prev_tex_word_addr;
 
 reg [31:0] tsp2_inst;
 reg [31:0] tex2_cont;
@@ -178,7 +186,7 @@ wire two_volume = 1'b0;	// TODO.
 
 
 // Object List read state machine...
-(*noprune*)reg [7:0] isp_state;
+//(*noprune*)reg [7:0] isp_state;
 (*noprune*)reg [2:0] strip_cnt;
 (*noprune*)reg [3:0] array_cnt;
 
@@ -195,6 +203,8 @@ reg [23:0] isp_vram_addr_last;
 reg no_tex_read;
 (*noprune*)reg isp_vram_rd_pend;
 
+reg [11:0] prim_tag;
+
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	isp_state <= 8'd0;
@@ -206,19 +216,30 @@ if (!reset_n) begin
 	poly_drawn <= 1'b0;
 	read_codebook <= 1'b0;
 	tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
+	cb_cache_clear <= 1'b0;
 	clear_fb_pend <= 1'b0;
 	clear_z <= 1'b1;
 	vram_word_addr_old <= 22'h3fffff;
 	no_tex_read <= 1'b0;
 	isp_vram_rd_pend <= 1'b0;
+	prim_tag <= 12'd0;
+	pcache_load <= 1'b0;
+	tile_accum_done <= 1'b0;
 end
 else begin
 	//fb_we <= 1'b0;
 	
+	cb_cache_clear <= 1'b0;
+	
 	isp_entry_valid <= 1'b0;
 	poly_drawn <= 1'b0;
 	
+	clear_z <= 1'b0;
+	
 	read_codebook <= 1'b0;
+	
+	pcache_load <= 1'b0;
+	tile_accum_done <= 1'b0;
 
 	if (isp_vram_rd & !vram_wait) isp_vram_rd <= 1'b0;
 	if (isp_vram_wr & !vram_wait) isp_vram_wr <= 1'b0;
@@ -227,10 +248,15 @@ else begin
 	
 	no_tex_read <= 1'b0;
 	
+	if (ra_new_tile_start) begin	// New tile started!
+		//cb_cache_clear <= 1'b1;	// Using texture address bits [16:8] from the TCW as the "Tag" now. No need to clear before each Tile!
+		clear_z <= 1'b1;
+		prim_tag <= 12'd0;
+	end
+	
 	case (isp_state)
 		0: begin
 			if (render_poly) begin
-				isp_vram_addr <= poly_addr;
 				strip_cnt <= 3'd0;
 				array_cnt <= 4'd0;
 				vert_d_x <= 32'd0;
@@ -239,7 +265,19 @@ else begin
 				vert_d_u0 <= 32'd0;
 				vert_d_v0 <= 32'd0;
 				vram_word_addr_old <= 22'h3fffff;
+				isp_vram_addr <= poly_addr;
 				isp_state <= isp_state + 8'd1;
+			end
+			//else if (tile_prims_done) begin	// Render after ALL prims written to Tag buffer.
+			else if (render_to_tile) begin		// Render after each prim TYPE is written to Tag buffer.
+				tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
+				prim_tag_out_old <= 12'd4095;			// Set an arbitrary High value.
+																// This fixes the issues from when the first (visible) prim's Tag coincided
+																// with the last value left in prim_tag_out_old. Which meant it wasn't reading the codebook for that prim. ElectronAsh.
+				x_ps <= tilex_start;
+				y_ps <= tiley_start;
+				pcache_load <= 1'b1;	// Have to pre-load this, so it renders the first pixel (Tag) correctly.
+				isp_state <= 8'd51;
 			end
 		end
 		
@@ -253,6 +291,7 @@ else begin
 					if (strip_mask[strip_cnt]) begin
 						isp_vram_addr <= poly_addr;	// Always use the absolute start address of the poly. Will fetch ISP/TSP/TCW again, but then skip verts.
 						isp_vram_rd <= 1'b1;
+						/*if (!cache_bypass) */prim_tag <= prim_tag + 12'd1;
 						isp_state <= 8'd2;				// Go to the next state if the current strip_mask bit is set.
 					end
 					else begin									// Current strip_mask bit was NOT set...
@@ -264,6 +303,7 @@ else begin
 			else if (is_tri_array || is_quad_array) begin	// Triangle Array or Quad Array.
 				quad_done <= 1'b0;							// Ready for drawing the first half of a Quad.			
 				array_cnt <= num_prims;	// Shouldn't need a +1 here, because it will render the first triangle with array_cnt==0 anyway. ElectronAsh.
+				/*if (!cache_bypass) */prim_tag <= prim_tag + 12'd1;
 				isp_vram_rd <= 1'b1;
 				isp_state <= 8'd2;
 			end
@@ -540,8 +580,8 @@ else begin
 			isp_state <= isp_state + 8'd1;
 		end
 		
-		47: if (!clear_z) begin
-			if (is_tri_strip && strip_cnt[0]) begin		// Swap verts A and B, for all ODD strip segments.
+		47: if (!z_clear_busy) begin
+			if (is_tri_strip && strip_cnt[0]) begin	// Swap verts A and B, for all ODD strip segments.
 				vert_a_x  <= vert_b_x;
 				vert_a_y  <= vert_b_y;
 				vert_a_z  <= vert_b_z;
@@ -558,12 +598,12 @@ else begin
 				vert_b_base_col_0 <= vert_a_base_col_0;
 				vert_b_off_col <= vert_a_off_col;
 			end
-			isp_entry_valid <= 1'b1;			
+			isp_entry_valid <= 1'b1;
 			isp_vram_addr <= isp_vram_addr + 4;	// I think this is needed, to make isp_vram_addr_last correct in isp_state 49!
 			isp_state <= 8'd49;			// Draw the triangle!
 		end
 		
-		48: if (!clear_z) begin
+		48: if (!z_clear_busy) begin
 			if (is_tri_strip) begin			// Triangle Strip.
 				strip_cnt <= strip_cnt + 3'd1;	// Increment to the next strip_mask bit.
 				isp_state <= 8'd1;
@@ -617,39 +657,51 @@ else begin
 			isp_state <= isp_state + 8'd1;
 		end
 
+		// Write triangle spans to Z / Tag buffer, checking 32 "pixels" at once for inTri AND depth_compare.
 		50: begin
-			if (y_ps < tiley_start+32) begin
-				if (x_ps==tilex_start+32 /*|| /*!inTri*/) begin
-					y_ps <= y_ps + 11'd1;	// Can't check leading_zeros until two clocks *after* incrementing y_ps.
-					x_ps <= tilex_start;		// Still need to set x_ps here, even though it gets set again in state 52!
-					isp_state <= isp_state + 1'd1;	// Had to add an extra clock tick, to allow the VRAM address and texture stuff to update.
-				end											// (fixed the thin vertical lines on the renders. ElectronAsh).
-				else begin
-					x_ps <= x_ps + 12'd1;
-					if (inTri[x_ps[4:0]] && depth_allow) begin
-						//if (texture && (vram_word_addr != vram_word_addr_old)) begin
-							vram_word_addr_old <= vram_word_addr;
-							isp_vram_rd <= 1'b1;	// Read texel...
-						//end
-						//else no_tex_read <= 1'b1;
-						isp_state <= 8'd52;
-					end
-				end
-				fb_addr <= (x_ps+(y_ps*640));	// Framebuffer write address.
-			end
-			else begin	// End of tile, for current POLY.
+			y_ps <= y_ps + 11'd1;
+			if (y_ps[4:0]==5'd31) begin
 				isp_vram_addr <= isp_vram_addr_last;
-				isp_state <= 8'd48;
+				isp_state <= 8'd48;		// Loop, to check next PRIM.
 			end
+			//isp_state <= isp_state + 8'd1;
 		end
-
-		51: begin
-			x_ps <= tilex_start;
-			isp_state <= 8'd50;
+		
+		// Rendering from the Tag buffer now.
+		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
+		//
+		51: if (!read_codebook && !codebook_wait) begin
+			pcache_load <= 1'b1;
+			if (prim_tag_out_old != prim_tag_out) begin			// Check to see if the Tag has changed...
+				prim_tag_out_old <= prim_tag_out;					// If so, make a backup.
+				if (isp_inst_out[25] && tcw_word_out[30]) read_codebook <= 1'b1;	// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
+			end
+			else begin
+				x_ps[4:0] <= x_ps[4:0] + 5'd1;	// Inc x_ps.
+				if (x_ps[4:0]==5'd31) begin
+					y_ps <= y_ps + 11'd1;
+					//x_ps <= tilex_start;	// No need to reset this, as we're now incrementing only bits [4:0] of x_ps.
+				end
+				//isp_vram_addr <= x_ps + (y_ps*640);	// Framebuffer write address.
+				//isp_vram_dout <= final_argb;			// ABGR, for sim display.
+				//isp_vram_wr <= 1'b1;
+				
+				// On the last (lower-right) pixel of the tile...
+				if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin
+					tile_accum_done <= 1'b1;
+					isp_state <= 8'd0;
+				end
+				else begin
+					//vram_word_addr_old <= vram_word_addr;
+					isp_vram_rd <= 1'b1;	// Read texel...
+					fb_addr <= (x_ps+(y_ps*640));
+					isp_state <= isp_state + 8'd1;
+				end
+			end
 		end
 		
 		// Next (visible) pixel...
-		52: if (vram_valid /*|| no_tex_read*/) begin
+		52: if (vram_valid) begin
 			isp_state <= isp_state + 1'd1;
 		end
 		
@@ -658,13 +710,13 @@ else begin
 		end
 		
 		54: begin
-			fb_addr <= /*FB_R_SOF1 +*/ (x_ps+(y_ps*640));
+			//fb_addr <= (x_ps+(y_ps*640));
 			fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
 			fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
 			fb_we <= 1'b1;
-			isp_state <= 8'd50;	// Jump back.
+			if (!vram_wait) isp_state <= 8'd51;	// Jump back.
 		end
-		
+
 		default: ;
 	endcase
 	
@@ -690,8 +742,36 @@ else begin
 	end
 	*/
 	
-	if (tile_prims_done) clear_z <= 1'b1;	// All prim TYPES in this TILE have been processed!
-	else if (clear_done) clear_z <= 1'b0;
+	//if (pcache_load && !cache_bypass) begin
+	if (pcache_load) begin
+		isp_inst				<= isp_inst_out;
+		tsp_inst				<= tsp_inst_out;
+		tcw_word				<= tcw_word_out;
+	
+		vert_a_x				<= vert_a_x_out;
+		vert_a_y				<= vert_a_y_out;
+		vert_a_z				<= vert_a_z_out;
+		vert_a_u0			<= vert_a_u0_out;
+		vert_a_v0			<= vert_a_v0_out;
+		vert_a_base_col_0	<= vert_a_base_col_0_out;
+		vert_a_off_col		<= vert_a_off_col_out;
+		
+		vert_b_x				<= vert_b_x_out;
+		vert_b_y				<= vert_b_y_out;
+		vert_b_z				<= vert_b_z_out;
+		vert_b_u0			<= vert_b_u0_out;
+		vert_b_v0			<= vert_b_v0_out;
+		vert_b_base_col_0	<= vert_b_base_col_0_out;
+		vert_b_off_col		<= vert_b_off_col_out;
+		
+		vert_c_x				<= vert_c_x_out;
+		vert_c_y				<= vert_c_y_out;
+		vert_c_z				<= vert_c_z_out;
+		vert_c_u0			<= vert_c_u0_out;
+		vert_c_v0			<= vert_c_v0_out;
+		vert_c_base_col_0	<= vert_c_base_col_0_out;
+		vert_c_off_col		<= vert_c_off_col_out;
+	end
 end
 
 
@@ -705,6 +785,7 @@ wire [7:0] vert_words = (two_volume&shadow) ? ((skip*2)+3) : (skip+3);
 
 
 // Internal Z-buffer...
+/*
 wire [9:0] z_buff_addr = x_ps[4:0] + (y_ps[4:0]*32);
 wire clear_done;
 wire depth_allow;
@@ -726,6 +807,111 @@ z_buffer  z_buffer_inst(
 	.type_cnt( type_cnt ),		// From the RA. 0=Opaque, 1=Opaque Mod, 2=Trans, 3=Trans mod, 4=PunchThrough.
 	.depth_comp( depth_comp ),
 	.depth_allow( depth_allow )
+);
+*/
+
+
+wire [31:0] isp_inst_out;
+wire [31:0] tsp_inst_out;
+wire [31:0] tcw_word_out;
+
+wire [31:0] vert_a_x_out;
+wire [31:0] vert_a_y_out;
+wire [31:0] vert_a_z_out;
+wire [31:0] vert_a_u0_out;
+wire [31:0] vert_a_v0_out;
+wire [31:0] vert_a_base_col_0_out;
+wire [31:0] vert_a_off_col_out;
+
+wire [31:0] vert_b_x_out;
+wire [31:0] vert_b_y_out;
+wire [31:0] vert_b_z_out;
+wire [31:0] vert_b_u0_out;
+wire [31:0] vert_b_v0_out;
+wire [31:0] vert_b_base_col_0_out;
+wire [31:0] vert_b_off_col_out;
+
+wire [31:0] vert_c_x_out;
+wire [31:0] vert_c_y_out;
+wire [31:0] vert_c_z_out;
+wire [31:0] vert_c_u0_out;
+wire [31:0] vert_c_v0_out;
+wire [31:0] vert_c_base_col_0_out;
+wire [31:0] vert_c_off_col_out;
+
+
+//wire pcache_write = (isp_state==8'd49 && !cache_bypass);
+wire pcache_write = (isp_state==8'd49);
+reg  pcache_load;
+
+reg [11:0] prim_tag_out_old;
+
+wire [11:0] prim_tag_mux = (isp_state>=8'd51) ? prim_tag_out : prim_tag;
+
+param_buffer  param_buffer_inst
+(
+	.clock(clock) ,									// input  clock
+	.reset_n(reset_n) ,								// input  reset_n
+	
+	.prim_tag(prim_tag_mux) ,						// input [11:0] prim_tag
+	
+	.pcache_write(pcache_write) ,					// input  pcache_write
+	
+	.isp_inst_in(isp_inst) ,						// input [31:0] isp_inst_in
+	.tsp_inst_in(tsp_inst) ,						// input [31:0] tsp_inst_in
+	.tcw_word_in(tcw_word) ,						// input [31:0] tcw_word_in
+	
+	.vert_a_x_in(vert_a_x) ,						// input [31:0] vert_a_x_in
+	.vert_a_y_in(vert_a_y) ,						// input [31:0] vert_a_y_in
+	.vert_a_z_in(vert_a_z) ,						// input [31:0] vert_a_z_in
+	.vert_a_u0_in(vert_a_u0) ,						// input [31:0] vert_a_u0_in
+	.vert_a_v0_in(vert_a_v0) ,						// input [31:0] vert_a_v0_in
+	.vert_a_base_col_0_in(vert_a_base_col_0) ,		// input [31:0] vert_a_base_col_0_in
+	.vert_a_off_col_in(vert_a_off_col) ,			// input [31:0] vert_a_off_col_in
+	
+	.vert_b_x_in(vert_b_x) ,						// input [31:0] vert_b_x_in
+	.vert_b_y_in(vert_b_y) ,						// input [31:0] vert_b_y_in
+	.vert_b_z_in(vert_b_z) ,						// input [31:0] vert_b_z_in
+	.vert_b_u0_in(vert_b_u0) ,						// input [31:0] vert_b_u0_in
+	.vert_b_v0_in(vert_b_v0) ,						// input [31:0] vert_b_v0_in
+	.vert_b_base_col_0_in(vert_b_base_col_0) ,		// input [31:0] vert_b_base_col_0_in
+	.vert_b_off_col_in(vert_b_off_col) ,			// input [31:0] vert_b_off_col_in
+	
+	.vert_c_x_in(vert_c_x) ,						// input [31:0] vert_c_x_in
+	.vert_c_y_in(vert_c_y) ,						// input [31:0] vert_c_y_in
+	.vert_c_z_in(vert_c_z) ,						// input [31:0] vert_c_z_in
+	.vert_c_u0_in(vert_c_u0) ,						// input [31:0] vert_c_u0_in
+	.vert_c_v0_in(vert_c_v0) ,						// input [31:0] vert_c_v0_in
+	.vert_c_base_col_0_in(vert_c_base_col_0) ,		// input [31:0] vert_c_base_col_0_in
+	.vert_c_off_col_in(vert_c_off_col) ,			// input [31:0] vert_c_off_col_in
+	
+	.isp_inst_out(isp_inst_out) ,					// output [31:0] isp_inst_out
+	.tsp_inst_out(tsp_inst_out) ,					// output [31:0] tsp_inst_out
+	.tcw_word_out(tcw_word_out) ,					// output [31:0] tcw_word_out
+	
+	.vert_a_x_out(vert_a_x_out) ,					// output [31:0] vert_a_x_out
+	.vert_a_y_out(vert_a_y_out) ,					// output [31:0] vert_a_y_out
+	.vert_a_z_out(vert_a_z_out) ,					// output [31:0] vert_a_z_out
+	.vert_a_u0_out(vert_a_u0_out) ,					// output [31:0] vert_a_u0_out
+	.vert_a_v0_out(vert_a_v0_out) ,					// output [31:0] vert_a_v0_out
+	.vert_a_base_col_0_out(vert_a_base_col_0_out) ,	// output [31:0] vert_a_base_col_0_out
+	.vert_a_off_col_out(vert_a_off_col_out) ,		// output [31:0] vert_a_off_col_out
+	
+	.vert_b_x_out(vert_b_x_out) ,					// output [31:0] vert_b_x_out
+	.vert_b_y_out(vert_b_y_out) ,					// output [31:0] vert_b_y_out
+	.vert_b_z_out(vert_b_z_out) ,					// output [31:0] vert_b_z_out
+	.vert_b_u0_out(vert_b_u0_out) ,					// output [31:0] vert_b_u0_out
+	.vert_b_v0_out(vert_b_v0_out) ,					// output [31:0] vert_b_v0_out
+	.vert_b_base_col_0_out(vert_b_base_col_0_out) ,	// output [31:0] vert_b_base_col_0_out
+	.vert_b_off_col_out(vert_b_off_col_out) ,		// output [31:0] vert_b_off_col_out
+	
+	.vert_c_x_out(vert_c_x_out) ,					// output [31:0] vert_c_x_out
+	.vert_c_y_out(vert_c_y_out) ,					// output [31:0] vert_c_y_out
+	.vert_c_z_out(vert_c_z_out) ,					// output [31:0] vert_c_z_out
+	.vert_c_u0_out(vert_c_u0_out) ,					// output [31:0] vert_c_u0_out
+	.vert_c_v0_out(vert_c_v0_out) ,					// output [31:0] vert_c_v0_out
+	.vert_c_base_col_0_out(vert_c_base_col_0_out) ,	// output [31:0] vert_c_base_col_0_out
+	.vert_c_off_col_out(vert_c_off_col_out) 		// output [31:0] vert_c_off_col_out
 );
 
 
@@ -889,16 +1075,17 @@ interp  interp_inst_z (
 	.x_ps( x_ps ),		// input [10:0] x_ps
 	.y_ps( y_ps ),		// input [10:0] y_ps
 	
-	.interp( IP_Z_INTERP ),	// output signed [31:0]  interp
+	//.interp( IP_Z_INTERP ),	// output signed [31:0]  interp
 
-	//.interp0(  IP_Z[0] ),  .interp1(  IP_Z[1] ),  .interp2(  IP_Z[2] ),  .interp3(  IP_Z[3] ),  .interp4(  IP_Z[4] ),  .interp5(  IP_Z[5] ),  .interp6(  IP_Z[6] ),  .interp7(  IP_Z[7] ),
-	//.interp8(  IP_Z[8] ),  .interp9(  IP_Z[9] ),  .interp10( IP_Z[10] ), .interp11( IP_Z[11] ), .interp12( IP_Z[12] ), .interp13( IP_Z[13] ), .interp14( IP_Z[14] ), .interp15( IP_Z[15] ),
-	//.interp16( IP_Z[16] ), .interp17( IP_Z[17] ), .interp18( IP_Z[18] ), .interp19( IP_Z[19] ), .interp20( IP_Z[20] ), .interp21( IP_Z[21] ), .interp22( IP_Z[22] ), .interp23( IP_Z[23] ),
-	//.interp24( IP_Z[24] ), .interp25( IP_Z[25] ), .interp26( IP_Z[26] ), .interp27( IP_Z[27] ), .interp28( IP_Z[28] ), .interp29( IP_Z[29] ), .interp30( IP_Z[30] ), .interp31( IP_Z[31] )
+	.interp0(  IP_Z[0] ),  .interp1(  IP_Z[1] ),  .interp2(  IP_Z[2] ),  .interp3(  IP_Z[3] ),  .interp4(  IP_Z[4] ),  .interp5(  IP_Z[5] ),  .interp6(  IP_Z[6] ),  .interp7(  IP_Z[7] ),
+	.interp8(  IP_Z[8] ),  .interp9(  IP_Z[9] ),  .interp10( IP_Z[10] ), .interp11( IP_Z[11] ), .interp12( IP_Z[12] ), .interp13( IP_Z[13] ), .interp14( IP_Z[14] ), .interp15( IP_Z[15] ),
+	.interp16( IP_Z[16] ), .interp17( IP_Z[17] ), .interp18( IP_Z[18] ), .interp19( IP_Z[19] ), .interp20( IP_Z[20] ), .interp21( IP_Z[21] ), .interp22( IP_Z[22] ), .interp23( IP_Z[23] ),
+	.interp24( IP_Z[24] ), .interp25( IP_Z[25] ), .interp26( IP_Z[26] ), .interp27( IP_Z[27] ), .interp28( IP_Z[28] ), .interp29( IP_Z[29] ), .interp30( IP_Z[30] ), .interp31( IP_Z[31] )
 );
 
-wire signed [31:0] IP_Z_INTERP /*= FZ1_FIXED*/;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
-//wire signed [31:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
+//wire signed [31:0] IP_Z_INTERP = FZ1_FIXED;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
+//wire signed [31:0] IP_Z_INTERP;
+wire signed [31:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
 
 
 // int w = tex_u_size_full;
@@ -984,8 +1171,10 @@ wire signed [31:0] IP_V_INTERP /*= FV2_FIXED * tex_v_size_full*/;
 wire [10:0] tex_u_size_full = (8<<tex_u_size);
 wire [10:0] tex_v_size_full = (8<<tex_v_size);
 
-wire signed [10:0] u_div_z = (IP_U_INTERP<<<FRAC_DIFF) / IP_Z_INTERP;
-wire signed [10:0] v_div_z = (IP_V_INTERP<<<FRAC_DIFF) / IP_Z_INTERP;
+//wire signed [10:0] u_div_z = (IP_U_INTERP<<<FRAC_DIFF) / IP_Z_INTERP;
+//wire signed [10:0] v_div_z = (IP_V_INTERP<<<FRAC_DIFF) / IP_Z_INTERP;
+wire signed [10:0] u_div_z = (IP_U_INTERP<<<FRAC_DIFF) / z_out;
+wire signed [10:0] v_div_z = (IP_V_INTERP<<<FRAC_DIFF) / z_out;
 
 wire [9:0] u_clamped = (tex_u_clamp && u_div_z>=tex_u_size_full) ? tex_u_size_full-1 :	// Clamp, if U > texture width.
 							  (tex_u_clamp && u_div_z[10]) ? 10'd0 :									// Zero U coord if u_div_z is negative.
@@ -1022,6 +1211,12 @@ texture_address  texture_address_inst (
 	.pal_rd( pal_rd ),					// input  pal_rd
 	.pal_dout( pal_dout ),				// output [31:0]  pal_dout
 	
+	//.prim_tag( prim_tag_out ),		// input [11:0]  prim_tag
+	//.prim_tag( prim_tag ),			// input [11:0]  prim_tag
+
+	//.cb_cache_clear( cb_cache_clear ),	// input  cb_cache_clear (on new tile start).
+	//.cb_cache_hit( cb_cache_hit ),			// output  cb_cache_hit
+	
 	.read_codebook( read_codebook ),	// input  read_codebook
 	.codebook_wait( codebook_wait ),	// output codebook_wait
 	
@@ -1045,6 +1240,10 @@ texture_address  texture_address_inst (
 reg read_codebook;
 wire codebook_wait;
 
+reg cb_cache_clear;
+wire cb_cache_hit;
+
+
 //reg [9:0] sim_ui;
 //reg [9:0] sim_vi;
 
@@ -1055,344 +1254,65 @@ wire [31:0] texel_argb;
 wire [31:0] final_argb;
 
 
-// The registers below make up our 32x32 internal Z buffer.
-//
-// It's a bit hard to describe how the regs below relate to the mapping of the tile pixels, but here goes...
-// 
-// z_col_0[0] is the Z value for the top-left tile pixel.
-// z_col_0[1] is the Z value for the tile pixel just below the top-left pixel, and so-on.
-//
-// z_col_1[0] is the top pixel for the next COLUMN along the tile.
-//
-// The [0:31] number basically selects the tile ROW.
-//
-/*
-reg signed [31:0] z_col_0  [0:31];
-reg signed [31:0] z_col_1  [0:31];
-reg signed [31:0] z_col_2  [0:31];
-reg signed [31:0] z_col_3  [0:31];
-reg signed [31:0] z_col_4  [0:31];
-reg signed [31:0] z_col_5  [0:31];
-reg signed [31:0] z_col_6  [0:31];
-reg signed [31:0] z_col_7  [0:31];
+wire z_clear_busy;
 
-reg signed [31:0] z_col_8  [0:31];
-reg signed [31:0] z_col_9  [0:31];
-reg signed [31:0] z_col_10 [0:31];
-reg signed [31:0] z_col_11 [0:31];
-reg signed [31:0] z_col_12 [0:31];
-reg signed [31:0] z_col_13 [0:31];
-reg signed [31:0] z_col_14 [0:31];
-reg signed [31:0] z_col_15 [0:31];
+wire signed [47:0] z_out;
+wire [11:0] prim_tag_out;
 
-reg signed [31:0] z_col_16 [0:31];
-reg signed [31:0] z_col_17 [0:31];
-reg signed [31:0] z_col_18 [0:31];
-reg signed [31:0] z_col_19 [0:31];
-reg signed [31:0] z_col_20 [0:31];
-reg signed [31:0] z_col_21 [0:31];
-reg signed [31:0] z_col_22 [0:31];
-reg signed [31:0] z_col_23 [0:31];
+wire [2:0] depth_comp_in = /*(type_cnt==4 || type_cnt==1 || type_cnt==3) ? 3'd6 : (type_cnt==2) ? 3'd3 :*/ depth_comp;
 
-reg signed [31:0] z_col_24 [0:31];
-reg signed [31:0] z_col_25 [0:31];
-reg signed [31:0] z_col_26 [0:31];
-reg signed [31:0] z_col_27 [0:31];
-reg signed [31:0] z_col_28 [0:31];
-reg signed [31:0] z_col_29 [0:31];
-reg signed [31:0] z_col_30 [0:31];
-reg signed [31:0] z_col_31 [0:31];
-
-
-wire [31:0] allow_z_write;
-
-reg z_clear_ena;
-reg [5:0] z_clear_row;
-
-always @(posedge clock or negedge reset_n)
-if (!reset_n) begin
-	z_clear_ena <= 1'b0;
-	z_clear_row <= 6'd0;
-end
-else begin
-	if (ra_entry_valid) begin	// New tile started!...
-		z_clear_row <= 6'd0;
-		z_clear_ena <= 1'b1;
-	end
-
-	if (z_clear_ena) begin
-		if (z_clear_row==6'd32) begin
-			z_clear_ena <= 1'b0;
-		end
-		else begin
-			z_col_0[  z_clear_row ] <= 32'd0;
-			z_col_1[  z_clear_row ] <= 32'd0;
-			z_col_2[  z_clear_row ] <= 32'd0;
-			z_col_3[  z_clear_row ] <= 32'd0;
-			z_col_4[  z_clear_row ] <= 32'd0;
-			z_col_5[  z_clear_row ] <= 32'd0;
-			z_col_6[  z_clear_row ] <= 32'd0;
-			z_col_7[  z_clear_row ] <= 32'd0;
-			z_col_8[  z_clear_row ] <= 32'd0;
-			z_col_9[  z_clear_row ] <= 32'd0;
-			z_col_10[ z_clear_row ] <= 32'd0;
-			z_col_11[ z_clear_row ] <= 32'd0;
-			z_col_12[ z_clear_row ] <= 32'd0;
-			z_col_13[ z_clear_row ] <= 32'd0;
-			z_col_14[ z_clear_row ] <= 32'd0;
-			z_col_15[ z_clear_row ] <= 32'd0;
-			z_col_16[ z_clear_row ] <= 32'd0;
-			z_col_17[ z_clear_row ] <= 32'd0;
-			z_col_18[ z_clear_row ] <= 32'd0;
-			z_col_19[ z_clear_row ] <= 32'd0;
-			z_col_20[ z_clear_row ] <= 32'd0;
-			z_col_21[ z_clear_row ] <= 32'd0;
-			z_col_22[ z_clear_row ] <= 32'd0;
-			z_col_23[ z_clear_row ] <= 32'd0;
-			z_col_24[ z_clear_row ] <= 32'd0;
-			z_col_25[ z_clear_row ] <= 32'd0;
-			z_col_26[ z_clear_row ] <= 32'd0;
-			z_col_27[ z_clear_row ] <= 32'd0;
-			z_col_28[ z_clear_row ] <= 32'd0;
-			z_col_29[ z_clear_row ] <= 32'd0;
-			z_col_30[ z_clear_row ] <= 32'd0;
-			z_col_31[ z_clear_row ] <= 32'd0;
-			z_clear_row <= z_clear_row + 5'd1;
-		end
-	end
-
-	//if (isp_state==49 || isp_state==51)
-	begin	// At the start of rendering each tile ROW...
-		// Check the allow_z_write bits, to see if we should write the Z value from the new polygon into the Z buffer.
-		// (for the whole tile ROW).
-		if (allow_z_write[0])  z_col_0 [ y_ps[4:0] ] <= IP_Z[0];
-		if (allow_z_write[1])  z_col_1 [ y_ps[4:0] ] <= IP_Z[1];
-		if (allow_z_write[2])  z_col_2 [ y_ps[4:0] ] <= IP_Z[2];
-		if (allow_z_write[3])  z_col_3 [ y_ps[4:0] ] <= IP_Z[3];
-		if (allow_z_write[4])  z_col_4 [ y_ps[4:0] ] <= IP_Z[4];
-		if (allow_z_write[5])  z_col_5 [ y_ps[4:0] ] <= IP_Z[5];
-		if (allow_z_write[6])  z_col_6 [ y_ps[4:0] ] <= IP_Z[6];
-		if (allow_z_write[7])  z_col_7 [ y_ps[4:0] ] <= IP_Z[7];
-		if (allow_z_write[8])  z_col_8 [ y_ps[4:0] ] <= IP_Z[8];
-		if (allow_z_write[9])  z_col_9 [ y_ps[4:0] ] <= IP_Z[9];
-		if (allow_z_write[10]) z_col_10[ y_ps[4:0] ] <= IP_Z[10];
-		if (allow_z_write[11]) z_col_11[ y_ps[4:0] ] <= IP_Z[11];
-		if (allow_z_write[12]) z_col_12[ y_ps[4:0] ] <= IP_Z[12];
-		if (allow_z_write[13]) z_col_13[ y_ps[4:0] ] <= IP_Z[13];
-		if (allow_z_write[14]) z_col_14[ y_ps[4:0] ] <= IP_Z[14];
-		if (allow_z_write[15]) z_col_15[ y_ps[4:0] ] <= IP_Z[15];
-		if (allow_z_write[16]) z_col_16[ y_ps[4:0] ] <= IP_Z[16];
-		if (allow_z_write[17]) z_col_17[ y_ps[4:0] ] <= IP_Z[17];
-		if (allow_z_write[18]) z_col_18[ y_ps[4:0] ] <= IP_Z[18];
-		if (allow_z_write[19]) z_col_19[ y_ps[4:0] ] <= IP_Z[19];
-		if (allow_z_write[20]) z_col_20[ y_ps[4:0] ] <= IP_Z[20];
-		if (allow_z_write[21]) z_col_21[ y_ps[4:0] ] <= IP_Z[21];
-		if (allow_z_write[22]) z_col_22[ y_ps[4:0] ] <= IP_Z[22];
-		if (allow_z_write[23]) z_col_23[ y_ps[4:0] ] <= IP_Z[23];
-		if (allow_z_write[24]) z_col_24[ y_ps[4:0] ] <= IP_Z[24];
-		if (allow_z_write[25]) z_col_25[ y_ps[4:0] ] <= IP_Z[25];
-		if (allow_z_write[26]) z_col_26[ y_ps[4:0] ] <= IP_Z[26];
-		if (allow_z_write[27]) z_col_27[ y_ps[4:0] ] <= IP_Z[27];
-		if (allow_z_write[28]) z_col_28[ y_ps[4:0] ] <= IP_Z[28];
-		if (allow_z_write[29]) z_col_29[ y_ps[4:0] ] <= IP_Z[29];
-		if (allow_z_write[30]) z_col_30[ y_ps[4:0] ] <= IP_Z[30];
-		if (allow_z_write[31]) z_col_31[ y_ps[4:0] ] <= IP_Z[31];
-	end
-end
-*/
-
-/*
-depth_compare depth_compare_inst0 (
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_0[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[0] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[0] )		// output depth_allow
+z_buff  z_buff_inst(
+	.clock( clock ),
+	.reset_n( reset_n ),
+	
+	.clear_z( clear_z && !ra_cont_zclear_n ),	// clear_z && !ra_cont_zclear_n  New tile started AND ra_cont_zclear_n is asserted (Low).
+	.z_clear_busy( z_clear_busy ),
+	
+	.col_sel( x_ps[4:0] ),			// input [4:0] col_sel  x_ps[4:0]
+	.row_sel( y_ps[4:0] ),			// input [4:0] row_sel  y_ps[4:0]
+	
+	.z_out( z_out ),				// output signed  [47:0]  z_out
+	.prim_tag_out( prim_tag_out ),	// output [11:0]  prim_tag_out
+	
+	.inTri( inTri ),	// input [31:0]  z_write_allow   (Bitwise AND).
+	.trig_z_row_write( isp_state==8'd50 && y_ps<=(tiley_start+31) && !z_write_disable ),
+	
+	.depth_comp_in( depth_comp_in ),
+	
+	.prim_tag_in( prim_tag ),		// input [11:0] prim_tag_in
+	
+	.z_in_col_0 ( IP_Z[0] ),	// input [47:0] z_in_col_0  IP_Z[0]
+	.z_in_col_1 ( IP_Z[1] ),
+	.z_in_col_2 ( IP_Z[2] ),
+	.z_in_col_3 ( IP_Z[3] ),
+	.z_in_col_4 ( IP_Z[4] ),
+	.z_in_col_5 ( IP_Z[5] ),
+	.z_in_col_6 ( IP_Z[6] ),
+	.z_in_col_7 ( IP_Z[7] ),
+	.z_in_col_8 ( IP_Z[8] ),
+	.z_in_col_9 ( IP_Z[9] ),
+	.z_in_col_10( IP_Z[10] ),
+	.z_in_col_11( IP_Z[11] ),
+	.z_in_col_12( IP_Z[12] ),
+	.z_in_col_13( IP_Z[13] ),
+	.z_in_col_14( IP_Z[14] ),
+	.z_in_col_15( IP_Z[15] ),
+	.z_in_col_16( IP_Z[16] ),
+	.z_in_col_17( IP_Z[17] ),
+	.z_in_col_18( IP_Z[18] ),
+	.z_in_col_19( IP_Z[19] ),
+	.z_in_col_20( IP_Z[20] ),
+	.z_in_col_21( IP_Z[21] ),
+	.z_in_col_22( IP_Z[22] ),
+	.z_in_col_23( IP_Z[23] ),
+	.z_in_col_24( IP_Z[24] ),
+	.z_in_col_25( IP_Z[25] ),
+	.z_in_col_26( IP_Z[26] ),
+	.z_in_col_27( IP_Z[27] ),
+	.z_in_col_28( IP_Z[28] ),
+	.z_in_col_29( IP_Z[29] ),
+	.z_in_col_30( IP_Z[30] ),
+	.z_in_col_31( IP_Z[31] )
 );
-depth_compare depth_compare_inst1 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_1[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[1] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[1] )		// output depth_allow
-);	
-depth_compare depth_compare_inst2 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_2[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[2] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[2] )		// output depth_allow
-);	
-depth_compare depth_compare_inst3 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_3[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[3] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[3] )		// output depth_allow
-);	
-depth_compare depth_compare_inst4 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_4[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[4] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[4] )		// output depth_allow
-);	
-depth_compare depth_compare_inst5 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_5[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[5] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[5] )		// output depth_allow
-);	
-depth_compare depth_compare_inst6 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_6[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[6] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[6] )		// output depth_allow
-);	
-depth_compare depth_compare_inst7 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_7[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[7] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[7] )		// output depth_allow
-);	
-depth_compare depth_compare_inst8 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_8[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[8] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[8] )		// output depth_allow
-);	
-depth_compare depth_compare_inst9 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_9[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[9] ),							// input [22:0]  invW
-	.depth_allow( allow_z_write[9] )		// output depth_allow
-);	
-depth_compare depth_compare_inst10 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_10[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[10] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[10] )	// output depth_allow
-);	
-depth_compare depth_compare_inst11 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_11[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[11] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[11] )	// output depth_allow
-);	
-depth_compare depth_compare_inst12 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_12[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[12] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[12] )	// output depth_allow
-);	
-depth_compare depth_compare_inst13 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_13[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[13] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[13] )	// output depth_allow
-);	
-depth_compare depth_compare_inst14 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_14[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[14] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[14] )	// output depth_allow
-);	
-depth_compare depth_compare_inst15 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_15[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[15] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[15] )	// output depth_allow
-);	
-depth_compare depth_compare_inst16 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_16[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[16] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[16] )	// output depth_allow
-);	
-depth_compare depth_compare_inst17 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_17[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[17] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[17] )	// output depth_allow
-);	
-depth_compare depth_compare_inst18 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_18[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[18] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[18] )	// output depth_allow
-);	
-depth_compare depth_compare_inst19 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_19[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[19] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[19] )	// output depth_allow
-);	
-depth_compare depth_compare_inst20 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_20[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[20] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[20] )	// output depth_allow
-);	
-depth_compare depth_compare_inst21 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_21[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[21] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[21] )	// output depth_allow
-);	
-depth_compare depth_compare_inst22 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_22[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[22] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[22] )	// output depth_allow
-);	
-depth_compare depth_compare_inst23 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_23[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[23] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[23] )	// output depth_allow
-);	
-depth_compare depth_compare_inst24 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_24[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[24] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[24] )	// output depth_allow
-);	
-depth_compare depth_compare_inst25 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_25[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[25] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[25] )	// output depth_allow
-);	
-depth_compare depth_compare_inst26 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_26[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[26] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[26] )	// output depth_allow
-);	
-depth_compare depth_compare_inst27 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_27[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[27] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[27] )	// output depth_allow
-);	
-depth_compare depth_compare_inst28 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_28[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[28] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[28] )	// output depth_allow
-);	
-depth_compare depth_compare_inst29 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_29[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[29] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[29] )	// output depth_allow
-);	
-depth_compare depth_compare_inst30 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_30[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[30] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[30] )	// output depth_allow
-);	
-depth_compare depth_compare_inst31 (	
-	.depth_comp( depth_comp ),				// input [2:0]  depth_comp
-	.old_z( z_col_31[ y_ps[4:0] ] ),		// input [22:0]  old_z
-	.invW( IP_Z[31] ),						// input [22:0]  invW
-	.depth_allow( allow_z_write[31] )	// output depth_allow
-);
-*/
+
 endmodule

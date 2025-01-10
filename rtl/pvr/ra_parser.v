@@ -1,3 +1,4 @@
+
 `timescale 1ns / 1ps
 `default_nettype none
 
@@ -22,31 +23,37 @@ module ra_parser (
 	
 	output reg [31:0] ra_control,
 	output wire ra_cont_last,
-	output wire ra_cont_zclear,
+	output wire ra_cont_zclear_n,
 	output wire ra_cont_flush,
 	output wire [5:0] ra_cont_tiley,
 	output wire [5:0] ra_cont_tilex,
 
 	output reg [2:0] type_cnt,
 
+	input isp_idle,
+	
 	output reg [31:0] ra_opaque,
 	output reg [31:0] ra_opaque_mod,
 	output reg [31:0] ra_trans,
 	output reg [31:0] ra_trans_mod,
 	output reg [31:0] ra_puncht,
 	
+	output reg ra_new_tile_start,
 	output reg ra_entry_valid,
 	
 	output reg [31:0] opb_word,
 	
 	output reg [23:0] poly_addr,
 	output reg render_poly,
+	output reg render_to_tile,
 	
 	output reg clear_fb,
 	input clear_fb_pend,
 	
 	input poly_drawn,
-	output reg tile_prims_done
+	output reg tile_prims_done,
+	
+	input tile_accum_done
 );
 
 wire opb_mode = TA_ALLOC_CTRL[20];
@@ -60,11 +67,11 @@ wire [1:0]  o_opb = TA_ALLOC_CTRL[1:0];
 (*noprune*)reg [7:0] ra_state;
 reg [23:0] next_region;
 
-assign ra_cont_last   = ra_control[31];
-assign ra_cont_zclear = ra_control[30];
-assign ra_cont_flush  = ra_control[28];
-assign ra_cont_tiley  = ra_control[13:8];
-assign ra_cont_tilex  = ra_control[7:2];
+assign ra_cont_last     = ra_control[31];
+assign ra_cont_zclear_n = ra_control[30];
+assign ra_cont_flush    = ra_control[28];
+assign ra_cont_tiley    = ra_control[13:8];
+assign ra_cont_tilex    = ra_control[7:2];
 
 // OL Word bit decodes...
 wire [5:0] strip_mask = {opb_word[25], opb_word[26], opb_word[27], opb_word[28], opb_word[29], opb_word[30]};	// For Triangle Strips only.
@@ -85,15 +92,20 @@ if (!reset_n) begin
 	type_cnt <= 3'd0;
 	poly_addr <= 24'h000000;
 	render_poly <= 1'b0;
+	render_to_tile <= 1'b0;
+	ra_new_tile_start <= 1'b0;
 	tile_prims_done <= 1'b0;
 	clear_fb <= 1'b0;
 end
 else begin
+	ra_new_tile_start <= 1'b0;
+
 	clear_fb <= 1'b0;
 
 	ra_entry_valid <= 1'b0;
 	render_poly <= 1'b0;
 
+	render_to_tile <= 1'b0;
 	tile_prims_done <= 1'b0;
 	
 	if (ra_vram_rd && !vram_wait) ra_vram_rd <= 1'b0;
@@ -165,6 +177,7 @@ else begin
 			next_region <= ra_vram_addr;	// Save address of next RA entry.
 			ra_entry_valid <= 1'b1;
 			type_cnt <= 3'd0;
+			ra_new_tile_start <= 1'b1;
 			ra_state <= ra_state + 1;
 		end
 		
@@ -205,22 +218,29 @@ else begin
 		12: begin
 			if (!opb_word[31]) begin					// Triangle Strip.
 				poly_addr <= (PARAM_BASE&24'hf00000)+{opb_word[20:0], 2'b00};
-				render_poly <= 1'b1;
-				ra_state <= ra_state + 8'd1;
+				if (isp_idle) begin
+					render_poly <= 1'b1;
+					ra_state <= ra_state + 8'd1;
+				end
 			end
 			else if (opb_word[31:29]==3'b100) begin		// Triangle Array.
 				poly_addr <= (PARAM_BASE&24'hf00000)+{opb_word[20:0], 2'b00};
-				render_poly <= 1'b1;
-				ra_state <= ra_state + 8'd1;
+				if (isp_idle) begin
+					render_poly <= 1'b1;
+					ra_state <= ra_state + 8'd1;
+				end
 			end
 			else if (opb_word[31:29]==3'b101) begin		// Single Quad, or Quad Array.
 				poly_addr <= (PARAM_BASE&24'hf00000)+{opb_word[20:0], 2'b00};
-				render_poly <= 1'b1;
-				ra_state <= ra_state + 8'd1;
+				if (isp_idle) begin
+					render_poly <= 1'b1;
+					ra_state <= ra_state + 8'd1;
+				end
 			end
 			else if (opb_word[31:29]==3'b111) begin		// Pointer Block Link.
-				if (eol) begin							// Is it the End of this OBJECT List?
-					ra_state <= 8'd14;					// If so, check the next primitive TYPE in the current Region Array block.
+				if (eol) begin								// Is it the End of this OBJECT List?
+					render_to_tile <= 1'b1;				// If so, tell the ISP to Render to the Tile accumulation buffer,
+					ra_state <= 8'd14;					// then check the next primitive TYPE in the current Region Array block.
 				end
 				else begin
 					ra_vram_addr <= {opb_word[23:2], 2'b00};	// Take the Link address jump.
@@ -234,6 +254,7 @@ else begin
 			end
 		end
 		
+		// Wait for poly "Drawn". (or for the Poly to be written to the Tag buffer).
 		13: begin
 			if (poly_drawn) begin
 				if (ra_cont_last) draw_last_tile <= 1'b1;
@@ -242,13 +263,15 @@ else begin
 			end
 		end
 		
-		14: begin
+		// Wait for the tile to be written to the Accumulation buffer.
+		14: if (tile_accum_done) begin
 			if (opb_word[31:29]==3'b111 || poly_drawn) begin
 				ra_state <= 8'd9;	// Check next Object prim TYPE.
 			end
 		end
 		
-		15: begin	// All prim TYPES in this TILE have been processed!
+		// All prim TYPES in this TILE have been processed!
+		15: if (isp_idle) begin
 			tile_prims_done <= 1'b1;
 			if (ra_cont_last) ra_state <= 8'd16;	// TESTING. Don't repeat rendering the same frame, just stop.
 			else begin
