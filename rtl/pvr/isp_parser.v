@@ -2,8 +2,8 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-parameter FRAC_BITS   = 8'd11;
-parameter Z_FRAC_BITS = 8'd11;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
+parameter FRAC_BITS   = 8'd12;
+parameter Z_FRAC_BITS = 8'd12;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
 
 parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS);
 
@@ -69,8 +69,8 @@ module isp_parser (
 
 reg [23:0] isp_vram_addr;
 
-assign isp_vram_addr_out = ((isp_state>=8'd49 && isp_state<=8'd53) || isp_state==5) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
-																													isp_vram_addr;					// Output ISP Parser BYTE address.
+assign isp_vram_addr_out = ((isp_state>=8'd49 && isp_state<=8'd53) || isp_state==5 || codebook_wait) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
+																																		 isp_vram_addr;				// Output ISP Parser BYTE address.
 
 // OL Word bit decodes...
 wire [5:0] strip_mask = {opb_word[25], opb_word[26], opb_word[27], opb_word[28], opb_word[29], opb_word[30]};	// For Triangle Strips only.
@@ -218,7 +218,7 @@ if (!reset_n) begin
 	tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
 	cb_cache_clear <= 1'b0;
 	clear_fb_pend <= 1'b0;
-	clear_z <= 1'b1;
+	clear_z <= 1'b0;
 	vram_word_addr_old <= 22'h3fffff;
 	no_tex_read <= 1'b0;
 	isp_vram_rd_pend <= 1'b0;
@@ -613,13 +613,11 @@ else begin
 					if (is_quad_array) begin	// Quad Array (maybe) done.
 						if (!quad_done) begin	// Second half of Quad not done yet...
 							// Swap some verts and UV stuff, for the second half of a Quad. (kludge!)
-							/*
 							vert_b_x <= vert_d_x;
 							vert_b_y <= vert_d_y;
 							//vert_b_z <= vert_d_z;
 							vert_b_u0 <= vert_a_u0;
 							vert_b_v0 <= vert_c_v0;
-							*/
 							isp_state <= 8'd47;	// Draw the second half of the Quad.
 														// isp_entry_valid will tell the C code to latch the
 														// params again, and convert to fixed-point.
@@ -659,40 +657,50 @@ else begin
 
 		// Write triangle spans to Z / Tag buffer, checking 32 "pixels" at once for inTri AND depth_compare.
 		50: begin
-			y_ps <= y_ps + 11'd1;
+			y_ps[4:0] <= y_ps[4:0] + 5'd1;
 			if (y_ps[4:0]==5'd31) begin
 				isp_vram_addr <= isp_vram_addr_last;
 				isp_state <= 8'd48;		// Loop, to check next PRIM.
 			end
-			//isp_state <= isp_state + 8'd1;
+			//else isp_state <= 8'd90;
 		end
+		
+		/*
+		90: begin						// Z-buff write is allowed in this state.
+			isp_state <= isp_state + 8'd1;
+		end
+		
+		91: begin
+			y_ps[4:0] <= y_ps[4:0] + 5'd1;
+			isp_state <= 8'd50;		// Jump back.
+		end
+		*/
 		
 		// Rendering from the Tag buffer now.
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
-		51: if (!read_codebook && !codebook_wait) begin
+		51: if (!z_clear_busy && !read_codebook && !codebook_wait) begin
 			pcache_load <= 1'b1;
 			if (prim_tag_out_old != prim_tag_out) begin			// Check to see if the Tag has changed...
 				prim_tag_out_old <= prim_tag_out;					// If so, make a backup.
-				if (isp_inst_out[25] && tcw_word_out[30]) read_codebook <= 1'b1;	// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
+				if (isp_inst_out[25] && tcw_word_out[30]) begin
+					read_codebook <= 1'b1;	// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
+					isp_state <= 8'd100;
+				end
 			end
 			else begin
-				x_ps[4:0] <= x_ps[4:0] + 5'd1;	// Inc x_ps.
-				if (x_ps[4:0]==5'd31) begin
-					y_ps <= y_ps + 11'd1;
-					//x_ps <= tilex_start;	// No need to reset this, as we're now incrementing only bits [4:0] of x_ps.
-				end
-				//isp_vram_addr <= x_ps + (y_ps*640);	// Framebuffer write address.
-				//isp_vram_dout <= final_argb;			// ABGR, for sim display.
-				//isp_vram_wr <= 1'b1;
-				
 				// On the last (lower-right) pixel of the tile...
 				if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin
-					tile_accum_done <= 1'b1;
-					isp_state <= 8'd0;
+					tile_accum_done <= 1'b1;	// Tell the RA we're done.
+					isp_state <= 8'd0;			// Back to idle state.
 				end
 				else begin
+					x_ps[4:0] <= x_ps[4:0] + 5'd1;			// Inc x_ps[4:0].
+					if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;
 					//vram_word_addr_old <= vram_word_addr;
+					//isp_vram_addr <= x_ps + (y_ps*640);	// Framebuffer write address.
+					//isp_vram_dout <= final_argb;			// ABGR, for sim display.
+					//isp_vram_wr <= 1'b1;
 					isp_vram_rd <= 1'b1;	// Read texel...
 					fb_addr <= (x_ps+(y_ps*640));
 					isp_state <= isp_state + 8'd1;
@@ -715,6 +723,24 @@ else begin
 			fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
 			fb_we <= 1'b1;
 			if (!vram_wait) isp_state <= 8'd51;	// Jump back.
+		end
+		
+		100: begin
+			isp_vram_rd <= 1'b1;		// Read the first Word.
+			isp_state <= 8'd101;
+		end
+		
+		101: begin
+			if (!codebook_wait) isp_state <= 8'd102;
+			else if (vram_valid) isp_state <= 8'd100;	// Jump back.
+		end
+		
+		102: if (vram_valid) begin	// Ditch the last word.
+			isp_state <= 8'd103;
+		end
+		
+		103: begin
+			isp_state <= 8'd51;
 		end
 
 		default: ;
@@ -844,9 +870,9 @@ wire [31:0] vert_c_off_col_out;
 wire pcache_write = (isp_state==8'd49);
 reg  pcache_load;
 
-reg [11:0] prim_tag_out_old;
+reg [9:0] prim_tag_out_old;
 
-wire [11:0] prim_tag_mux = (isp_state>=8'd51) ? prim_tag_out : prim_tag;
+wire [9:0] prim_tag_mux = (isp_state>=8'd51 && isp_state<=8'd54) ? prim_tag_out : prim_tag;
 
 param_buffer  param_buffer_inst
 (
@@ -861,29 +887,29 @@ param_buffer  param_buffer_inst
 	.tsp_inst_in(tsp_inst) ,						// input [31:0] tsp_inst_in
 	.tcw_word_in(tcw_word) ,						// input [31:0] tcw_word_in
 	
-	.vert_a_x_in(vert_a_x) ,						// input [31:0] vert_a_x_in
-	.vert_a_y_in(vert_a_y) ,						// input [31:0] vert_a_y_in
-	.vert_a_z_in(vert_a_z) ,						// input [31:0] vert_a_z_in
-	.vert_a_u0_in(vert_a_u0) ,						// input [31:0] vert_a_u0_in
-	.vert_a_v0_in(vert_a_v0) ,						// input [31:0] vert_a_v0_in
-	.vert_a_base_col_0_in(vert_a_base_col_0) ,		// input [31:0] vert_a_base_col_0_in
-	.vert_a_off_col_in(vert_a_off_col) ,			// input [31:0] vert_a_off_col_in
+	.vert_a_x_in(         vert_a_x) ,			// input [31:0] vert_a_x_in
+	.vert_a_y_in(         vert_a_y) ,			// input [31:0] vert_a_y_in
+	.vert_a_z_in(         vert_a_z) ,			// input [31:0] vert_a_z_in
+	.vert_a_u0_in(        vert_a_u0) ,			// input [31:0] vert_a_u0_in
+	.vert_a_v0_in(        vert_a_v0) ,			// input [31:0] vert_a_v0_in
+	.vert_a_base_col_0_in(vert_a_base_col_0) ,// input [31:0] vert_a_base_col_0_in
+	.vert_a_off_col_in(   vert_a_off_col) ,	// input [31:0] vert_a_off_col_in
 	
-	.vert_b_x_in(vert_b_x) ,						// input [31:0] vert_b_x_in
-	.vert_b_y_in(vert_b_y) ,						// input [31:0] vert_b_y_in
-	.vert_b_z_in(vert_b_z) ,						// input [31:0] vert_b_z_in
-	.vert_b_u0_in(vert_b_u0) ,						// input [31:0] vert_b_u0_in
-	.vert_b_v0_in(vert_b_v0) ,						// input [31:0] vert_b_v0_in
-	.vert_b_base_col_0_in(vert_b_base_col_0) ,		// input [31:0] vert_b_base_col_0_in
-	.vert_b_off_col_in(vert_b_off_col) ,			// input [31:0] vert_b_off_col_in
+	.vert_b_x_in(         vert_b_x) ,			// input [31:0] vert_b_x_in
+	.vert_b_y_in(         vert_b_y) ,			// input [31:0] vert_b_y_in
+	.vert_b_z_in(         vert_b_z) ,			// input [31:0] vert_b_z_in
+	.vert_b_u0_in(        vert_b_u0) ,			// input [31:0] vert_b_u0_in
+	.vert_b_v0_in(        vert_b_v0) ,			// input [31:0] vert_b_v0_in
+	.vert_b_base_col_0_in(vert_b_base_col_0) ,// input [31:0] vert_b_base_col_0_in
+	.vert_b_off_col_in(   vert_b_off_col) ,	// input [31:0] vert_b_off_col_in
 	
-	.vert_c_x_in(vert_c_x) ,						// input [31:0] vert_c_x_in
-	.vert_c_y_in(vert_c_y) ,						// input [31:0] vert_c_y_in
-	.vert_c_z_in(vert_c_z) ,						// input [31:0] vert_c_z_in
-	.vert_c_u0_in(vert_c_u0) ,						// input [31:0] vert_c_u0_in
-	.vert_c_v0_in(vert_c_v0) ,						// input [31:0] vert_c_v0_in
-	.vert_c_base_col_0_in(vert_c_base_col_0) ,		// input [31:0] vert_c_base_col_0_in
-	.vert_c_off_col_in(vert_c_off_col) ,			// input [31:0] vert_c_off_col_in
+	.vert_c_x_in(         vert_c_x) ,			// input [31:0] vert_c_x_in
+	.vert_c_y_in(         vert_c_y) ,			// input [31:0] vert_c_y_in
+	.vert_c_z_in(         vert_c_z) ,			// input [31:0] vert_c_z_in
+	.vert_c_u0_in(        vert_c_u0) ,			// input [31:0] vert_c_u0_in
+	.vert_c_v0_in(        vert_c_v0) ,			// input [31:0] vert_c_v0_in
+	.vert_c_base_col_0_in(vert_c_base_col_0) ,// input [31:0] vert_c_base_col_0_in
+	.vert_c_off_col_in(   vert_c_off_col) ,	// input [31:0] vert_c_off_col_in
 	
 	.isp_inst_out(isp_inst_out) ,					// output [31:0] isp_inst_out
 	.tsp_inst_out(tsp_inst_out) ,					// output [31:0] tsp_inst_out
@@ -947,21 +973,25 @@ float_to_fixed  float_v1 (
 	.fixed( FV1_FIXED )		// output [47:0]  fixed
 );
 
+/*
 wire signed [47:0] vert_b_x_in  = (is_quad_array && quad_done) ? vert_d_x : vert_b_x;
 wire signed [47:0] vert_b_y_in  = (is_quad_array && quad_done) ? vert_d_y : vert_b_y;
 //wire signed [47:0] vert_b_z_in  = (is_quad_array && quad_done) ? vert_d_z : vert_b_z;
 wire signed [47:0] vert_b_u0_in = (is_quad_array && quad_done) ? vert_a_u0 : vert_b_u0;
 wire signed [47:0] vert_b_v0_in = (is_quad_array && quad_done) ? vert_c_v0 : vert_b_v0;
+*/
 
 (*keep*)wire signed [47:0] FX2_FIXED;
 float_to_fixed  float_x2 (
-	.float_in( vert_b_x_in ),	// input [31:0]  float_in
+	//.float_in( vert_b_x_in ),	// input [31:0]  float_in
+	.float_in( vert_b_x ),	// input [31:0]  float_in
 	.FRAC_BITS( FRAC_BITS ),
 	.fixed( FX2_FIXED )		// output [47:0]  fixed
 );
 (*keep*)wire signed [47:0] FY2_FIXED;
 float_to_fixed  float_y2 (
-	.float_in( vert_b_y_in ),	// input [31:0]  float_in
+	//.float_in( vert_b_y_in ),	// input [31:0]  float_in
+	.float_in( vert_b_y ),	// input [31:0]  float_in
 	.FRAC_BITS( FRAC_BITS ),
 	.fixed( FY2_FIXED )		// output [47:0]  fixed
 );
@@ -973,13 +1003,15 @@ float_to_fixed  float_z2 (
 );
 (*keep*)wire signed [47:0] FU2_FIXED;
 float_to_fixed  float_u2 (
-	.float_in( vert_b_u0_in ),	// input [31:0]  float_in
+	//.float_in( vert_b_u0_in ),	// input [31:0]  float_in
+	.float_in( vert_b_u0 ),	// input [31:0]  float_in
 	.FRAC_BITS( FRAC_BITS ),
 	.fixed( FU2_FIXED )		// output [47:0]  fixed
 );
 (*keep*)wire signed [47:0] FV2_FIXED;
 float_to_fixed  float_v2 (
-	.float_in( vert_b_v0_in ),	// input [31:0]  float_in
+	//.float_in( vert_b_v0_in ),	// input [31:0]  float_in
+	.float_in( vert_b_v0 ),	// input [31:0]  float_in
 	.FRAC_BITS( FRAC_BITS ),
 	.fixed( FV2_FIXED )		// output [47:0]  fixed
 );
@@ -1256,10 +1288,12 @@ wire [31:0] final_argb;
 
 wire z_clear_busy;
 
-wire signed [47:0] z_out;
-wire [11:0] prim_tag_out;
+wire signed [31:0] z_out;
+wire [9:0] prim_tag_out;
 
 wire [2:0] depth_comp_in = /*(type_cnt==4 || type_cnt==1 || type_cnt==3) ? 3'd6 : (type_cnt==2) ? 3'd3 :*/ depth_comp;
+
+wire trig_z_row_write = isp_state==8'd50 && y_ps<=(tiley_start+31) && !z_write_disable;
 
 z_buff  z_buff_inst(
 	.clock( clock ),
@@ -1271,17 +1305,17 @@ z_buff  z_buff_inst(
 	.col_sel( x_ps[4:0] ),			// input [4:0] col_sel  x_ps[4:0]
 	.row_sel( y_ps[4:0] ),			// input [4:0] row_sel  y_ps[4:0]
 	
-	.z_out( z_out ),				// output signed  [47:0]  z_out
+	.z_out( z_out ),						// output signed  [31:0]  z_out
 	.prim_tag_out( prim_tag_out ),	// output [11:0]  prim_tag_out
 	
-	.inTri( inTri ),	// input [31:0]  z_write_allow   (Bitwise AND).
-	.trig_z_row_write( isp_state==8'd50 && y_ps<=(tiley_start+31) && !z_write_disable ),
+	.inTri( inTri ),						// input [31:0]  z_write_allow   (Bitwise AND).
+	.trig_z_row_write( trig_z_row_write ),
 	
 	.depth_comp_in( depth_comp_in ),
 	
 	.prim_tag_in( prim_tag ),		// input [11:0] prim_tag_in
 	
-	.z_in_col_0 ( IP_Z[0] ),	// input [47:0] z_in_col_0  IP_Z[0]
+	.z_in_col_0 ( IP_Z[0] ),		// input [47:0] z_in_col_0  IP_Z[0]
 	.z_in_col_1 ( IP_Z[1] ),
 	.z_in_col_2 ( IP_Z[2] ),
 	.z_in_col_3 ( IP_Z[3] ),

@@ -7,7 +7,7 @@ module param_buffer (
 	input clock,
 	input reset_n,
 	
-	input [9:0] prim_tag,
+	input [11:0] prim_tag,
 	
 	input pcache_write,
 	
