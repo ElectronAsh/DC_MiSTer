@@ -284,7 +284,7 @@ depth_compare depth_compare_inst31 (
 // New code...
 wire [31:0] z_write_allow = (z_clear_busy)   ? 32'hffffffff : 
                          (!trig_z_row_write) ? 32'h00000000 :
-                                      (inTri & depth_allow);
+                                      (inTri & depth_allow);		// inTri & depth_allow  Bitwise AND.
 
 
 reg [4:0] z_clear_row;

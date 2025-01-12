@@ -152,8 +152,9 @@ always @(*) begin
     interp14 = interp13 + FDDX;
     interp15 = interp14 + FDDX;
 	
-    interp16 = ({x_ps[10:5],5'd16} * FDDX) + y_mult_FDDY_plus_c;
-    interp17 = interp16 + FDDX;
+    //interp16 = ({x_ps[10:5],5'd16} * FDDX) + y_mult_FDDY_plus_c;
+    interp16 = interp15 + FDDX;
+	 interp17 = interp16 + FDDX;
     interp18 = interp17 + FDDX;
     interp19 = interp18 + FDDX;
     interp20 = interp19 + FDDX;

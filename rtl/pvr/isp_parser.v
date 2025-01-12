@@ -2,8 +2,8 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-parameter FRAC_BITS   = 8'd12;
-parameter Z_FRAC_BITS = 8'd12;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
+parameter FRAC_BITS   = 8'd11;
+parameter Z_FRAC_BITS = 8'd11;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
 
 parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS);
 
@@ -69,14 +69,14 @@ module isp_parser (
 
 reg [23:0] isp_vram_addr;
 
-assign isp_vram_addr_out = ((isp_state>=8'd49 && isp_state<=8'd53) || isp_state==5 || codebook_wait) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
-																																		 isp_vram_addr;				// Output ISP Parser BYTE address.
+assign isp_vram_addr_out = ((isp_state>8'd49) /*|| isp_state==5*/ || codebook_wait) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
+																											     isp_vram_addr;					// Output ISP Parser BYTE address.
 
 // OL Word bit decodes...
 wire [5:0] strip_mask = {opb_word[25], opb_word[26], opb_word[27], opb_word[28], opb_word[29], opb_word[30]};	// For Triangle Strips only.
 wire [3:0] num_prims = opb_word[28:25];	// For Triangle Array or Quad Array only.
-wire shadow = opb_word[24];				// For all three poly types.
-wire [2:0] skip = opb_word[23:21];		// For all three poly types.
+wire shadow = opb_word[24];					// For all three poly types.
+wire [2:0] skip = opb_word[23:21];			// For all three poly types.
 wire eol = opb_word[28];
 
 
@@ -131,7 +131,7 @@ reg [31:0] tex2_cont;
 //
 (*noprune*)reg signed [31:0] vert_a_x;
 (*noprune*)reg signed [31:0] vert_a_y;
-(*noprune*)reg [31:0] vert_a_z;
+(*noprune*)reg signed [31:0] vert_a_z;
 (*noprune*)reg [31:0] vert_a_u0;
 (*noprune*)reg [31:0] vert_a_v0;
 (*noprune*)reg [31:0] vert_a_u1;
@@ -142,7 +142,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_b_x;
 (*noprune*)reg signed [31:0] vert_b_y;
-(*noprune*)reg [31:0] vert_b_z;
+(*noprune*)reg signed [31:0] vert_b_z;
 (*noprune*)reg [31:0] vert_b_u0;
 (*noprune*)reg [31:0] vert_b_v0;
 (*noprune*)reg [31:0] vert_b_u1;
@@ -153,7 +153,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_c_x;
 (*noprune*)reg signed [31:0] vert_c_y;
-(*noprune*)reg [31:0] vert_c_z;
+(*noprune*)reg signed [31:0] vert_c_z;
 (*noprune*)reg [31:0] vert_c_u0;
 (*noprune*)reg [31:0] vert_c_v0;
 (*noprune*)reg [31:0] vert_c_u1;
@@ -164,7 +164,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_d_x;
 (*noprune*)reg signed [31:0] vert_d_y;
-(*noprune*)reg [31:0] vert_d_z;
+(*noprune*)reg signed [31:0] vert_d_z;
 (*noprune*)reg [31:0] vert_d_u0;
 (*noprune*)reg [31:0] vert_d_v0;
 (*noprune*)reg [31:0] vert_d_u1;
@@ -174,15 +174,6 @@ reg [31:0] tex2_cont;
 (*noprune*)reg [31:0] vert_d_off_col;
 
 wire two_volume = 1'b0;	// TODO.
-
-(*noprune*)reg signed [31:0] vert_temp_x;
-(*noprune*)reg signed [31:0] vert_temp_y;
-(*noprune*)reg [31:0] vert_temp_z;
-(*noprune*)reg [31:0] vert_temp_u0;
-(*noprune*)reg [31:0] vert_temp_v0;
-(*noprune*)reg [31:0] vert_temp_base_col_0;
-(*noprune*)reg [31:0] vert_temp_base_col_1;
-(*noprune*)reg [31:0] vert_temp_off_col;
 
 
 // Object List read state machine...
@@ -317,16 +308,18 @@ else begin
 		3: if (vram_valid) begin tsp_inst <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
 		4: if (vram_valid) begin
 			tcw_word <= isp_vram_din;
+			/*
 			if (isp_vram_din[30] && tex_base_word_addr_old != isp_vram_din[20:0]) begin	// Quite a big speed-up, just by checking if the texture BASE addr has changed.
 				tex_base_word_addr_old <= isp_vram_din[20:0];										// No point reading the codebook again, if the texture BASE addr is the same as the last prim.
 				read_codebook <= 1'b1;	// Read VQ Code Book if TCW bit 30 is set.
 				isp_state <= 8'd80;
 			end
-			else begin
+			else begin*/
 				isp_state <= 8'd6;
-			end
+			//end
 		end
 		
+		/*
 		80: begin
 			isp_vram_rd <= 1'b1;		// Read the first Word.
 			isp_state <= 8'd5;
@@ -340,6 +333,7 @@ else begin
 		81: if (vram_valid) begin	// Ditch the last word.
 			 isp_state <= 8'd6;
 		end
+		*/
 		
 		6: begin
 			if (is_tri_strip) isp_vram_addr <= poly_addr + (3<<2) + ((vert_words*strip_cnt) << 2);	// Skip a vert, based on strip_cnt.
@@ -657,24 +651,18 @@ else begin
 
 		// Write triangle spans to Z / Tag buffer, checking 32 "pixels" at once for inTri AND depth_compare.
 		50: begin
-			y_ps[4:0] <= y_ps[4:0] + 5'd1;
+			//y_ps[4:0] <= y_ps[4:0] + 5'd1;
 			if (y_ps[4:0]==5'd31) begin
 				isp_vram_addr <= isp_vram_addr_last;
 				isp_state <= 8'd48;		// Loop, to check next PRIM.
 			end
-			//else isp_state <= 8'd90;
+			else isp_state <= 8'd90;
 		end
 		
-		/*
-		90: begin						// Z-buff write is allowed in this state.
-			isp_state <= isp_state + 8'd1;
-		end
-		
-		91: begin
+		90: begin						// Z-buff write happens in this state!
 			y_ps[4:0] <= y_ps[4:0] + 5'd1;
 			isp_state <= 8'd50;		// Jump back.
 		end
-		*/
 		
 		// Rendering from the Tag buffer now.
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
@@ -716,8 +704,12 @@ else begin
 		53: begin
 			isp_state <= isp_state + 1'd1;
 		end
-		
+
 		54: begin
+			isp_state <= isp_state + 1'd1;
+		end
+		
+		55: begin
 			//fb_addr <= (x_ps+(y_ps*640));
 			fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
 			fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
@@ -727,7 +719,7 @@ else begin
 		
 		100: begin
 			isp_vram_rd <= 1'b1;		// Read the first Word.
-			isp_state <= 8'd101;
+			isp_state <= isp_state + 1'd1;
 		end
 		
 		101: begin
@@ -736,11 +728,13 @@ else begin
 		end
 		
 		102: if (vram_valid) begin	// Ditch the last word.
-			isp_state <= 8'd103;
+			isp_state <= isp_state + 1'd1;
 		end
 		
 		103: begin
-			isp_state <= 8'd51;
+			isp_vram_rd <= 1'b1;	// Read texel...
+			fb_addr <= (x_ps+(y_ps*640));
+			isp_state <= 8'd52;
 		end
 
 		default: ;
@@ -1293,7 +1287,7 @@ wire [9:0] prim_tag_out;
 
 wire [2:0] depth_comp_in = /*(type_cnt==4 || type_cnt==1 || type_cnt==3) ? 3'd6 : (type_cnt==2) ? 3'd3 :*/ depth_comp;
 
-wire trig_z_row_write = isp_state==8'd50 && y_ps<=(tiley_start+31) && !z_write_disable;
+wire trig_z_row_write = isp_state==8'd90 && y_ps<=(tiley_start+31) && !z_write_disable;
 
 z_buff  z_buff_inst(
 	.clock( clock ),
