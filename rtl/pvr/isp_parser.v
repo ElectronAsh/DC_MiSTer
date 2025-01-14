@@ -1,4 +1,5 @@
 
+
 `timescale 1ns / 1ps
 `default_nettype none
 
@@ -69,14 +70,14 @@ module isp_parser (
 
 reg [23:0] isp_vram_addr;
 
-assign isp_vram_addr_out = ((isp_state>8'd49) /*|| isp_state==5*/ || codebook_wait) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
-																											     isp_vram_addr;					// Output ISP Parser BYTE address.
+assign isp_vram_addr_out = ((isp_state>8'd49) || codebook_wait) ? vram_word_addr[21:0]<<2 :	// Output texture WORD address as a BYTE address.
+																						isp_vram_addr;					// Output ISP Parser BYTE address.
 
 // OL Word bit decodes...
 wire [5:0] strip_mask = {opb_word[25], opb_word[26], opb_word[27], opb_word[28], opb_word[29], opb_word[30]};	// For Triangle Strips only.
 wire [3:0] num_prims = opb_word[28:25];	// For Triangle Array or Quad Array only.
-wire shadow = opb_word[24];					// For all three poly types.
-wire [2:0] skip = opb_word[23:21];			// For all three poly types.
+wire shadow = opb_word[24];				// For all three poly types.
+wire [2:0] skip = opb_word[23:21];		// For all three poly types.
 wire eol = opb_word[28];
 
 
@@ -131,7 +132,7 @@ reg [31:0] tex2_cont;
 //
 (*noprune*)reg signed [31:0] vert_a_x;
 (*noprune*)reg signed [31:0] vert_a_y;
-(*noprune*)reg signed [31:0] vert_a_z;
+(*noprune*)reg [31:0] vert_a_z;
 (*noprune*)reg [31:0] vert_a_u0;
 (*noprune*)reg [31:0] vert_a_v0;
 (*noprune*)reg [31:0] vert_a_u1;
@@ -142,7 +143,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_b_x;
 (*noprune*)reg signed [31:0] vert_b_y;
-(*noprune*)reg signed [31:0] vert_b_z;
+(*noprune*)reg [31:0] vert_b_z;
 (*noprune*)reg [31:0] vert_b_u0;
 (*noprune*)reg [31:0] vert_b_v0;
 (*noprune*)reg [31:0] vert_b_u1;
@@ -153,7 +154,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_c_x;
 (*noprune*)reg signed [31:0] vert_c_y;
-(*noprune*)reg signed [31:0] vert_c_z;
+(*noprune*)reg [31:0] vert_c_z;
 (*noprune*)reg [31:0] vert_c_u0;
 (*noprune*)reg [31:0] vert_c_v0;
 (*noprune*)reg [31:0] vert_c_u1;
@@ -164,7 +165,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_d_x;
 (*noprune*)reg signed [31:0] vert_d_y;
-(*noprune*)reg signed [31:0] vert_d_z;
+(*noprune*)reg [31:0] vert_d_z;
 (*noprune*)reg [31:0] vert_d_u0;
 (*noprune*)reg [31:0] vert_d_v0;
 (*noprune*)reg [31:0] vert_d_u1;
@@ -174,6 +175,15 @@ reg [31:0] tex2_cont;
 (*noprune*)reg [31:0] vert_d_off_col;
 
 wire two_volume = 1'b0;	// TODO.
+
+(*noprune*)reg signed [31:0] vert_temp_x;
+(*noprune*)reg signed [31:0] vert_temp_y;
+(*noprune*)reg [31:0] vert_temp_z;
+(*noprune*)reg [31:0] vert_temp_u0;
+(*noprune*)reg [31:0] vert_temp_v0;
+(*noprune*)reg [31:0] vert_temp_base_col_0;
+(*noprune*)reg [31:0] vert_temp_base_col_1;
+(*noprune*)reg [31:0] vert_temp_off_col;
 
 
 // Object List read state machine...
@@ -308,30 +318,12 @@ else begin
 		3: if (vram_valid) begin tsp_inst <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
 		4: if (vram_valid) begin
 			tcw_word <= isp_vram_din;
-			/*
-			if (isp_vram_din[30] && tex_base_word_addr_old != isp_vram_din[20:0]) begin	// Quite a big speed-up, just by checking if the texture BASE addr has changed.
-				tex_base_word_addr_old <= isp_vram_din[20:0];										// No point reading the codebook again, if the texture BASE addr is the same as the last prim.
-				read_codebook <= 1'b1;	// Read VQ Code Book if TCW bit 30 is set.
-				isp_state <= 8'd80;
-			end
-			else begin*/
-				isp_state <= 8'd6;
-			//end
+			isp_state <= 8'd6;	// Skip to isp_state 6.
 		end
 		
 		/*
-		80: begin
-			isp_vram_rd <= 1'b1;		// Read the first Word.
-			isp_state <= 8'd5;
-		end
-		
 		5: begin
-			if (!codebook_wait) isp_state <= 8'd81;
-			else if (vram_valid) isp_state <= 8'd80;	// Jump back.
-		end
-		
-		81: if (vram_valid) begin	// Ditch the last word.
-			 isp_state <= 8'd6;
+			// Spare state. Used to be for Codebook reading, but we're using the Tag buffer now.
 		end
 		*/
 		
@@ -644,24 +636,26 @@ else begin
 			// Per-tile rendering.
 			x_ps <= tilex_start;
 			y_ps <= tiley_start;
-			
 			isp_vram_addr_last <= isp_vram_addr;
 			isp_state <= isp_state + 8'd1;
 		end
 
 		// Write triangle spans to Z / Tag buffer, checking 32 "pixels" at once for inTri AND depth_compare.
 		50: begin
-			//y_ps[4:0] <= y_ps[4:0] + 5'd1;
-			if (y_ps[4:0]==5'd31) begin
-				isp_vram_addr <= isp_vram_addr_last;
-				isp_state <= 8'd48;		// Loop, to check next PRIM.
-			end
-			else isp_state <= 8'd90;
+			isp_state <= 8'd90;
 		end
 		
-		90: begin						// Z-buff write happens in this state!
+		90: begin	// Z-buff write is allowed in this state.
+			isp_state <= isp_state + 8'd1;
+		end
+		
+		91: begin
 			y_ps[4:0] <= y_ps[4:0] + 5'd1;
-			isp_state <= 8'd50;		// Jump back.
+			if (y_ps[4:0]==5'd31) begin
+				isp_vram_addr <= isp_vram_addr_last;
+				isp_state <= 8'd48;		// Done! - Load next PRIM.
+			end
+			else isp_state <= 8'd50;	// Else, Jump back.
 		end
 		
 		// Rendering from the Tag buffer now.
@@ -669,72 +663,67 @@ else begin
 		//
 		51: if (!z_clear_busy && !read_codebook && !codebook_wait) begin
 			pcache_load <= 1'b1;
-			if (prim_tag_out_old != prim_tag_out) begin			// Check to see if the Tag has changed...
-				prim_tag_out_old <= prim_tag_out;					// If so, make a backup.
-				if (isp_inst_out[25] && tcw_word_out[30]) begin
-					read_codebook <= 1'b1;	// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
-					isp_state <= 8'd100;
+			fb_addr <= (x_ps+(y_ps*640));
+			isp_state <= isp_state + 8'd1;
+		end
+		
+		52: begin
+			if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
+				prim_tag_out_old <= prim_tag_out;
+				
+				if (tex_base_word_addr_old != tcw_word_out[20:0]) begin	// Check to see if the texture BASE address has changed...
+					tex_base_word_addr_old <= tcw_word_out[20:0];
+					// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
+					if (isp_inst_out[25] && tcw_word_out[30]) begin	// Check if VQ compressed.
+						read_codebook <= 1'b1;						// If so, read the new Codebook.
+						isp_state <= 8'd100;
+					end
 				end
 			end
-			else begin
-				// On the last (lower-right) pixel of the tile...
-				if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin
+			else begin		// Tag has not changed, but check if the new pixel is flat-shaded/Gouraud, or textured...
+				if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// On the last (lower-right) pixel of the tile...
 					tile_accum_done <= 1'b1;	// Tell the RA we're done.
 					isp_state <= 8'd0;			// Back to idle state.
 				end
 				else begin
 					x_ps[4:0] <= x_ps[4:0] + 5'd1;			// Inc x_ps[4:0].
-					if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;
-					//vram_word_addr_old <= vram_word_addr;
-					//isp_vram_addr <= x_ps + (y_ps*640);	// Framebuffer write address.
-					//isp_vram_dout <= final_argb;			// ABGR, for sim display.
-					//isp_vram_wr <= 1'b1;
-					isp_vram_rd <= 1'b1;	// Read texel...
-					fb_addr <= (x_ps+(y_ps*640));
-					isp_state <= isp_state + 8'd1;
+					if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;					
+					if (isp_inst_out[25]) begin			// If texture flag is set...
+						isp_vram_rd <= 1'b1;			// Read texel...
+						isp_state <= isp_state + 8'd1;
+					end
+					else begin	// Flat-shaded or Gouraud, no need to read a Texel Word...
+						isp_state <= 8'd54;
+					end
 				end
 			end
 		end
-		
+
 		// Next (visible) pixel...
-		52: if (vram_valid) begin
-			isp_state <= isp_state + 1'd1;
-		end
-		
-		53: begin
-			isp_state <= isp_state + 1'd1;
+		53: if (vram_valid) begin
+			isp_state <= isp_state + 8'd1;
 		end
 
-		54: begin
-			isp_state <= isp_state + 1'd1;
-		end
-		
-		55: begin
+		54: if (!vram_wait) begin
 			//fb_addr <= (x_ps+(y_ps*640));
 			fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
 			fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
 			fb_we <= 1'b1;
-			if (!vram_wait) isp_state <= 8'd51;	// Jump back.
+			isp_state <= 8'd51;	// Jump back.
 		end
 		
 		100: begin
-			isp_vram_rd <= 1'b1;		// Read the first Word.
-			isp_state <= isp_state + 1'd1;
+			isp_vram_rd <= 1'b1;	// Read the first word.
+			isp_state <= isp_state + 8'd1;
 		end
 		
 		101: begin
 			if (!codebook_wait) isp_state <= 8'd102;
-			else if (vram_valid) isp_state <= 8'd100;	// Jump back.
+			else if (vram_valid) isp_state <= 8'd100;
 		end
 		
-		102: if (vram_valid) begin	// Ditch the last word.
-			isp_state <= isp_state + 1'd1;
-		end
-		
-		103: begin
-			isp_vram_rd <= 1'b1;	// Read texel...
-			fb_addr <= (x_ps+(y_ps*640));
-			isp_state <= 8'd52;
+		102: if (vram_valid) begin	// Wait for the last word.
+			isp_state <= 8'd51;
 		end
 
 		default: ;
@@ -804,33 +793,6 @@ wire [10:0] tiley_start = {tiley, 5'b00000};
 wire [7:0] vert_words = (two_volume&shadow) ? ((skip*2)+3) : (skip+3);
 
 
-// Internal Z-buffer...
-/*
-wire [9:0] z_buff_addr = x_ps[4:0] + (y_ps[4:0]*32);
-wire clear_done;
-wire depth_allow;
-
-z_buffer  z_buffer_inst(
-	.clock( clock ),
-	.reset_n( reset_n ),
-	
-	.clear_z( clear_z ),
-	.clear_done( clear_done ),
-	
-	.z_buff_addr( z_buff_addr ),
-	.z_in( IP_Z_INTERP ),
-	.z_write_disable( z_write_disable ),
-	//.z_out( old_z ),
-	
-	.inTriangle( inTri[x_ps[4:0]] ),
-	
-	.type_cnt( type_cnt ),		// From the RA. 0=Opaque, 1=Opaque Mod, 2=Trans, 3=Trans mod, 4=PunchThrough.
-	.depth_comp( depth_comp ),
-	.depth_allow( depth_allow )
-);
-*/
-
-
 wire [31:0] isp_inst_out;
 wire [31:0] tsp_inst_out;
 wire [31:0] tcw_word_out;
@@ -866,7 +828,8 @@ reg  pcache_load;
 
 reg [9:0] prim_tag_out_old;
 
-wire [9:0] prim_tag_mux = (isp_state>=8'd51 && isp_state<=8'd54) ? prim_tag_out : prim_tag;
+//wire [9:0] prim_tag_mux = (isp_state>=8'd51 && isp_state<=8'd54) ? prim_tag_out : prim_tag;
+wire [9:0] prim_tag_mux = (isp_state>8'd51) ? prim_tag_out : prim_tag;
 
 param_buffer  param_buffer_inst
 (
@@ -1236,10 +1199,12 @@ texture_address  texture_address_inst (
 	.pal_wr( pal_wr ),					// input  pal_wr
 	.pal_rd( pal_rd ),					// input  pal_rd
 	.pal_dout( pal_dout ),				// output [31:0]  pal_dout
-	
+
+	// Not using the Codebook CACHE atm!
+	// It won't fit the FPGA, until it can be tweaked to properly be inferred in Block memory.
+	//
 	//.prim_tag( prim_tag_out ),		// input [11:0]  prim_tag
 	//.prim_tag( prim_tag ),			// input [11:0]  prim_tag
-
 	//.cb_cache_clear( cb_cache_clear ),	// input  cb_cache_clear (on new tile start).
 	//.cb_cache_hit( cb_cache_hit ),			// output  cb_cache_hit
 	

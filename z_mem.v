@@ -46,9 +46,9 @@ module z_mem (
 
 	input	[4:0]  address;
 	input	  clock;
-	input	[41:0]  data;
+	input	[43:0]  data;
 	input	  wren;
-	output	[41:0]  q;
+	output	[43:0]  q;
 `ifndef ALTERA_RESERVED_QIS
 // synopsys translate_off
 `endif
@@ -57,8 +57,8 @@ module z_mem (
 // synopsys translate_on
 `endif
 
-	wire [41:0] sub_wire0;
-	wire [41:0] q = sub_wire0[41:0];
+	wire [43:0] sub_wire0;
+	wire [43:0] q = sub_wire0[43:0];
 
 	altsyncram	altsyncram_component (
 				.address_a (address),
@@ -93,11 +93,11 @@ module z_mem (
 		altsyncram_component.numwords_a = 32,
 		altsyncram_component.operation_mode = "SINGLE_PORT",
 		altsyncram_component.outdata_aclr_a = "NONE",
-		altsyncram_component.outdata_reg_a = "CLOCK0",
+		altsyncram_component.outdata_reg_a = "UNREGISTERED",
 		altsyncram_component.power_up_uninitialized = "FALSE",
 		altsyncram_component.read_during_write_mode_port_a = "NEW_DATA_NO_NBE_READ",
 		altsyncram_component.widthad_a = 5,
-		altsyncram_component.width_a = 42,
+		altsyncram_component.width_a = 44,
 		altsyncram_component.width_byteena_a = 1;
 
 
@@ -123,7 +123,7 @@ endmodule
 // Retrieval info: PRIVATE: INIT_TO_SIM_X NUMERIC "0"
 // Retrieval info: PRIVATE: INTENDED_DEVICE_FAMILY STRING "Cyclone V"
 // Retrieval info: PRIVATE: JTAG_ENABLED NUMERIC "0"
-// Retrieval info: PRIVATE: JTAG_ID STRING "ZPRM"
+// Retrieval info: PRIVATE: JTAG_ID STRING "NONE"
 // Retrieval info: PRIVATE: MAXIMUM_DEPTH NUMERIC "0"
 // Retrieval info: PRIVATE: MIFfilename STRING ""
 // Retrieval info: PRIVATE: NUMWORDS_A NUMERIC "32"
@@ -131,13 +131,13 @@ endmodule
 // Retrieval info: PRIVATE: READ_DURING_WRITE_MODE_PORT_A NUMERIC "3"
 // Retrieval info: PRIVATE: RegAddr NUMERIC "1"
 // Retrieval info: PRIVATE: RegData NUMERIC "1"
-// Retrieval info: PRIVATE: RegOutput NUMERIC "1"
+// Retrieval info: PRIVATE: RegOutput NUMERIC "0"
 // Retrieval info: PRIVATE: SYNTH_WRAPPER_GEN_POSTFIX STRING "0"
 // Retrieval info: PRIVATE: SingleClock NUMERIC "1"
 // Retrieval info: PRIVATE: UseDQRAM NUMERIC "1"
 // Retrieval info: PRIVATE: WRCONTROL_ACLR_A NUMERIC "0"
 // Retrieval info: PRIVATE: WidthAddr NUMERIC "5"
-// Retrieval info: PRIVATE: WidthData NUMERIC "42"
+// Retrieval info: PRIVATE: WidthData NUMERIC "44"
 // Retrieval info: PRIVATE: rden NUMERIC "0"
 // Retrieval info: LIBRARY: altera_mf altera_mf.altera_mf_components.all
 // Retrieval info: CONSTANT: CLOCK_ENABLE_INPUT_A STRING "BYPASS"
@@ -148,22 +148,22 @@ endmodule
 // Retrieval info: CONSTANT: NUMWORDS_A NUMERIC "32"
 // Retrieval info: CONSTANT: OPERATION_MODE STRING "SINGLE_PORT"
 // Retrieval info: CONSTANT: OUTDATA_ACLR_A STRING "NONE"
-// Retrieval info: CONSTANT: OUTDATA_REG_A STRING "CLOCK0"
+// Retrieval info: CONSTANT: OUTDATA_REG_A STRING "UNREGISTERED"
 // Retrieval info: CONSTANT: POWER_UP_UNINITIALIZED STRING "FALSE"
 // Retrieval info: CONSTANT: READ_DURING_WRITE_MODE_PORT_A STRING "NEW_DATA_NO_NBE_READ"
 // Retrieval info: CONSTANT: WIDTHAD_A NUMERIC "5"
-// Retrieval info: CONSTANT: WIDTH_A NUMERIC "42"
+// Retrieval info: CONSTANT: WIDTH_A NUMERIC "44"
 // Retrieval info: CONSTANT: WIDTH_BYTEENA_A NUMERIC "1"
 // Retrieval info: USED_PORT: address 0 0 5 0 INPUT NODEFVAL "address[4..0]"
 // Retrieval info: USED_PORT: clock 0 0 0 0 INPUT VCC "clock"
-// Retrieval info: USED_PORT: data 0 0 42 0 INPUT NODEFVAL "data[41..0]"
-// Retrieval info: USED_PORT: q 0 0 42 0 OUTPUT NODEFVAL "q[41..0]"
+// Retrieval info: USED_PORT: data 0 0 44 0 INPUT NODEFVAL "data[43..0]"
+// Retrieval info: USED_PORT: q 0 0 44 0 OUTPUT NODEFVAL "q[43..0]"
 // Retrieval info: USED_PORT: wren 0 0 0 0 INPUT NODEFVAL "wren"
 // Retrieval info: CONNECT: @address_a 0 0 5 0 address 0 0 5 0
 // Retrieval info: CONNECT: @clock0 0 0 0 0 clock 0 0 0 0
-// Retrieval info: CONNECT: @data_a 0 0 42 0 data 0 0 42 0
+// Retrieval info: CONNECT: @data_a 0 0 44 0 data 0 0 44 0
 // Retrieval info: CONNECT: @wren_a 0 0 0 0 wren 0 0 0 0
-// Retrieval info: CONNECT: q 0 0 42 0 @q_a 0 0 42 0
+// Retrieval info: CONNECT: q 0 0 44 0 @q_a 0 0 44 0
 // Retrieval info: GEN_FILE: TYPE_NORMAL z_mem.v TRUE
 // Retrieval info: GEN_FILE: TYPE_NORMAL z_mem.inc FALSE
 // Retrieval info: GEN_FILE: TYPE_NORMAL z_mem.cmp FALSE

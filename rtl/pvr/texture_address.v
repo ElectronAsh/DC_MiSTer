@@ -9,9 +9,9 @@ module texture_address (
 	input [31:0] tsp_inst,
 	input [31:0] tcw_word,
 	
-	input [1:0] PAL_RAM_CTRL,	// From PAL_RAM_CTRL[1:0].
 	input [31:0] TEXT_CONTROL,	// From TEXT_CONTROL reg.
 	
+	input [1:0] PAL_RAM_CTRL,	// From PAL_RAM_CTRL[1:0].
 	input [9:0] pal_addr,
 	input [31:0] pal_din,
 	input pal_rd,
@@ -185,9 +185,9 @@ always @(posedge clock) begin
 													 
 	// Shift twop_or_not, based on the number of nibbles, bytes, or words to read from each 64-bit vram_din word.
 	texel_word_offs <= (vq_comp) ? (twop_or_not)>>5 : // VQ = 32 TEXELS per 64-bit VRAM word. (1 BYTE per FOUR Texels).
-							(is_pal4) ? (twop_or_not)>>4 : // PAL4   = 16 TEXELS per 64-bit word. (4BPP).
-							(is_pal8) ? (twop_or_not)>>3 : // PAL8   = 8  TEXELS per 64-bit word. (8BPP).
-											(twop_or_not)>>2;	 // Uncomp = 4  TEXELS per 64-bit word (16BPP).
+							 (is_pal4) ? (twop_or_not)>>4 : // PAL4   = 16 TEXELS per 64-bit word. (4BPP).
+							 (is_pal8) ? (twop_or_not)>>3 : // PAL8   = 8  TEXELS per 64-bit word. (8BPP).
+											 (twop_or_not)>>2;  // Uncomp = 4  TEXELS per 64-bit word (16BPP).
 	
 	// Generate the 64-bit VRAM WORD address using either the Code Book READ index, or texel_word_offs;
 	vram_word_addr <= tex_word_addr + ((codebook_wait) ? cb_word_index : texel_word_offs);
@@ -223,7 +223,7 @@ always @(posedge clock) begin
 	case (PAL_RAM_CTRL)
 		0: pal_final = { {8{pal_raw[15]}},    pal_raw[14:10],pal_raw[14:12], pal_raw[09:05],pal_raw[09:07], pal_raw[04:00],pal_raw[04:02] };// ARGB 1555
 		1: pal_final = {            8'hff,    pal_raw[15:11],pal_raw[15:13], pal_raw[10:05],pal_raw[10:09], pal_raw[04:00],pal_raw[04:02] };//  RGB 565
-		2: pal_final = { {2{pal_raw[15:12]}}, {2{pal_raw[11:08]}},           {2{pal_raw[07:04]}},           {2{pal_raw[03:00]}} };			// ARGB 4444
+		2: pal_final = { {2{pal_raw[15:12]}}, {2{pal_raw[11:08]}},           {2{pal_raw[07:04]}},           {2{pal_raw[03:00]}} };				// ARGB 4444
 		3: pal_final = pal_raw;		// ARGB 8888. (the full 32-bit wide Palette entry is used directly).
 	endcase
 	

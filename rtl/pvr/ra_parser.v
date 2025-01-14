@@ -238,9 +238,9 @@ else begin
 				end
 			end
 			else if (opb_word[31:29]==3'b111) begin		// Pointer Block Link.
-				if (eol) begin								// Is it the End of this OBJECT List?
-					render_to_tile <= 1'b1;				// If so, tell the ISP to Render to the Tile accumulation buffer,
-					ra_state <= 8'd14;					// then check the next primitive TYPE in the current Region Array block.
+				if (eol) begin										// Is it the End of this OBJECT List?
+					render_to_tile <= 1'b1;						// If so, tell the ISP to Render to the Tile accumulation buffer,
+					ra_state <= 8'd14;							// then check the next primitive TYPE in the current Region Array block.
 				end
 				else begin
 					ra_vram_addr <= {opb_word[23:2], 2'b00};	// Take the Link address jump.
