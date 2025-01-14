@@ -11,3 +11,6 @@ derive_clock_uncertainty
 
 set_multicycle_path -from {emu|sdram|*} -to {emu|S32X|sdram_old|*} -start -setup 2
 set_multicycle_path -from {emu|sdram|*} -to {emu|S32X|sdram_old|*} -start -hold 1
+
+set_instance_assignment -name RAM_STYLE "AUTO" -to cache_tags
+set_instance_assignment -name RAM_STYLE "AUTO" -to cache_data

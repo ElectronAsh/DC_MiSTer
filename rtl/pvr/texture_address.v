@@ -210,8 +210,8 @@ always @(posedge clock) begin
 	pal4_nib <= (!twop_or_not[0]) ? pal8_byte[3:0] : pal8_byte[7:4];
 	
 	// Read 16BPP from either the Code Book for VQ, or direct from VRAM.
-	cb_or_direct = (vq_comp) ? code_book[pal8_byte] : vram_din;
-	//cb_or_direct = (vq_comp) ? cb_cache_dout : vram_din;
+	//cb_or_direct = (vq_comp) ? code_book[pal8_byte] : vram_din;
+	cb_or_direct = (vq_comp) ? cb_cache_dout : vram_din;
 	
 	case (twop_or_not[1:0])
 		0: pix16 <= cb_or_direct[15:00];
@@ -317,6 +317,7 @@ reg [31:0] pal_raw;
 reg [31:0] pal_final;
 
 
+/*
 // VQ Code Book. 256 64-bit Words.
 reg [63:0] code_book [0:255];
 reg [8:0] cb_word_index;
@@ -339,36 +340,33 @@ else begin
 end
 
 assign codebook_wait = !cb_word_index[8];
+*/
 
-
-/*
 wire [7:0] cb_word_index;
 wire [63:0] cb_cache_dout;
 
 codebook_cache  codebook_cache_inst (
-	.clock( clock ),
-	.reset_n( reset_n ),
+    .clock( clock ),
+    .reset_n( reset_n ),
 	
-	.cache_clear( cb_cache_clear ),		// input  cb_cache_clear
+	.cache_clear( cb_cache_clear ),	// input  cb_cache_clear
 	
-    //.tag_in( prim_tag ),					// input [8:0]  9-bit unique triangle Tag.
-													// (Actually a PRIMITIVE tag. Often a collection of triangles, which share the same TCW/Codebook).
-	
-	.tag_in( tcw_word[15:7] ),				// input [8:0]  9-bit unique triangle Tag.
-													// Using the texture address now, ignorring the lower 8 bits (256 words), and seems to work great. :o
+    .tag_in( prim_tag ),				// input [9:0]  9-bit unique triangle Tag.
+										// (Actually a PRIMITIVE tag. Often a collection of triangles, which share the same TCW/Codebook).
 										
-	.read_index( pal8_byte ),				// input [7:0]  8-bit offset addr to read from the CB
-	.cache_read( read_codebook ),			// Read request signal
-	.cache_wait( codebook_wait ),			// output  cache_wait
+    .read_index( pal8_byte ),			// input [7:0]  8-bit offset address to read from the CB
+	
+    .cache_read( read_codebook ),		// Read request signal
+	.codebook_wait( codebook_wait ),	// output  codebook_wait / cache_wait
 	
 	.ram_read_offset( cb_word_index ),	// output [7:0]  ram_read_offset (to read from VRAM).
-	.vram_valid( vram_valid ),				// input  vram_valid
-	.cache_din( vram_din ),					// input [63:0]  cache_din
+	.vram_valid( vram_valid ),			// input  vram_valid
+	.cache_din( vram_din ),				// input [63:0]  cache_din
 	
 	.cache_hit( cb_cache_hit ),			// Indicates if the requested tag is in cache
-	.cache_dout( cb_cache_dout ) 			// output [63:0]  cache_dout.  64-bit palette entry data if cache hit
+    .cache_dout( cb_cache_dout ) 		// output [63:0]  cache_dout.  64-bit palette entry data if cache hit
 );
-*/
+
 
 endmodule
 

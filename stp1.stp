@@ -1358,7 +1358,7 @@
         <trigger_in_editor/>
         <trigger_out_editor/>
       </presentation>
-      <trigger CRC="8E7AD1B6" attribute_mem_mode="false" gap_record="true" global_temp="1" is_expanded="true" name="trigger: 2025/01/12 13:36:22  #1" position="pre" power_up_trigger_mode="false" record_data_gap="true" segment_size="256" storage_mode="off" storage_qualifier_disabled="no" storage_qualifier_port_is_pin="false" storage_qualifier_port_name="auto_stp_external_storage_qualifier" storage_qualifier_port_tap_mode="classic" trigger_type="circular">
+      <trigger CRC="8E7AD1B6" attribute_mem_mode="false" gap_record="true" global_temp="1" is_expanded="true" name="trigger: 2025/01/12 13:36:22  #1" position="pre" power_up_trigger_mode="false" record_data_gap="true" segment_size="256" storage_mode="off" storage_qualifier_disabled="no" storage_qualifier_port_is_pin="true" storage_qualifier_port_name="auto_stp_external_storage_qualifier" storage_qualifier_port_tap_mode="classic" trigger_type="circular">
         <power_up_trigger position="pre" storage_qualifier_disabled="no"/>
         <events use_custom_flow_control="no">
           <level enabled="yes" name="condition1" type="basic">'emu:emu|pvr:pvr|isp_parser:isp_parser_inst|tile_accum_done' == rising edge
@@ -40037,6 +40037,7 @@ vg1C0JRbmjSK7gPl7xh/wrNrdZCTwWzYtTQ2lAc5hzXe7fReM7jDhHen/zx1
 ioU74R+QiOmPuR+8hANt/3/JN//ln2R/0xe19yA1jkFCLMZkporerVsYu788
 +N1/BH8DsFX/6pnl5eUHzi8vf3D5wx8697fO3b96hreGGCtNc39o/n9ZUHzT
 
+    
     
     
     

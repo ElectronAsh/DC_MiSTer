@@ -661,7 +661,7 @@ else begin
 		// Rendering from the Tag buffer now.
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
-		51: if (!z_clear_busy && !read_codebook && !codebook_wait) begin
+		51: if (!z_clear_busy /*&& !read_codebook && !codebook_wait*/) begin
 			pcache_load <= 1'b1;
 			fb_addr <= (x_ps+(y_ps*640));
 			isp_state <= isp_state + 8'd1;
@@ -670,7 +670,6 @@ else begin
 		52: begin
 			if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
 				prim_tag_out_old <= prim_tag_out;
-				
 				if (tex_base_word_addr_old != tcw_word_out[20:0]) begin	// Check to see if the texture BASE address has changed...
 					tex_base_word_addr_old <= tcw_word_out[20:0];
 					// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
@@ -713,16 +712,21 @@ else begin
 		end
 		
 		100: begin
-			isp_vram_rd <= 1'b1;	// Read the first word.
-			isp_state <= isp_state + 8'd1;
+			if (!cb_cache_hit) isp_state <= isp_state + 8'd1;	// Codebook Cache MISS !
+			else isp_state <= 8'd51;
 		end
 		
 		101: begin
-			if (!codebook_wait) isp_state <= 8'd102;
-			else if (vram_valid) isp_state <= 8'd100;
+			isp_vram_rd <= 1'b1;	// Read the first Codebook word.
+			isp_state <= isp_state + 8'd1;
 		end
 		
-		102: if (vram_valid) begin	// Wait for the last word.
+		102: begin
+			if (!codebook_wait) isp_state <= 8'd103;
+			else if (vram_valid) isp_state <= 8'd101;
+		end
+		
+		103: if (vram_valid) begin	// Wait for the last word.
 			isp_state <= 8'd51;
 		end
 
@@ -1203,10 +1207,10 @@ texture_address  texture_address_inst (
 	// Not using the Codebook CACHE atm!
 	// It won't fit the FPGA, until it can be tweaked to properly be inferred in Block memory.
 	//
-	//.prim_tag( prim_tag_out ),		// input [11:0]  prim_tag
-	//.prim_tag( prim_tag ),			// input [11:0]  prim_tag
-	//.cb_cache_clear( cb_cache_clear ),	// input  cb_cache_clear (on new tile start).
-	//.cb_cache_hit( cb_cache_hit ),			// output  cb_cache_hit
+	//.prim_tag( prim_tag_out ),		// input [9:0]  prim_tag
+	.prim_tag( tcw_word_out[15:5] ),		// input [9:0]  prim_tag
+	.cb_cache_clear( cb_cache_clear ),	// input  cb_cache_clear (on new tile start).
+	.cb_cache_hit( cb_cache_hit ),		// output  cb_cache_hit
 	
 	.read_codebook( read_codebook ),	// input  read_codebook
 	.codebook_wait( codebook_wait ),	// output codebook_wait
