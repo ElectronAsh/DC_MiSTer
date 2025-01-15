@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-localparam ENTRIES = 512;
+localparam ENTRIES = 1024;
 
 module param_buffer (
 	input clock,

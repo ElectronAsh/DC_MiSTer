@@ -20,9 +20,9 @@ module codebook_cache (
 );
 
 // Cache parameters
-localparam CACHE_DEPTH = 64;	// Number of Cache entries.
-localparam ADDR_WIDTH  = 6;	// Address width (log2(CACHE_DEPTH))
-localparam TAG_WIDTH   = 6;	// Tag width
+localparam CACHE_DEPTH = 128;	// Number of Cache entries.
+localparam ADDR_WIDTH  = 7;	// Address width (log2(CACHE_DEPTH))
+localparam TAG_WIDTH   = 7;	// Tag width
 
 localparam ENTRY_SIZE  = 256;	// 256 words per triangle CB block
 

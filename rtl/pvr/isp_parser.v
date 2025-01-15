@@ -661,15 +661,17 @@ else begin
 		// Rendering from the Tag buffer now.
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
-		51: if (!z_clear_busy /*&& !read_codebook && !codebook_wait*/) begin
+		51: if (!z_clear_busy && !read_codebook && !codebook_wait) begin
 			pcache_load <= 1'b1;
-			fb_addr <= (x_ps+(y_ps*640));
+			//fb_addr <= (x_ps+(y_ps*640));
 			isp_state <= isp_state + 8'd1;
 		end
 		
 		52: begin
-			if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
+			/*if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
 				prim_tag_out_old <= prim_tag_out;
+			end
+			else begin*/		// Tag has not changed, but check if the new pixel is flat-shaded/Gouraud, or textured...
 				if (tex_base_word_addr_old != tcw_word_out[20:0]) begin	// Check to see if the texture BASE address has changed...
 					tex_base_word_addr_old <= tcw_word_out[20:0];
 					// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
@@ -678,37 +680,37 @@ else begin
 						isp_state <= 8'd100;
 					end
 				end
-			end
-			else begin		// Tag has not changed, but check if the new pixel is flat-shaded/Gouraud, or textured...
-				if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// On the last (lower-right) pixel of the tile...
-					tile_accum_done <= 1'b1;	// Tell the RA we're done.
-					isp_state <= 8'd0;			// Back to idle state.
-				end
 				else begin
-					x_ps[4:0] <= x_ps[4:0] + 5'd1;			// Inc x_ps[4:0].
-					if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;					
-					if (isp_inst_out[25]) begin			// If texture flag is set...
-						isp_vram_rd <= 1'b1;			// Read texel...
+					// If texture flag is set AND if vram_word_addr has changed...
+					if (isp_inst_out[25] && (vram_word_addr_old!=vram_word_addr)) begin	
+						vram_word_addr_old <= vram_word_addr;
+						isp_vram_rd <= 1'b1;				// Read a Texel...
 						isp_state <= isp_state + 8'd1;
 					end
 					else begin	// Flat-shaded or Gouraud, no need to read a Texel Word...
 						isp_state <= 8'd54;
 					end
 				end
-			end
+			//end
 		end
 
 		// Next (visible) pixel...
 		53: if (vram_valid) begin
 			isp_state <= isp_state + 8'd1;
 		end
-
+		
 		54: if (!vram_wait) begin
-			//fb_addr <= (x_ps+(y_ps*640));
+			fb_addr <= (x_ps+(y_ps*640));
 			fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
 			fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
 			fb_we <= 1'b1;
-			isp_state <= 8'd51;	// Jump back.
+			x_ps[4:0] <= x_ps[4:0] + 5'd1;			// Inc x_ps[4:0].
+			if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;
+			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// On the last (lower-right) pixel of the tile...
+				tile_accum_done <= 1'b1;	// Tell the RA we're done.
+				isp_state <= 8'd0;			// Back to idle state.
+			end
+			else isp_state <= 8'd51;	// Jump back.
 		end
 		
 		100: begin
@@ -832,8 +834,7 @@ reg  pcache_load;
 
 reg [9:0] prim_tag_out_old;
 
-//wire [9:0] prim_tag_mux = (isp_state>=8'd51 && isp_state<=8'd54) ? prim_tag_out : prim_tag;
-wire [9:0] prim_tag_mux = (isp_state>8'd51) ? prim_tag_out : prim_tag;
+wire [9:0] prim_tag_mux = (isp_state>=8'd51) ? prim_tag_out : prim_tag;
 
 param_buffer  param_buffer_inst
 (
