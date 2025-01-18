@@ -35,6 +35,7 @@ module pvr (
 	// To VRAM. Duh...
 	input wire vram_wait,
 	input wire vram_valid,
+	output wire [7:0] vram_burst_cnt,
 	output wire vram_rd,
 	output wire vram_wr,
 	output wire [23:0] vram_addr,
@@ -462,7 +463,7 @@ wire [31:0] ra_vram_din = (!ra_vram_addr[22]) ? vram_din[31:0] : vram_din[63:32]
 wire [31:0] ra_control;
 wire ra_cont_last;
 wire ra_cont_zclear_n;
-wire ra_cont_flush;
+wire ra_cont_flush_n;
 wire [5:0] ra_cont_tiley;
 wire [5:0] ra_cont_tilex;
 
@@ -505,7 +506,7 @@ ra_parser ra_parser_inst (
 	.ra_control( ra_control ),			// output [31:0]  ra_control
 	.ra_cont_last( ra_cont_last ),		// output ra_cont_last
 	.ra_cont_zclear_n( ra_cont_zclear_n ),	// output ra_cont_zclear
-	.ra_cont_flush( ra_cont_flush ),	// output ra_cont_flush
+	.ra_cont_flush_n( ra_cont_flush_n ),	// output ra_cont_flush_n
 	.ra_cont_tiley( ra_cont_tiley ),	// output [5:0]  ra_cont_tiley
 	.ra_cont_tilex( ra_cont_tilex ),	// output [5:0]  ra_cont_tilex
 
@@ -566,6 +567,7 @@ else begin
 	if (poly_drawn  || tile_accum_done) isp_switch <= 1'b0;
 end
 
+assign vram_burst_cnt = (isp_switch) ? isp_vram_burst_cnt : 8'd1;
 assign vram_addr = (isp_switch) ? isp_vram_addr_out : ra_vram_addr;
 assign vram_rd   = (isp_switch) ? isp_vram_rd       : ra_vram_rd;
 assign vram_wr   = (isp_switch) ? isp_vram_wr       : ra_vram_wr;
@@ -574,6 +576,8 @@ assign vram_dout = isp_vram_dout;
 wire [7:0] isp_state;
 
 wire [31:0] pal_dout;
+
+wire [7:0] isp_vram_burst_cnt;
 
 isp_parser isp_parser_inst (
 	.clock( clock ),						// input  clock
@@ -584,12 +588,14 @@ isp_parser isp_parser_inst (
 	.type_cnt( type_cnt ),				// input [2:0]  type_cnt
 	
 	.ra_cont_zclear_n( ra_cont_zclear_n ),	// input  ra_cont_zclear_n
+	.ra_cont_flush_n( ra_cont_flush_n ),	// input ra_cont_flush
 	.poly_addr( poly_addr ),					// input [23:0]  poly_addr
 	.render_poly( render_poly ),				// input  render_poly
 	.render_to_tile( render_to_tile ),		// input  render_to_tile
 	
 	.vram_wait( vram_wait ),						// input  vram_wait
 	.vram_valid( vram_valid ),						// input  vram_valid
+	.isp_vram_burst_cnt( isp_vram_burst_cnt ),	// output [7:0]  isp_vram_burst_cnt
 	.isp_vram_rd( isp_vram_rd ),					// output  isp_vram_rd
 	.isp_vram_wr( isp_vram_wr ),					// output  isp_vram_wr
 	.isp_vram_addr_out( isp_vram_addr_out ),	// output [23:0]  isp_vram_addr_out

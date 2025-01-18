@@ -1,24 +1,4 @@
-//============================================================================
-//  FPGAGen port to MiSTer
-//  Copyright (c) 2017-2019 Sorgelig
-//
-//  YM2612 implementation by Jose Tejada Gomez. Twitter: @topapate
-//  Original Genesis code: Copyright (c) 2010-2013 Gregory Estrade (greg@torlus.com) 
-//
-//  This program is free software; you can redistribute it and/or modify it
-//  under the terms of the GNU General Public License as published by the Free
-//  Software Foundation; either version 2 of the License, or (at your option)
-//  any later version.
-//
-//  This program is distributed in the hope that it will be useful, but WITHOUT
-//  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-//  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-//  more details.
-//
-//  You should have received a copy of the GNU General Public License along
-//  with this program; if not, write to the Free Software Foundation, Inc.,
-//  51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-//============================================================================
+
 
 //`define SH4_HAT
 
@@ -226,7 +206,7 @@ assign FB_BASE   = (DDRAM_BASE<<3) + (FB_R_SOF1[22:0] << 1);
 assign FB_WIDTH  = 12'd640;
 assign FB_HEIGHT = 12'd480;
 assign FB_FORMAT = {bgr,1'b0,bpp};	// [4] 0=RGB 1=BGR. [3] 0=16bit 565, 1=16bit 1555. [2:0] 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp.
-assign FB_STRIDE = 14'd1280<<status[8];	// Either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
+assign FB_STRIDE = 14'd640<<status[9:8];	// Either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
 assign FB_FORCE_BLANK = 0;
 
 //wire [2:0] bpp = (status[6]==1'b0) ? 3'b100 :	// 16bpp
@@ -320,13 +300,13 @@ localparam CONF_STR = {
 	"-;",
 	"O[6],FB Format,RGB,BGR;",
 	"O[7],FB BPP,16bpp,32bpp;",
-	"O[8],FB Stride,1280,2560;",
-	"O[9],Addr shift,0,1;",
+	"O[9:8],FB Stride,640,1280,2560,5120;",
+	"O[11:10],Addr Shift,0,1,2,3;",
 	"-;",
 	"P1,Audio & Video;", 
  	"-;",
 	"P1O[5:4],Aspect Ratio,Original,Full Screen,[ARC1],[ARC2];",
-	"P1O[10:8],Scandoubler Fx,None,HQ2x-320,HQ2x-160,CRT 25%,CRT 50%,CRT 75%;",
+	"-;",
 	"d1P1O[32],Vertical Crop,No,Yes;",
 	"P1O[31:30],Scale,Normal,V-Integer,Narrower HV-Integer,Wider HV-Integer;",
 	"P1-;",
@@ -1047,6 +1027,7 @@ wire pvr_rd = 1'b0;
 wire [31:0] pvr_dout;
 
 wire vram_wait = DDRAM_BUSY;
+wire [7:0] vram_burst_cnt;
 wire [23:0] vram_addr;
 wire vram_rd;
 wire vram_wr;
@@ -1063,12 +1044,13 @@ wire [28:0] DDRAM_BASE = (32'h32000000 >>3);	// 800MB. (DDRAM_BASE is the 64-bit
 wire [28:0] dl_word_addr   = DDRAM_BASE + ioctl_addr[21:2];
 wire [28:0] vram_word_addr = DDRAM_BASE +  vram_addr[21:2];
 
-wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + (fb_addr[21:1]>>status[9]);
+wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + (fb_addr[21:0]>>status[11:10]);
 
 wire [63:0] dl_writedata   = {rom_word32,rom_word32};
 
 assign DDRAM_CLK      = clk_sys;
-assign DDRAM_BURSTCNT = /*ioctl_download ?*/ 8'd1 /*: CACHE_BURSTCNT*/;
+//assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : CACHE_BURSTCNT;
+assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : vram_burst_cnt;
 assign DDRAM_ADDR     = ioctl_download ? dl_word_addr : fb_we ? fb_word_addr : vram_word_addr;
 assign DDRAM_DIN      = ioctl_download ? dl_writedata : fb_we ? fb_writedata : vram_dout;			// We are loading the 8MB VRAM dumps into each 32-bit half of DDR3 now.
 assign DDRAM_WE       = ioctl_download ? ddr_wr       : fb_we ? 1'b1         : vram_wr;			// This is so we can do texture reads of the full 64-bit word.
@@ -1143,7 +1125,7 @@ pvr pvr (
 	// VRAM (vertex/texture access) interface...
 	
 	.vram_wait( vram_wait ),	// input  vram_wait
-	
+	.vram_burst_cnt( vram_burst_cnt ),	// output [7:0]  vram_burst_cnt
 	.vram_rd( vram_rd ),			// output  vram_rd
 	.vram_wr( vram_wr ),			// output  vram_wr
 	.vram_addr( vram_addr ),	// output [23:0]  vram_addr

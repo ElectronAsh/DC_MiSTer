@@ -24,7 +24,7 @@ module ra_parser (
 	output reg [31:0] ra_control,
 	output wire ra_cont_last,
 	output wire ra_cont_zclear_n,
-	output wire ra_cont_flush,
+	output wire ra_cont_flush_n,
 	output wire [5:0] ra_cont_tiley,
 	output wire [5:0] ra_cont_tilex,
 
@@ -69,7 +69,7 @@ reg [23:0] next_region;
 
 assign ra_cont_last     = ra_control[31];
 assign ra_cont_zclear_n = ra_control[30];
-assign ra_cont_flush    = ra_control[28];
+assign ra_cont_flush_n  = ra_control[28];
 assign ra_cont_tiley    = ra_control[13:8];
 assign ra_cont_tilex    = ra_control[7:2];
 

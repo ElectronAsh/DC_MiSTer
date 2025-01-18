@@ -349,19 +349,19 @@ codebook_cache  codebook_cache_inst (
     .clock( clock ),
     .reset_n( reset_n ),
 	
-	.cache_clear( cb_cache_clear ),	// input  cb_cache_clear
+	.cache_clear( cb_cache_clear ),		// input  cb_cache_clear
 	
-    .tag_in( prim_tag ),				// input [9:0]  9-bit unique triangle Tag.
-										// (Actually a PRIMITIVE tag. Often a collection of triangles, which share the same TCW/Codebook).
+    .tag_in( prim_tag ),					// input [9:0]  9-bit unique triangle Tag.
+													// (Actually a PRIMITIVE tag. Often a collection of triangles, which share the same TCW/Codebook).
 										
-    .read_index( pal8_byte ),			// input [7:0]  8-bit offset address to read from the CB
+    .read_index( pal8_byte ),				// input [7:0]  8-bit offset address to read from the CB
 	
     .cache_read( read_codebook ),		// Read request signal
-	.codebook_wait( codebook_wait ),	// output  codebook_wait / cache_wait
+	.codebook_wait( codebook_wait ),		// output  codebook_wait / cache_wait
 	
 	.ram_read_offset( cb_word_index ),	// output [7:0]  ram_read_offset (to read from VRAM).
-	.vram_valid( vram_valid ),			// input  vram_valid
-	.cache_din( vram_din ),				// input [63:0]  cache_din
+	.vram_valid( vram_valid ),				// input  vram_valid
+	.cache_din( vram_din ),					// input [63:0]  cache_din
 	
 	.cache_hit( cb_cache_hit ),			// Indicates if the requested tag is in cache
     .cache_dout( cb_cache_dout ) 		// output [63:0]  cache_dout.  64-bit palette entry data if cache hit

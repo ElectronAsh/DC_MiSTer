@@ -18,12 +18,14 @@ module isp_parser (
 	input [2:0] type_cnt,
 	
 	input ra_cont_zclear_n,
+	input ra_cont_flush_n,
 	input [23:0] poly_addr,
 	input render_poly,
 	input render_to_tile,
 	
 	input vram_wait,
 	input vram_valid,
+	output reg [7:0] isp_vram_burst_cnt,
 	output reg isp_vram_rd,
 	output reg isp_vram_wr,
 	output reg [23:0] isp_vram_addr_out,
@@ -209,9 +211,10 @@ reg [11:0] prim_tag;
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	isp_state <= 8'd0;
+	isp_vram_burst_cnt <= 8'd1;
 	isp_vram_rd <= 1'b0;
 	isp_vram_wr <= 1'b0;
-	fb_we <= 1'b0;
+	//fb_we <= 1'b0;
 	isp_entry_valid <= 1'b0;
 	quad_done <= 1'b1;
 	poly_drawn <= 1'b0;
@@ -226,9 +229,14 @@ if (!reset_n) begin
 	prim_tag <= 12'd0;
 	pcache_load <= 1'b0;
 	tile_accum_done <= 1'b0;
+	tile_wb <= 1'b0;
+	wr_pix <= 1'b0;
 end
 else begin
 	//fb_we <= 1'b0;
+	
+	wr_pix <= 1'b0;
+	tile_wb <= 1'b0;
 	
 	cb_cache_clear <= 1'b0;
 	
@@ -245,7 +253,8 @@ else begin
 	if (isp_vram_rd & !vram_wait) isp_vram_rd <= 1'b0;
 	if (isp_vram_wr & !vram_wait) isp_vram_wr <= 1'b0;
 	
-	if (fb_we && !vram_wait) fb_we <= 1'b0;
+	//if (fb_we && !vram_wait) fb_we <= 1'b0;
+	if (wr_pix && !vram_wait) wr_pix <= 1'b0;
 	
 	no_tex_read <= 1'b0;
 	
@@ -267,16 +276,18 @@ else begin
 				vert_d_v0 <= 32'd0;
 				vram_word_addr_old <= 22'h3fffff;
 				isp_vram_addr <= poly_addr;
+				isp_vram_burst_cnt <= 8'd1;
 				isp_state <= isp_state + 8'd1;
 			end
 			//else if (tile_prims_done) begin	// Render after ALL prims written to Tag buffer.
 			else if (render_to_tile) begin		// Render after each prim TYPE is written to Tag buffer.
 				tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
 				prim_tag_out_old <= 12'd4095;			// Set an arbitrary High value.
-																// This fixes the issues from when the first (visible) prim's Tag coincided
-																// with the last value left in prim_tag_out_old. Which meant it wasn't reading the codebook for that prim. ElectronAsh.
+														// This fixes the issues from when the first (visible) prim's Tag coincided
+														// with the last value left in prim_tag_out_old. Which meant it wasn't reading the codebook for that prim. ElectronAsh.
 				x_ps <= tilex_start;
 				y_ps <= tiley_start;
+				vram_word_addr_old <= 22'h3fffff;
 				pcache_load <= 1'b1;	// Have to pre-load this, so it renders the first pixel (Tag) correctly.
 				isp_state <= 8'd51;
 			end
@@ -333,11 +344,6 @@ else begin
 			isp_vram_rd <= 1'b1;
 			isp_state <= 8'd7;
 		end
-		
-		// if (shadow)...
-		// Probably wrong? I think the shadow bit denotes when a poly can be affected by a Modifier Volume?) ElectronAsh.
-		//5:  tsp2_inst <= isp_vram_din;
-		//6:  tex2_cont <= isp_vram_din;
 		
 		7: if (vram_valid) begin vert_a_x <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
 		8: if (vram_valid) begin vert_a_y <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
@@ -663,15 +669,14 @@ else begin
 		//
 		51: if (!z_clear_busy && !read_codebook && !codebook_wait) begin
 			pcache_load <= 1'b1;
-			//fb_addr <= (x_ps+(y_ps*640));
 			isp_state <= isp_state + 8'd1;
 		end
 		
 		52: begin
-			/*if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
+			if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
 				prim_tag_out_old <= prim_tag_out;
 			end
-			else begin*/		// Tag has not changed, but check if the new pixel is flat-shaded/Gouraud, or textured...
+			else begin		// Tag has not changed, but check if the new pixel is flat-shaded/Gouraud, or textured...
 				if (tex_base_word_addr_old != tcw_word_out[20:0]) begin	// Check to see if the texture BASE address has changed...
 					tex_base_word_addr_old <= tcw_word_out[20:0];
 					// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
@@ -685,53 +690,79 @@ else begin
 					if (isp_inst_out[25] && (vram_word_addr_old!=vram_word_addr)) begin	
 						vram_word_addr_old <= vram_word_addr;
 						isp_vram_rd <= 1'b1;				// Read a Texel...
-						isp_state <= isp_state + 8'd1;
+						isp_state <= 8'd53;
 					end
 					else begin	// Flat-shaded or Gouraud, no need to read a Texel Word...
 						isp_state <= 8'd54;
 					end
 				end
-			//end
+			end
 		end
 
-		// Next (visible) pixel...
+		// Wait for next Texel...
 		53: if (vram_valid) begin
 			isp_state <= isp_state + 8'd1;
 		end
-		
+
+		// Write pixel to Tile ARGB buffer.
 		54: if (!vram_wait) begin
-			fb_addr <= (x_ps+(y_ps*640));
-			fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
-			fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
-			fb_we <= 1'b1;
+			//fb_addr <= (x_ps+(y_ps*640));
+			//fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
+			//fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
+			//fb_we <= 1'b1;
+			wr_pix <= 1'b1;
+			isp_state <= isp_state + 8'd1;
+		end
+		
+		55: begin
 			x_ps[4:0] <= x_ps[4:0] + 5'd1;			// Inc x_ps[4:0].
 			if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;
 			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// On the last (lower-right) pixel of the tile...
-				tile_accum_done <= 1'b1;	// Tell the RA we're done.
-				isp_state <= 8'd0;			// Back to idle state.
+				tile_wb <= 1'b1;
+				//tile_wb <= !ra_cont_flush_n;
+				isp_state <= 8'd110;
+				//tile_accum_done <= 1'b1;	// Tell the RA we're done.
+				//isp_state <= 8'd0;			// Back to idle state.
 			end
 			else isp_state <= 8'd51;	// Jump back.
 		end
 		
 		100: begin
-			if (!cb_cache_hit) isp_state <= isp_state + 8'd1;	// Codebook Cache MISS !
+			if (!cb_cache_hit) begin
+				word_cnt <= 8'd0;
+				isp_state <= isp_state + 8'd1;	// Codebook Cache MISS !
+			end
 			else isp_state <= 8'd51;
 		end
 		
 		101: begin
-			isp_vram_rd <= 1'b1;	// Read the first Codebook word.
+			isp_vram_burst_cnt <= 8'd128;		// 128 WORDs max, per burst !!
+			isp_vram_rd <= 1'b1;					// Trigger the contiguous (ish) read Burst.
 			isp_state <= isp_state + 8'd1;
 		end
 		
 		102: begin
-			if (!codebook_wait) isp_state <= 8'd103;
-			else if (vram_valid) isp_state <= 8'd101;
+			if (vram_valid) begin
+				if (word_cnt==8'd127) begin	
+					word_cnt <= 8'd128;
+					isp_state <= 8'd101;
+				end
+				else word_cnt <= word_cnt + 8'd1;
+			end
+			if (!codebook_wait) begin
+				isp_vram_burst_cnt <= 8'd1;	// Set back to ONE Word !
+				isp_state <= 8'd51;
+			end
 		end
 		
-		103: if (vram_valid) begin	// Wait for the last word.
-			isp_state <= 8'd51;
+		
+		// Wait for Tile writeback to finish.
+		110: if (wb_done /*|| ra_cont_flush_n*/) begin
+			word_cnt <= 8'd0;
+			tile_accum_done <= 1'b1;	// Tell the RA we're done.
+			isp_state <= 8'd0;			// Back to idle state.
 		end
-
+		
 		default: ;
 	endcase
 	
@@ -788,6 +819,8 @@ else begin
 		vert_c_off_col		<= vert_c_off_col_out;
 	end
 end
+
+reg [7:0] word_cnt;
 
 
 wire [15:0] pix_565 = {final_argb[23:19],final_argb[15:10],final_argb[7:3]};
@@ -1205,9 +1238,6 @@ texture_address  texture_address_inst (
 	.pal_rd( pal_rd ),					// input  pal_rd
 	.pal_dout( pal_dout ),				// output [31:0]  pal_dout
 
-	// Not using the Codebook CACHE atm!
-	// It won't fit the FPGA, until it can be tweaked to properly be inferred in Block memory.
-	//
 	//.prim_tag( prim_tag_out ),		// input [9:0]  prim_tag
 	.prim_tag( tcw_word_out[15:5] ),		// input [9:0]  prim_tag
 	.cb_cache_clear( cb_cache_clear ),	// input  cb_cache_clear (on new tile start).
@@ -1312,5 +1342,185 @@ z_buff  z_buff_inst(
 	.z_in_col_30( IP_Z[30] ),
 	.z_in_col_31( IP_Z[31] )
 );
+
+
+reg wr_pix;
+reg tile_wb;
+wire wb_done;
+wire tile_wb_we;
+wire [19:0] wb_word_addr;
+wire [31:0] twopix_out;
+wire [7:0] wb_burst_cnt;
+wire burst_begin;
+wire [31:0] tile_buf_argb_in = final_argb;
+
+
+assign fb_we = tile_wb_we;
+assign fb_addr = wb_word_addr;
+
+wire [15:0] pix0 = twopix_out[31:16];
+wire [15:0] pix1 = twopix_out[15:00];
+
+assign fb_writedata = {pix1, pix1, pix0, pix0};	// Write TWO pixels per clock!
+assign fb_byteena   = 8'b11111111;
+
+//assign fb_byteena = (!FB_R_SOF1[22]) ? 8'b00001111 : 8'b11110000;
+
+tile_argb_buffer  tile_argb_buffer_inst (
+	.clock( clock ),			// input  clock
+	.reset_n( reset_n ),		// input  reset_n
+	
+	.x_ps( x_ps ),				// input [10:0]  x_ps
+	.y_ps( y_ps ),				// input [10:0]  y_ps
+	
+	.wr_pix( wr_pix ),					// input  wr_pix
+	.argb_in( tile_buf_argb_in ),		// input [31:0]  argb_in;
+	
+	.tile_wb( tile_wb ),					// input  tile_wb
+	.wb_done( wb_done ),					// output  wb_done
+	
+	.wb_word_addr( wb_word_addr ),	// output [19:0]  wb_word_addr
+	.twopix_out( twopix_out ),			// output [31:0]  twopix_out
+	
+	.wb_burst_cnt( wb_burst_cnt ),	// output [7:0]  wb_burst_cnt
+	.burst_begin( burst_begin ),		// output  burst_begin
+	.vram_wr( tile_wb_we ),				// output  vram_wr
+	.vram_wait( vram_wait )				// input  vram_wait
+);
+
+
+endmodule
+
+
+module tile_argb_buffer (
+	input clock,
+	input reset_n,
+	
+	input [10:0] x_ps,	// Current screen pix coord.
+	input [10:0] y_ps,	// For writing TO the tile buffer.
+
+	input wr_pix,
+	input [31:0] argb_in,
+	
+	input tile_wb,
+	output reg wb_done,
+	
+	output reg [19:0] wb_word_addr,		// VRAM dual-pixel writeback (32-bit WORD address).
+	output wire [31:0] twopix_out,
+	
+	output reg [7:0] wb_burst_cnt,
+	output reg burst_begin,
+	output reg vram_wr,
+	input vram_wait
+);
+
+
+// Two ARGB (32-bit) pixels per 64-bit word. 512 Words. 1,024 pixels. (32x32 pixel tile).
+
+wire [9:0] pix_in_addr = {y_ps[4:0], x_ps[4:0]};
+
+wire [15:0] pix0_565 = {buff_dout[55:51], buff_dout[47:42], buff_dout[39:35]};
+wire [15:0] pix1_565 = {buff_dout[23:19], buff_dout[15:10], buff_dout[07:03]};
+assign twopix_out = {pix0_565, pix1_565};	// 32-bit Word, to write to the VRAM framebuffer.
+
+wire [8:0] buff_addr = wb_active ? wb_word_cnt : pix_in_addr[9:1];
+wire [1:0] buff_be = (!pix_in_addr[0]) ? 2'b10 : 2'b01;
+wire [63:0] buff_dout;
+
+tile_argb_mem  tile_argb_mem_inst (
+	.clock( clock ),					// input  clock
+	
+	.addr( buff_addr ),				// input [8:0]  addr
+	.din( {argb_in, argb_in} ),	// input [63:0]  din
+	.be( buff_be ),					// input [1:0]  be
+	.we( wr_pix ),						// input  we
+	
+	.dout( buff_dout )				// output [63:0]  dout
+);
+
+
+reg [9:0] wb_word_cnt;
+wire wb_active = wb_word_cnt<10'd512;
+
+reg [5:0] tilex;
+reg [5:0] tiley;
+
+always @(posedge clock or negedge reset_n)
+if (!reset_n) begin
+	wb_word_addr <= 20'd0;
+	wb_word_cnt <= 10'd512;
+	wb_burst_cnt <= 8'd16;
+	burst_begin <= 1'b0;
+	vram_wr <= 1'b0;
+	wb_done <= 1'b0;
+end
+else begin
+	burst_begin <= 1'b0;
+	vram_wr <= 1'b0;
+	wb_done <= 1'b0;
+
+	if (tile_wb) begin
+		tilex <= x_ps[9:5];
+		tiley <= y_ps[9:5];
+		wb_word_cnt <= 10'd0;	// Kick off the writeback!
+		burst_begin <= 1'b1;
+	end
+
+	// Handle Tile writeback...
+	if (wb_active) begin		// wb_word_cnt < 10'd512
+		vram_wr <= 1'b1;
+		if (!vram_wait) begin
+			// Write a word and increment burst counter
+			wb_word_addr <= ({tiley,wb_word_cnt[8:4]}*320) + {tilex,wb_word_cnt[3:0]};	// (tiley * (640/2)) + tilex.
+			wb_word_cnt <= wb_word_cnt + 10'd1;											// We write TWO pixels per Word, to VRAM.
+			if (wb_word_cnt[3:0]==4'd15) burst_begin <= 1'b1;	// Pulse at the start of each 16-Word (32-pixel) burst.
+			if (wb_word_cnt==10'd511) wb_done <= 1'b1;
+		end
+	end
+
+end
+
+endmodule
+
+
+module tile_argb_mem (
+	input clock,
+	
+	input [8:0] addr,
+	input [63:0] din,
+	input [1:0] be,
+	input we,
+
+	output reg [63:0] dout
+);
+
+`ifdef VERILATOR
+
+reg [63:0] buff [0:511];
+always @(posedge clock) begin
+	if (we) begin
+		if (be[1]) buff[ addr ][63:32] <= din;
+		if (be[0]) buff[ addr ][31:00] <= din;
+	end
+	dout <= buff[ addr ];
+end
+
+`else
+
+altsyncram #(
+    .operation_mode("SINGLE_PORT"),
+    .width_a(64),				// DATA width of the "A" input/output.
+    .numwords_a(512),
+    .widthad_a(9),			// ADDR width.
+    .init_file("NONE")
+) tile_argb_mem (
+    .clock0( clock ),
+    .address_a( addr ),
+    .data_a( din ),
+    .wren_a( we ),
+    .q_a( dout )
+);
+
+`endif
 
 endmodule
