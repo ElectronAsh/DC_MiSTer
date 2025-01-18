@@ -45,7 +45,9 @@ module pvr (
 	output [22:0] fb_addr,
 	output [63:0] fb_writedata,
 	output [7:0] fb_byteena,
-	output fb_we
+	output fb_we,
+	
+	input debug_ena_texel_reads
 );
 
 
@@ -636,7 +638,9 @@ isp_parser isp_parser_inst (
 	.pal_rd( pvr_rd ),										// input  pal_rd
 	.pal_dout( pal_dout ),									// output [31:0]  pal_dout
 	
-	.isp_state( isp_state )									// output [7:0]  isp_state
+	.isp_state( isp_state ),								// output [7:0]  isp_state
+	
+	.debug_ena_texel_reads( debug_ena_texel_reads )	// input  debug_ena_texel_reads
 );
 
 

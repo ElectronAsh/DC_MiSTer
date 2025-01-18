@@ -302,6 +302,7 @@ localparam CONF_STR = {
 	"O[7],FB BPP,16bpp,32bpp;",
 	"O[9:8],FB Stride,640,1280,2560,5120;",
 	"O[11:10],Addr Shift,0,1,2,3;",
+	"O[12],Texel Reads,Off,On;",
 	"-;",
 	"P1,Audio & Video;", 
  	"-;",
@@ -1095,6 +1096,8 @@ wire [63:0] CACHE_DOUT;
 wire CACHE_VALID;
 */
 
+wire debug_ena_texel_reads = status[12];
+
 pvr pvr (
 	.clock( clk_sys ),			// input  clock
 	.reset_n( !reset ),			// input  reset_n
@@ -1137,7 +1140,9 @@ pvr pvr (
 	.fb_addr( fb_addr ),					// output [22:0]  fb_addr
 	.fb_writedata( fb_writedata ),	// output [63:0]  fb_writedata
 	.fb_byteena( fb_byteena ),			// output [7:0] fb_byteena
-	.fb_we( fb_we )						// output  fb_we
+	.fb_we( fb_we ),						// output  fb_we
+	
+	.debug_ena_texel_reads( debug_ena_texel_reads )
 );
 
 wire [15:0] fb_dout;

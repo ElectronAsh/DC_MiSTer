@@ -3,8 +3,8 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-parameter FRAC_BITS   = 8'd11;
-parameter Z_FRAC_BITS = 8'd11;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
+parameter FRAC_BITS   = 8'd12;
+parameter Z_FRAC_BITS = 8'd12;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
 
 parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS);
 
@@ -67,7 +67,9 @@ module isp_parser (
 	input clear_fb,
 	output reg clear_fb_pend,
 	
-	output reg [7:0] isp_state
+	output reg [7:0] isp_state,
+	
+	input debug_ena_texel_reads
 );
 
 reg [23:0] isp_vram_addr;
@@ -648,27 +650,33 @@ else begin
 
 		// Write triangle spans to Z / Tag buffer, checking 32 "pixels" at once for inTri AND depth_compare.
 		50: begin
-			isp_state <= 8'd90;
+			//isp_state <= 8'd90;
+			isp_state <= 8'd91;
 		end
 		
+		/*
 		90: begin	// Z-buff write is allowed in this state.
 			isp_state <= isp_state + 8'd1;
 		end
+		*/
 		
+		// Testing Z-buff writes in this state !
 		91: begin
-			y_ps[4:0] <= y_ps[4:0] + 5'd1;
 			if (y_ps[4:0]==5'd31) begin
 				isp_vram_addr <= isp_vram_addr_last;
 				isp_state <= 8'd48;		// Done! - Load next PRIM.
 			end
-			else isp_state <= 8'd50;	// Else, Jump back.
+			else begin
+				y_ps[4:0] <= y_ps[4:0] + 5'd1;
+				isp_state <= 8'd50;		// Else, Jump back.
+			end
 		end
 		
 		// Rendering from the Tag buffer now.
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
 		51: if (!z_clear_busy && !read_codebook && !codebook_wait) begin
-			//pcache_load <= 1'b1;
+			pcache_load <= 1'b1;
 			isp_state <= isp_state + 8'd1;
 		end
 		
@@ -678,24 +686,27 @@ else begin
 		end
 		
 		53: begin
-			if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
+			/*if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
 				prim_tag_out_old <= prim_tag_out;
 			end
-			else begin		// Tag has not changed, but check if the new pixel is flat-shaded/Gouraud, or textured...
-				if (tex_base_word_addr_old != tcw_word_out[20:0]) begin	// Check to see if the texture BASE address has changed...
-					tex_base_word_addr_old <= tcw_word_out[20:0];
+			else*/ begin		// Tag has not changed, but check if the new pixel is flat-shaded/Gouraud, or textured...
+				if (tex_base_word_addr_old != tcw_word/*_out*/[20:0]) begin	// Check to see if the texture BASE address has changed...
+					tex_base_word_addr_old <= tcw_word/*_out*/[20:0];
 					// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
-					if (isp_inst_out[25] && tcw_word_out[30]) begin	// Check if VQ compressed.
+					if (isp_inst/*_out*/[25] && tcw_word/*_out*/[30]) begin	// Check if VQ compressed.
 						read_codebook <= 1'b1;						// If so, read the new Codebook.
 						isp_state <= 8'd100;
 					end
 				end
 				else begin
 					// If texture flag is set AND if vram_word_addr has changed...
-					if (isp_inst_out[25] && (vram_word_addr_old!=vram_word_addr)) begin	
+					if (isp_inst/*_out*/[25] && (vram_word_addr_old!=vram_word_addr)) begin	
 						vram_word_addr_old <= vram_word_addr;
-						isp_vram_rd <= 1'b1;				// Read a Texel...
-						isp_state <= 8'd54;
+						if (debug_ena_texel_reads) begin
+							isp_vram_rd <= 1'b1;				// Read a Texel...
+							isp_state <= 8'd54;
+						end
+						else isp_state <= 8'd55;
 					end
 					else begin	// Flat-shaded or Gouraud, no need to read a Texel Word...
 						isp_state <= 8'd55;
@@ -709,21 +720,28 @@ else begin
 			isp_state <= isp_state + 8'd1;
 		end
 
+		55: begin	// Delay for Texel processing time.
+			isp_state <= isp_state + 8'd1;
+		end
+		
 		// Write pixel to Tile ARGB buffer.
-		55: if (!vram_wait) begin
+		56: if (!vram_wait) begin
 			wr_pix <= 1'b1;
 			isp_state <= isp_state + 8'd1;
 		end
 		
-		56: begin
-			x_ps[4:0] <= x_ps[4:0] + 5'd1;			// Inc x_ps[4:0].
-			if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;
-			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// On the last (lower-right) pixel of the tile...
+		57: begin
+			// On the last (lower-right) pixel of the tile...
+			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin
 				tile_wb <= 1'b1;
 				//tile_wb <= !ra_cont_flush_n;
 				isp_state <= 8'd110;
 			end
-			else isp_state <= 8'd51;	// Jump back.
+			else begin
+				x_ps[4:0] <= x_ps[4:0] + 5'd1;			// Inc x_ps[4:0].
+				if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;
+				isp_state <= 8'd51;	// Jump back.
+			end
 		end
 		
 		
@@ -1287,7 +1305,7 @@ wire [9:0] prim_tag_out;
 
 wire [2:0] depth_comp_in = /*(type_cnt==4 || type_cnt==1 || type_cnt==3) ? 3'd6 : (type_cnt==2) ? 3'd3 :*/ depth_comp;
 
-wire trig_z_row_write = isp_state==8'd90 && y_ps<=(tiley_start+31) && !z_write_disable;
+wire trig_z_row_write = isp_state==8'd91 && y_ps<=(tiley_start+31) && !z_write_disable;
 
 z_buff  z_buff_inst(
 	.clock( clock ),

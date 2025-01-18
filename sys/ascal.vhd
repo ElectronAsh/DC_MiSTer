@@ -678,7 +678,7 @@ ARCHITECTURE rtl OF ascal IS
 	END FUNCTION;
 
 	FUNCTION pixoffset(adrs   : unsigned(31 DOWNTO 0);
-										 format : unsigned (5 DOWNTO 0)) RETURN natural IS
+							 format : unsigned (5 DOWNTO 0)) RETURN natural IS
 	BEGIN
 		CASE format(2 DOWNTO 0) IS
 			WHEN "011" => -- 8bbp

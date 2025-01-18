@@ -25,7 +25,6 @@ localparam ADDR_WIDTH  = 8;	// Address width (log2(CACHE_DEPTH))
 localparam TAG_WIDTH   = 8;	// Tag width
 
 localparam ENTRY_SIZE  = 256;	// 256 words per triangle CB block
-
 localparam WORD_WIDTH  = 64;	// 64-bit data width
 
 `ifdef VERILATOR
