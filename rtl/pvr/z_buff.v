@@ -419,14 +419,14 @@ endmodule
 module z_mem (
   input clock,
 
-  input [41:0] data,  
+  input [43:0] data,  
   input [4:0] address,
   input wren,
 
-  output reg [41:0] q
+  output reg [43:0] q
 );
 
-reg [41:0] z_mem [0:31];
+reg [43:0] z_mem [0:31];
 
 always @(posedge clock) begin
   if (wren) z_mem[ address ] <= data;

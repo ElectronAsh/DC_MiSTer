@@ -668,11 +668,16 @@ else begin
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
 		51: if (!z_clear_busy && !read_codebook && !codebook_wait) begin
-			pcache_load <= 1'b1;
+			//pcache_load <= 1'b1;
 			isp_state <= isp_state + 8'd1;
 		end
 		
 		52: begin
+			pcache_load <= 1'b1;
+			isp_state <= isp_state + 8'd1;
+		end
+		
+		53: begin
 			if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
 				prim_tag_out_old <= prim_tag_out;
 			end
@@ -690,42 +695,37 @@ else begin
 					if (isp_inst_out[25] && (vram_word_addr_old!=vram_word_addr)) begin	
 						vram_word_addr_old <= vram_word_addr;
 						isp_vram_rd <= 1'b1;				// Read a Texel...
-						isp_state <= 8'd53;
+						isp_state <= 8'd54;
 					end
 					else begin	// Flat-shaded or Gouraud, no need to read a Texel Word...
-						isp_state <= 8'd54;
+						isp_state <= 8'd55;
 					end
 				end
 			end
 		end
 
 		// Wait for next Texel...
-		53: if (vram_valid) begin
+		54: if (vram_valid) begin
 			isp_state <= isp_state + 8'd1;
 		end
 
 		// Write pixel to Tile ARGB buffer.
-		54: if (!vram_wait) begin
-			//fb_addr <= (x_ps+(y_ps*640));
-			//fb_writedata <= {pix_565, pix_565, pix_565, pix_565};
-			//fb_byteena <= (!fb_addr[0]) ? 8'b00001111 : 8'b11110000;
-			//fb_we <= 1'b1;
+		55: if (!vram_wait) begin
 			wr_pix <= 1'b1;
 			isp_state <= isp_state + 8'd1;
 		end
 		
-		55: begin
+		56: begin
 			x_ps[4:0] <= x_ps[4:0] + 5'd1;			// Inc x_ps[4:0].
 			if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;
 			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// On the last (lower-right) pixel of the tile...
 				tile_wb <= 1'b1;
 				//tile_wb <= !ra_cont_flush_n;
 				isp_state <= 8'd110;
-				//tile_accum_done <= 1'b1;	// Tell the RA we're done.
-				//isp_state <= 8'd0;			// Back to idle state.
 			end
 			else isp_state <= 8'd51;	// Jump back.
 		end
+		
 		
 		100: begin
 			if (!cb_cache_hit) begin
