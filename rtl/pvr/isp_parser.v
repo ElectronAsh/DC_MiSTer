@@ -726,7 +726,11 @@ else begin
 		
 		// Write pixel to Tile ARGB buffer.
 		56: if (!vram_wait) begin
-			wr_pix <= 1'b1;
+			if ((type_cnt-1)==1) begin									// For the Punch-Through prim type...
+				if (final_argb[31:24]==8'hff) wr_pix <= 1'b1;	// Only write to the ARGB tile buffer if the Alpha==0xff (1.0) ??
+			end																// This should probably be a compare to the PT_ALPHA_REF register, no?
+			else wr_pix <= 1'b1;
+			
 			isp_state <= isp_state + 8'd1;
 		end
 		
@@ -1376,8 +1380,28 @@ wire [19:0] wb_word_addr;
 wire [31:0] twopix_out;
 wire [7:0] wb_burst_cnt;
 wire burst_begin;
-wire [31:0] tile_buf_argb_in = final_argb;
 
+// Alpha blending, for the writes to the tile ARGB buffer...
+wire [7:0] new_alpha = final_argb[31:24];
+wire [7:0] old_red   = argb_buf_out[23:16];
+wire [7:0] old_grn   = argb_buf_out[15:08];
+wire [7:0] old_blu   = argb_buf_out[07:00];
+
+wire [7:0] red_blend = ((new_alpha+1) * final_argb[23:16] + (256-new_alpha) * old_red) /256;
+wire [7:0] grn_blend = ((new_alpha+1) * final_argb[15:08] + (256-new_alpha) * old_grn) /256;
+wire [7:0] blu_blend = ((new_alpha+1) * final_argb[07:00] + (256-new_alpha) * old_blu) /256;
+
+// Write new Alpha value, even if we don't compare aginst it (yet).
+assign tile_buf_argb_in[31:24] = new_alpha;
+
+// Opaque pixels bypass the final Alpha blend.
+assign tile_buf_argb_in[23:16] = ((type_cnt-1)==0) ? final_argb[23:16] : red_blend;
+assign tile_buf_argb_in[15:08] = ((type_cnt-1)==0) ? final_argb[15:08] : grn_blend;
+assign tile_buf_argb_in[07:00] = ((type_cnt-1)==0) ? final_argb[07:00] : blu_blend;
+
+
+wire [31:0] tile_buf_argb_in;
+wire [31:0] argb_buf_out;
 
 assign fb_we = tile_wb_we;
 assign fb_addr = wb_word_addr;
@@ -1399,6 +1423,8 @@ tile_argb_buffer  tile_argb_buffer_inst (
 	
 	.wr_pix( wr_pix ),					// input  wr_pix
 	.argb_in( tile_buf_argb_in ),		// input [31:0]  argb_in;
+	
+	.argb_buf_out( argb_buf_out ),	// output [31:0]  argb_buf_out
 	
 	.tile_wb( tile_wb ),					// input  tile_wb
 	.wb_done( wb_done ),					// output  wb_done
@@ -1426,6 +1452,8 @@ module tile_argb_buffer (
 	input wr_pix,
 	input [31:0] argb_in,
 	
+	output wire [31:0] argb_buf_out,
+	
 	input tile_wb,
 	output reg wb_done,
 	
@@ -1450,6 +1478,8 @@ assign twopix_out = {pix0_565, pix1_565};	// 32-bit Word, to write to the VRAM f
 wire [8:0] buff_addr = wb_active ? wb_word_cnt : pix_in_addr[9:1];
 wire [1:0] buff_be = (!pix_in_addr[0]) ? 2'b10 : 2'b01;
 wire [63:0] buff_dout;
+
+assign argb_buf_out = (!pix_in_addr[0]) ? buff_dout[63:32] : buff_dout[31:00];
 
 tile_argb_mem  tile_argb_mem_inst (
 	.clock( clock ),					// input  clock
