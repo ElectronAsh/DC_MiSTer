@@ -6,7 +6,7 @@
     <node_ip_info instance_id="0" mfg_id="110" node_id="0" version="6"/>
     <position_info>
       <single attribute="active tab" value="0"/>
-      <single attribute="data horizontal scroll position" value="116"/>
+      <single attribute="data horizontal scroll position" value="120"/>
       <single attribute="data vertical scroll position" value="1"/>
       <single attribute="setup horizontal scroll position" value="0"/>
       <single attribute="setup vertical scroll position" value="1"/>

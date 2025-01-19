@@ -3,8 +3,8 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-parameter FRAC_BITS   = 8'd12;
-parameter Z_FRAC_BITS = 8'd12;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
+parameter FRAC_BITS   = 8'd11;
+parameter Z_FRAC_BITS = 8'd19;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
 
 parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS);
 
@@ -136,7 +136,7 @@ reg [31:0] tex2_cont;
 //
 (*noprune*)reg signed [31:0] vert_a_x;
 (*noprune*)reg signed [31:0] vert_a_y;
-(*noprune*)reg [31:0] vert_a_z;
+(*noprune*)reg signed [31:0] vert_a_z;
 (*noprune*)reg [31:0] vert_a_u0;
 (*noprune*)reg [31:0] vert_a_v0;
 (*noprune*)reg [31:0] vert_a_u1;
@@ -147,7 +147,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_b_x;
 (*noprune*)reg signed [31:0] vert_b_y;
-(*noprune*)reg [31:0] vert_b_z;
+(*noprune*)reg signed [31:0] vert_b_z;
 (*noprune*)reg [31:0] vert_b_u0;
 (*noprune*)reg [31:0] vert_b_v0;
 (*noprune*)reg [31:0] vert_b_u1;
@@ -158,7 +158,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_c_x;
 (*noprune*)reg signed [31:0] vert_c_y;
-(*noprune*)reg [31:0] vert_c_z;
+(*noprune*)reg signed [31:0] vert_c_z;
 (*noprune*)reg [31:0] vert_c_u0;
 (*noprune*)reg [31:0] vert_c_v0;
 (*noprune*)reg [31:0] vert_c_u1;
@@ -169,7 +169,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_d_x;
 (*noprune*)reg signed [31:0] vert_d_y;
-(*noprune*)reg [31:0] vert_d_z;
+(*noprune*)reg signed [31:0] vert_d_z;
 (*noprune*)reg [31:0] vert_d_u0;
 (*noprune*)reg [31:0] vert_d_v0;
 (*noprune*)reg [31:0] vert_d_u1;
@@ -970,7 +970,8 @@ float_to_fixed  float_y1 (
 (*keep*)wire signed [47:0] FZ1_FIXED;
 float_to_fixed  float_z1 (
 	.float_in( vert_a_z ),	// input [31:0]  float_in
-	.FRAC_BITS( FRAC_BITS ),
+	//.FRAC_BITS( FRAC_BITS ),
+	.FRAC_BITS( Z_FRAC_BITS ),
 	.fixed( FZ1_FIXED )		// output [47:0]  fixed
 );
 (*keep*)wire signed [47:0] FU1_FIXED;
@@ -1011,7 +1012,8 @@ float_to_fixed  float_y2 (
 (*keep*)wire signed [47:0] FZ2_FIXED;
 float_to_fixed  float_z2 (
 	.float_in( vert_b_z ),	// input [31:0]  float_in
-	.FRAC_BITS( FRAC_BITS ),
+	//.FRAC_BITS( FRAC_BITS ),
+	.FRAC_BITS( Z_FRAC_BITS ),
 	.fixed( FZ2_FIXED )		// output [47:0]  fixed
 );
 (*keep*)wire signed [47:0] FU2_FIXED;
@@ -1044,7 +1046,8 @@ float_to_fixed  float_y3 (
 (*keep*)wire signed [47:0] FZ3_FIXED;
 float_to_fixed  float_z3 (
 	.float_in( vert_c_z ),	// input [31:0]  float_in
-	.FRAC_BITS( FRAC_BITS ),
+	//.FRAC_BITS( FRAC_BITS ),
+	.FRAC_BITS( Z_FRAC_BITS ),
 	.fixed( FZ3_FIXED )		// output [47:0]  fixed
 );
 (*keep*)wire signed [47:0] FU3_FIXED;
@@ -1103,15 +1106,16 @@ inTri_calc  inTri_calc_inst (
 interp  interp_inst_z (
 	.clock( clock ),			// input  clock
 	
-	.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
+	//.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
+	.FRAC_BITS( Z_FRAC_BITS ),	// input [7:0] FRAC_BITS
 
-	.FX1( FX1_FIXED ),		// input signed [31:0] x1
-	.FX2( FX2_FIXED ),		// input signed [31:0] x2
-	.FX3( FX3_FIXED ),		// input signed [31:0] x3
+	.FX1( FX1_FIXED<<<FRAC_DIFF ),		// input signed [31:0] x1
+	.FX2( FX2_FIXED<<<FRAC_DIFF ),		// input signed [31:0] x2
+	.FX3( FX3_FIXED<<<FRAC_DIFF ),		// input signed [31:0] x3
 	
-	.FY1( FY1_FIXED ),		// input signed [31:0] y1
-	.FY2( FY2_FIXED ),		// input signed [31:0] y2
-	.FY3( FY3_FIXED ),		// input signed [31:0] y3
+	.FY1( FY1_FIXED<<<FRAC_DIFF ),		// input signed [31:0] y1
+	.FY2( FY2_FIXED<<<FRAC_DIFF ),		// input signed [31:0] y2
+	.FY3( FY3_FIXED<<<FRAC_DIFF ),		// input signed [31:0] y3
 	
 	.FZ1( FZ1_FIXED ),		// input signed [31:0] z1
 	.FZ2( FZ2_FIXED ),		// input signed [31:0] z2
@@ -1128,23 +1132,24 @@ interp  interp_inst_z (
 	.interp24( IP_Z[24] ), .interp25( IP_Z[25] ), .interp26( IP_Z[26] ), .interp27( IP_Z[27] ), .interp28( IP_Z[28] ), .interp29( IP_Z[29] ), .interp30( IP_Z[30] ), .interp31( IP_Z[31] )
 );
 
-//wire signed [31:0] IP_Z_INTERP = FZ1_FIXED;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
-//wire signed [31:0] IP_Z_INTERP;
-wire signed [31:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
+//wire signed [47:0] IP_Z_INTERP = FZ1_FIXED;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
+//wire signed [47:0] IP_Z_INTERP;
+wire signed [47:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
 
 
 // int w = tex_u_size_full;
 // U.Setup(x1,x2,x3, y1,y2,y3, u1*w*z1, u2*w*z2, u3*w*z3);
 //
 // Don't need to shift right after, as tex_u_size_full is not fixed-point...
-wire signed [63:0] u1_mult_width = FU1_FIXED * tex_u_size_full;
-wire signed [63:0] u2_mult_width = FU2_FIXED * tex_u_size_full;
-wire signed [63:0] u3_mult_width = FU3_FIXED * tex_u_size_full;
+wire signed [47:0] u1_mult_width = FU1_FIXED * tex_u_size_full;
+wire signed [47:0] u2_mult_width = FU2_FIXED * tex_u_size_full;
+wire signed [47:0] u3_mult_width = FU3_FIXED * tex_u_size_full;
 
 interp  interp_inst_u (
 	.clock( clock ),			// input  clock
 	
-	.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
+	//.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
+	.FRAC_BITS( Z_FRAC_BITS ),	// input [7:0] FRAC_BITS
 
 	.FX1( FX1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x1
 	.FX2( FX2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x2
@@ -1154,9 +1159,9 @@ interp  interp_inst_u (
 	.FY2( FY2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y2
 	.FY3( FY3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y3
 	
-	.FZ1( (u1_mult_width * FZ1_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z1
-	.FZ2( (u2_mult_width * FZ2_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z2
-	.FZ3( (u3_mult_width * FZ3_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z3
+	.FZ1( (u1_mult_width * FZ1_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z1
+	.FZ2( (u2_mult_width * FZ2_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z2
+	.FZ3( (u3_mult_width * FZ3_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z3
 	
 	.x_ps( x_ps ),		// input [10:0] x_ps
 	.y_ps( y_ps ),		// input [10:0] y_ps
@@ -1169,21 +1174,22 @@ interp  interp_inst_u (
 	//.interp24( IP_U[24] ), .interp25( IP_U[25] ), .interp26( IP_U[26] ), .interp27( IP_U[27] ), .interp28( IP_U[28] ), .interp29( IP_U[29] ), .interp30( IP_U[30] ), .interp31( IP_U[31] )
 );
 
-wire signed [31:0] IP_U_INTERP /*= FU2_FIXED * tex_u_size_full*/;
-//wire signed [31:0] IP_U [0:31];	// [0:31] is the tile COLUMN.
+wire signed [47:0] IP_U_INTERP /*= FU2_FIXED * tex_u_size_full*/;
+//wire signed [47:0] IP_U [0:31];	// [0:31] is the tile COLUMN.
 
 
 // int h = tex_v_size_full;
 // V.Setup(x1,x2,x3, y1,y2,y3, v1*h*z1, v2*h*z2, v3*h*z3);
 //
-wire signed [63:0] v1_mult_height = FV1_FIXED * tex_v_size_full;	// Don't need to shift right after, as tex_v_size_full is not fixed-point?
-wire signed [63:0] v2_mult_height = FV2_FIXED * tex_v_size_full;
-wire signed [63:0] v3_mult_height = FV3_FIXED * tex_v_size_full;
+wire signed [47:0] v1_mult_height = FV1_FIXED * tex_v_size_full;	// Don't need to shift right after, as tex_v_size_full is not fixed-point?
+wire signed [47:0] v2_mult_height = FV2_FIXED * tex_v_size_full;
+wire signed [47:0] v3_mult_height = FV3_FIXED * tex_v_size_full;
 
 interp  interp_inst_v (
 	.clock( clock ),			// input  clock
 	
-	.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
+	//.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
+	.FRAC_BITS( Z_FRAC_BITS ),	// input [7:0] FRAC_BITS
 
 	.FX1( FX1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x1
 	.FX2( FX2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x2
@@ -1193,9 +1199,9 @@ interp  interp_inst_v (
 	.FY2( FY2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y2
 	.FY3( FY3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y3
 	
-	.FZ1( (v1_mult_height * FZ1_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z1
-	.FZ2( (v2_mult_height * FZ2_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z2
-	.FZ3( (v3_mult_height * FZ3_FIXED) >>Z_FRAC_BITS ),	// input signed [31:0] z3
+	.FZ1( (v1_mult_height * FZ1_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z1
+	.FZ2( (v2_mult_height * FZ2_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z2
+	.FZ3( (v3_mult_height * FZ3_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z3
 	
 	.x_ps( x_ps ),		// input [10:0] x_ps
 	.y_ps( y_ps ),		// input [10:0] y_ps
@@ -1208,8 +1214,8 @@ interp  interp_inst_v (
 	//.interp24( IP_V[24] ), .interp25( IP_V[25] ), .interp26( IP_V[26] ), .interp27( IP_V[27] ), .interp28( IP_V[28] ), .interp29( IP_V[29] ), .interp30( IP_V[30] ), .interp31( IP_V[31] )
 );
 
-wire signed [31:0] IP_V_INTERP /*= FV2_FIXED * tex_v_size_full*/;
-//wire signed [31:0] IP_V [0:31];	// [0:31] is the tile COLUMN.
+wire signed [47:0] IP_V_INTERP /*= FV2_FIXED * tex_v_size_full*/;
+//wire signed [47:0] IP_V [0:31];	// [0:31] is the tile COLUMN.
 
 
 // Highest value is 1024 (8<<7) so we need 11 bits to store it! ElectronAsh.
