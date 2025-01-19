@@ -29,10 +29,10 @@ module isp_parser (
 	output reg isp_vram_rd,
 	output reg isp_vram_wr,
 	output reg [23:0] isp_vram_addr_out,
-	input [31:0] isp_vram_din,
-	output reg [31:0] isp_vram_dout,
+	input [31:0] isp_vram_din,					// Only 32-bit, for the params.
+	output reg [31:0] isp_vram_dout,			// Logic in pvr.v handles which 4MB half of VRAM gets read.
 	
-	input [63:0] tex_vram_din,
+	input [63:0] tex_vram_din,					// The full 64-bit wide data, for Texel reads.
 	
 	output reg isp_entry_valid,
 	

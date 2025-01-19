@@ -460,7 +460,7 @@ wire ra_trig = 1'b1;
 wire ra_vram_rd;
 wire ra_vram_wr;
 wire [23:0] ra_vram_addr;
-wire [31:0] ra_vram_din = (!ra_vram_addr[22]) ? vram_din[31:0] : vram_din[63:32];
+wire [31:0] ra_vram_din = (ra_vram_addr>=24'h400000) ? vram_din[63:32] : vram_din[31:00];
 
 wire [31:0] ra_control;
 wire ra_cont_last;
@@ -553,8 +553,8 @@ wire [23:0] isp_vram_addr_out;
 wire isp_vram_rd;
 wire isp_vram_wr;
 
-// Keep this as 32-bit for now. Only textures are read aas 64-bit wide.
-wire [31:0] isp_vram_din = (!isp_vram_addr_out[22]) ? vram_din[31:0] : vram_din[63:32];	// TESTING! Loading 4MB halves of VRAM dumps into lower and upper DDR3.
+// Keep this as 32-bit for now... (textures are read as 64-bit, via tex_vram_din on the isp_parser).
+wire [31:0] isp_vram_din = (isp_vram_addr_out>=24'h400000) ? vram_din[63:32] : vram_din[31:00];
 wire [31:0] isp_vram_dout;
 
 wire isp_entry_valid;
@@ -569,8 +569,9 @@ else begin
 	if (poly_drawn  || tile_accum_done) isp_switch <= 1'b0;
 end
 
+// Limit the addresses to 4MB, as we have muxes for the lower and upper 4MB now.
+assign vram_addr = (isp_switch) ? isp_vram_addr_out[21:0] : ra_vram_addr[21:0];
 assign vram_burst_cnt = (isp_switch) ? isp_vram_burst_cnt : 8'd1;
-assign vram_addr = (isp_switch) ? isp_vram_addr_out : ra_vram_addr;
 assign vram_rd   = (isp_switch) ? isp_vram_rd       : ra_vram_rd;
 assign vram_wr   = (isp_switch) ? isp_vram_wr       : ra_vram_wr;
 assign vram_dout = isp_vram_dout;
