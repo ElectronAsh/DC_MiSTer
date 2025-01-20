@@ -456,6 +456,7 @@ end
 
 
 wire ra_trig = 1'b1;
+wire render_bg;
 
 wire ra_vram_rd;
 wire ra_vram_wr;
@@ -470,9 +471,9 @@ wire [5:0] ra_cont_tiley;
 wire [5:0] ra_cont_tilex;
 
 wire [31:0] ra_opaque;
-wire [31:0] ra_opaque_mod;
+wire [31:0] ra_op_mod;
 wire [31:0] ra_trans;
-wire [31:0] ra_trans_mod;
+wire [31:0] ra_tr_mod;
 wire [31:0] ra_puncht;
 
 wire ra_entry_valid;
@@ -492,6 +493,10 @@ ra_parser ra_parser_inst (
 	.reset_n( reset_n ),	// input  reset_n
 	
 	.ra_trig( ra_trig ),	// input  ra_trig
+	
+	.ISP_BACKGND_D( ISP_BACKGND_D ),	// input [31:0]  ISP_BACKGND_D
+	.ISP_BACKGND_T( ISP_BACKGND_T ),	// input [31:0]  ISP_BACKGND_T
+	.render_bg( render_bg ),			// output  render_bg
 
 	.PARAM_BASE( PARAM_BASE ),			// input [31:0]  PARAM_BASE  0x20.
 	.REGION_BASE( REGION_BASE ),		// input [31:0]  REGION_BASE 0x2C.
@@ -518,9 +523,9 @@ ra_parser ra_parser_inst (
 	.isp_idle( isp_idle ),
 
 	.ra_opaque( ra_opaque ),			// output [31:0]  ra_opaque
-	.ra_opaque_mod( ra_opaque_mod ),	// output [31:0]  ra_opaque_mod
+	.ra_op_mod( ra_op_mod ),			// output [31:0]  ra_op_mod
 	.ra_trans( ra_trans ),				// output [31:0]  ra_trans
-	.ra_trans_mod( ra_trans_mod ),	// output [31:0]  ra_trans_mod
+	.ra_tr_mod( ra_tr_mod ),			// output [31:0]  ra_tr_mod
 	.ra_puncht( ra_puncht ),			// output [31:0]  ra_puncht
 	
 	.ra_entry_valid( ra_entry_valid ),	// output  ra_entry_valid
@@ -585,6 +590,10 @@ wire [7:0] isp_vram_burst_cnt;
 isp_parser isp_parser_inst (
 	.clock( clock ),						// input  clock
 	.reset_n( reset_n ),					// input  reset_n
+	
+	.ISP_BACKGND_D( ISP_BACKGND_D ),	// input [31:0]  ISP_BACKGND_D
+	.ISP_BACKGND_T( ISP_BACKGND_T ),	// input [31:0]  ISP_BACKGND_T
+	.render_bg( render_bg ),			// input  render_bg
 	
 	.opb_word( opb_word ),				// input [31:0]  opb_word
 	

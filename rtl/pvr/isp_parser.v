@@ -13,8 +13,11 @@ module isp_parser (
 	input clock,
 	input reset_n,
 	
-	input [31:0] opb_word,
+	input [31:0] ISP_BACKGND_D,
+	input [31:0] ISP_BACKGND_T,
+	input render_bg,
 	
+	input [31:0] opb_word,
 	input [2:0] type_cnt,
 	
 	input ra_cont_zclear_n,
@@ -136,7 +139,7 @@ reg [31:0] tex2_cont;
 //
 (*noprune*)reg signed [31:0] vert_a_x;
 (*noprune*)reg signed [31:0] vert_a_y;
-(*noprune*)reg signed [31:0] vert_a_z;
+(*noprune*)reg signed [31:0] vert_a_z;	// Keep as signed !!
 (*noprune*)reg [31:0] vert_a_u0;
 (*noprune*)reg [31:0] vert_a_v0;
 (*noprune*)reg [31:0] vert_a_u1;
@@ -147,7 +150,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_b_x;
 (*noprune*)reg signed [31:0] vert_b_y;
-(*noprune*)reg signed [31:0] vert_b_z;
+(*noprune*)reg signed [31:0] vert_b_z;	// Keep as signed !!
 (*noprune*)reg [31:0] vert_b_u0;
 (*noprune*)reg [31:0] vert_b_v0;
 (*noprune*)reg [31:0] vert_b_u1;
@@ -158,7 +161,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_c_x;
 (*noprune*)reg signed [31:0] vert_c_y;
-(*noprune*)reg signed [31:0] vert_c_z;
+(*noprune*)reg signed [31:0] vert_c_z;	// Keep as signed !!
 (*noprune*)reg [31:0] vert_c_u0;
 (*noprune*)reg [31:0] vert_c_v0;
 (*noprune*)reg [31:0] vert_c_u1;
@@ -169,7 +172,7 @@ reg [31:0] tex2_cont;
 
 (*noprune*)reg signed [31:0] vert_d_x;
 (*noprune*)reg signed [31:0] vert_d_y;
-(*noprune*)reg signed [31:0] vert_d_z;
+(*noprune*)reg signed [31:0] vert_d_z;	// Meh
 (*noprune*)reg [31:0] vert_d_u0;
 (*noprune*)reg [31:0] vert_d_v0;
 (*noprune*)reg [31:0] vert_d_u1;
@@ -195,7 +198,7 @@ wire two_volume = 1'b0;	// TODO.
 (*noprune*)reg [2:0] strip_cnt;
 (*noprune*)reg [3:0] array_cnt;
 
-wire is_tri_strip  = !opb_word[31];
+wire is_tri_strip  = opb_word[31]==1'b0;
 wire is_tri_array  = opb_word[31:29]==3'b100;
 wire is_quad_array = opb_word[31:29]==3'b101;
 
@@ -261,7 +264,7 @@ else begin
 	no_tex_read <= 1'b0;
 	
 	if (ra_new_tile_start) begin	// New tile started!
-		//cb_cache_clear <= 1'b1;	// Using texture address bits [16:8] from the TCW as the "Tag" now. No need to clear before each Tile!
+		//cb_cache_clear <= 1'b1;	// Using texture address bits [15:5] from the TCW as the "Tag" now. No need to clear before each Tile!
 		clear_z <= 1'b1;
 		prim_tag <= 12'd0;
 	end
@@ -281,12 +284,11 @@ else begin
 				isp_vram_burst_cnt <= 8'd1;
 				isp_state <= isp_state + 8'd1;
 			end
-			//else if (tile_prims_done) begin	// Render after ALL prims written to Tag buffer.
-			else if (render_to_tile) begin		// Render after each prim TYPE is written to Tag buffer.
+			else if (render_to_tile) begin				// Render after each prim TYPE is written to Tag buffer.
 				tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
-				prim_tag_out_old <= 12'd4095;			// Set an arbitrary High value.
-														// This fixes the issues from when the first (visible) prim's Tag coincided
-														// with the last value left in prim_tag_out_old. Which meant it wasn't reading the codebook for that prim. ElectronAsh.
+				prim_tag_out_old <= 12'd4095;				// Set an arbitrary High value.
+																	// This fixes the issues from when the first (visible) prim's Tag coincided
+																	// with the last value left in prim_tag_out_old. Which meant it wasn't reading the codebook for that prim. ElectronAsh.
 				x_ps <= tilex_start;
 				y_ps <= tiley_start;
 				vram_word_addr_old <= 22'h3fffff;
@@ -296,34 +298,42 @@ else begin
 		end
 		
 		1: begin
-			if (is_tri_strip) begin		// TriangleStrip.
-				if (strip_mask==6'b000000 || strip_cnt==3'd6) begin	// Nothing to draw for this strip.
-					poly_drawn <= 1'b1;				// Tell the RA we're done.
-					isp_state <= 8'd0;				// Go back to idle state.
-				end
-				else if (strip_cnt < 6) begin	// Check strip_mask bits 0 through 5...
-					if (strip_mask[strip_cnt]) begin
-						isp_vram_addr <= poly_addr;	// Always use the absolute start address of the poly. Will fetch ISP/TSP/TCW again, but then skip verts.
-						isp_vram_rd <= 1'b1;
-						/*if (!cache_bypass) */prim_tag <= prim_tag + 12'd1;
-						isp_state <= 8'd2;				// Go to the next state if the current strip_mask bit is set.
-					end
-					else begin									// Current strip_mask bit was NOT set...
-						strip_cnt <= strip_cnt + 3'd1;	// Increment to the next bit.
-						//isp_state <= 8'd1;					// (Stay in the current state, to check the next bit.)
-					end
-				end
-			end
-			else if (is_tri_array || is_quad_array) begin	// Triangle Array or Quad Array.
-				quad_done <= 1'b0;							// Ready for drawing the first half of a Quad.			
-				array_cnt <= num_prims;	// Shouldn't need a +1 here, because it will render the first triangle with array_cnt==0 anyway. ElectronAsh.
-				/*if (!cache_bypass) */prim_tag <= prim_tag + 12'd1;
+			if (render_bg) begin
+				// Using poly_addr from the RA now (isp_vram_addr set in isp_state 0), as it includes the PARAM_BASE offset.
+				//isp_vram_addr <= {ISP_BACKGND_T[23:3],2'b00};
 				isp_vram_rd <= 1'b1;
 				isp_state <= 8'd2;
 			end
 			else begin
-				poly_drawn <= 1'b1;	// No idea which prim type, so skip!
-				isp_state <= 8'd0;
+				if (is_tri_strip) begin		// TriangleStrip.
+					if (strip_mask==6'b000000 || strip_cnt==3'd6) begin	// Nothing to draw for this strip.
+						poly_drawn <= 1'b1;				// Tell the RA we're done.
+						isp_state <= 8'd0;				// Go back to idle state.
+					end
+					else if (strip_cnt < 6) begin	// Check strip_mask bits 0 through 5...
+						if (strip_mask[strip_cnt]) begin
+							isp_vram_addr <= poly_addr;	// Always use the absolute start address of the poly. Will fetch ISP/TSP/TCW again, but then skip verts.
+							isp_vram_rd <= 1'b1;
+							/*if (!cache_bypass) */prim_tag <= prim_tag + 12'd1;
+							isp_state <= 8'd2;				// Go to the next state if the current strip_mask bit is set.
+						end
+						else begin									// Current strip_mask bit was NOT set...
+							strip_cnt <= strip_cnt + 3'd1;	// Increment to the next bit.
+							//isp_state <= 8'd1;					// (Stay in the current state, to check the next bit.)
+						end
+					end
+				end
+				else if (is_tri_array || is_quad_array) begin	// Triangle Array or Quad Array.
+					quad_done <= 1'b0;							// Ready for drawing the first half of a Quad.			
+					array_cnt <= num_prims;	// Shouldn't need a +1 here, because it will render the first triangle with array_cnt==0 anyway. ElectronAsh.
+					/*if (!cache_bypass) */prim_tag <= prim_tag + 12'd1;
+					isp_vram_rd <= 1'b1;
+					isp_state <= 8'd2;
+				end
+				else begin
+					poly_drawn <= 1'b1;	// No idea which prim type, so skip!
+					isp_state <= 8'd0;
+				end
 			end
 		end
 		
@@ -351,7 +361,7 @@ else begin
 		8: if (vram_valid) begin vert_a_y <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
 		9: if (vram_valid) begin
 			vert_a_z <= isp_vram_din;
-			if (skip==0) isp_state <= 8'd17;
+			if (skip==3'd0) isp_state <= 8'd17;
 			else if (!texture) isp_state <= 8'd12;	// Triangle Strip (probably).
 			else isp_state <= isp_state + 8'd1;		// TESTING !!
 			isp_vram_addr <= isp_vram_addr + 4;
@@ -384,8 +394,8 @@ else begin
 		13: if (vram_valid) begin vert_a_u1 <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
 		14: if (vram_valid) begin vert_a_v1 <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
 		15: if (vram_valid) begin vert_a_base_col_1 <= isp_vram_din;
-			if (!offset) isp_state <= 8'd17;
-			else isp_state <= isp_state + 8'd1;
+			if (offset) isp_state <= isp_state + 8'd1;
+			else isp_state <= 8'd17;
 			isp_vram_addr <= isp_vram_addr + 4;
 			isp_vram_rd <= 1'b1;
 		end
@@ -431,8 +441,8 @@ else begin
 		24: if (vram_valid) begin vert_b_v1 <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
 		25: if (vram_valid) begin
 			vert_b_base_col_1 <= isp_vram_din;
-			if (!offset) isp_state <= 8'd27;
-			else isp_state <= isp_state + 8'd1;
+			if (offset) isp_state <= isp_state + 8'd1;
+			else isp_state <= 8'd27;
 			isp_vram_addr <= isp_vram_addr + 4;
 			isp_vram_rd <= 1'b1;
 		end
@@ -475,6 +485,8 @@ else begin
 			isp_vram_rd <= 1'b1;
 		end
 		31: if (vram_valid) begin vert_c_v0 <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
+		
+		// Vert C Base Colour.
 		32: if (vram_valid) begin
 			vert_c_base_col_0 <= isp_vram_din;
 			if (two_volume) begin
@@ -559,11 +571,11 @@ else begin
 		44: if (vram_valid) begin vert_d_v1 <= isp_vram_din; isp_vram_addr <= isp_vram_addr + 4; isp_vram_rd <= 1'b1; isp_state <= isp_state + 8'd1; end
 		45: if (vram_valid) begin
 			vert_d_base_col_1 <= isp_vram_din;
-			if (!offset) isp_state <= 8'd47;
-			else begin
-				isp_state <= isp_state + 8'd1;
+			if (offset) begin
 				isp_vram_rd <= 1'b1;
+				isp_state <= isp_state + 8'd1;
 			end
+			else isp_state <= 8'd47;
 			isp_vram_addr <= isp_vram_addr + 4;
 		end
 		
@@ -641,6 +653,13 @@ else begin
 		end
 
 		49: begin
+			if (render_bg) begin
+				vert_a_z <= ISP_BACKGND_D;
+				vert_b_z <= ISP_BACKGND_D;
+				vert_c_z <= ISP_BACKGND_D;
+				vert_d_z <= ISP_BACKGND_D;
+			end
+		
 			// Per-tile rendering.
 			x_ps <= tilex_start;
 			y_ps <= tiley_start;
@@ -664,7 +683,11 @@ else begin
 		91: begin
 			if (y_ps[4:0]==5'd31) begin
 				isp_vram_addr <= isp_vram_addr_last;
-				isp_state <= 8'd48;		// Done! - Load next PRIM.
+				if (render_bg) begin
+					poly_drawn <= 1'b1;		// BG poly drawn, 
+					isp_state <= 8'd0;		// jump back.
+				end
+				else isp_state <= 8'd48;	// Prim written to Z/Tag buffer! - Load next PRIM.
 			end
 			else begin
 				y_ps[4:0] <= y_ps[4:0] + 5'd1;
@@ -681,7 +704,7 @@ else begin
 		end
 		
 		52: begin
-			pcache_load <= 1'b1;
+			pcache_load <= 1'b1;			// Needs this?
 			isp_state <= isp_state + 8'd1;
 		end
 		
@@ -1113,17 +1136,17 @@ interp  interp_inst_z (
 	//.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
 	.FRAC_BITS( Z_FRAC_BITS ),	// input [7:0] FRAC_BITS
 
-	.FX1( FX1_FIXED<<<FRAC_DIFF ),		// input signed [31:0] x1
-	.FX2( FX2_FIXED<<<FRAC_DIFF ),		// input signed [31:0] x2
-	.FX3( FX3_FIXED<<<FRAC_DIFF ),		// input signed [31:0] x3
+	.FX1( FX1_FIXED<<<FRAC_DIFF ),		// input signed [47:0] x1
+	.FX2( FX2_FIXED<<<FRAC_DIFF ),		// input signed [47:0] x2
+	.FX3( FX3_FIXED<<<FRAC_DIFF ),		// input signed [47:0] x3
 	
-	.FY1( FY1_FIXED<<<FRAC_DIFF ),		// input signed [31:0] y1
-	.FY2( FY2_FIXED<<<FRAC_DIFF ),		// input signed [31:0] y2
-	.FY3( FY3_FIXED<<<FRAC_DIFF ),		// input signed [31:0] y3
+	.FY1( FY1_FIXED<<<FRAC_DIFF ),		// input signed [47:0] y1
+	.FY2( FY2_FIXED<<<FRAC_DIFF ),		// input signed [47:0] y2
+	.FY3( FY3_FIXED<<<FRAC_DIFF ),		// input signed [47:0] y3
 	
-	.FZ1( FZ1_FIXED ),		// input signed [31:0] z1
-	.FZ2( FZ2_FIXED ),		// input signed [31:0] z2
-	.FZ3( FZ3_FIXED ),		// input signed [31:0] z3
+	.FZ1( FZ1_FIXED ),		// input signed [47:0] z1
+	.FZ2( FZ2_FIXED ),		// input signed [47:0] z2
+	.FZ3( FZ3_FIXED ),		// input signed [47:0] z3
 	
 	.x_ps( x_ps ),		// input [10:0] x_ps
 	.y_ps( y_ps ),		// input [10:0] y_ps
@@ -1313,7 +1336,21 @@ wire z_clear_busy;
 wire signed [31:0] z_out;
 wire [9:0] prim_tag_out;
 
-wire [2:0] depth_comp_in = /*(type_cnt==4 || type_cnt==1 || type_cnt==3) ? 3'd6 : (type_cnt==2) ? 3'd3 :*/ depth_comp;
+/* reicast offline-renderer...
+        if (render_mode == RM_PUNCHTHROUGH)
+            mode = 6; // TODO: FIXME
+        else if (render_mode == RM_TRANSLUCENT)
+            mode = 3; // TODO: FIXME
+        else if (render_mode == RM_MODIFIER)
+            mode = 6;
+*/
+
+/*wire [2:0] depth_comp_in = ((type_cnt-1)==1) ? 3'd6 :
+							 ((type_cnt-1)==3) ? 3'd3 :
+							 ((type_cnt-1)==2 || (type_cnt-1)==4) ? 3'd6 :
+							               depth_comp;
+*/
+wire [2:0] depth_comp_in = depth_comp;
 
 wire trig_z_row_write = isp_state==8'd91 && y_ps<=(tiley_start+31) && !z_write_disable;
 

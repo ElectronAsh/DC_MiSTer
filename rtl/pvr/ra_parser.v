@@ -7,6 +7,10 @@ module ra_parser (
 	input reset_n,
 	
 	input ra_trig,
+	
+	input [31:0] ISP_BACKGND_D,
+	input [31:0] ISP_BACKGND_T,
+	output reg render_bg,
 
 	input [31:0] PARAM_BASE,		// 0x20.
 	input [31:0] REGION_BASE,		// 0x2C.
@@ -33,9 +37,9 @@ module ra_parser (
 	input isp_idle,
 	
 	output reg [31:0] ra_opaque,
-	output reg [31:0] ra_opaque_mod,
+	output reg [31:0] ra_op_mod,
 	output reg [31:0] ra_trans,
-	output reg [31:0] ra_trans_mod,
+	output reg [31:0] ra_tr_mod,
 	output reg [31:0] ra_puncht,
 	
 	output reg ra_new_tile_start,
@@ -87,6 +91,7 @@ reg draw_last_tile;
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	ra_state <= 8'd0;
+	render_bg <= 1'b1;				// TESTING !!
 	next_region <= 24'h00000000;
 	opb_word <= 32'h00000000;
 	type_cnt <= 3'd0;
@@ -130,47 +135,47 @@ else begin
 			ra_control <= ra_vram_din;
 			ra_vram_addr <= ra_vram_addr + 4;
 			ra_vram_rd <= 1'b1;
-			ra_state <= ra_state + 1;
+			ra_state <= ra_state + 8'd1;
 		end
 
 		3: if (vram_valid) begin
 			ra_opaque <= ra_vram_din;
 			ra_vram_addr <= ra_vram_addr + 4;
 			ra_vram_rd <= 1'b1;
-			ra_state <= ra_state + 1;
+			ra_state <= ra_state + 8'd1;
 		end
 		
 		4: if (vram_valid) begin
-			ra_opaque_mod <= ra_vram_din;
+			ra_op_mod <= ra_vram_din;
 			ra_vram_addr <= ra_vram_addr + 4;
 			ra_vram_rd <= 1'b1;
-			ra_state <= ra_state + 1;
+			ra_state <= ra_state + 8'd1;
 		end
 		
 		5: if (vram_valid) begin
 			ra_trans <= ra_vram_din;
 			ra_vram_addr <= ra_vram_addr + 4;
 			ra_vram_rd <= 1'b1;
-			ra_state <= ra_state + 1;
+			ra_state <= ra_state + 8'd1;
 		end
 		
 		6: if (vram_valid) begin
-			ra_trans_mod <= ra_vram_din;
+			ra_tr_mod <= ra_vram_din;
 			if (FPU_PARAM_CFG[21]) begin	// fmt v2 (grab puncht value in next ra_state).
 				ra_vram_rd <= 1'b1;
 				ra_vram_addr <= ra_vram_addr + 4;
 				ra_state <= 8'd7;
 			end
-			else begin							// fmt v1.
+			else begin						// fmt v1.
 				ra_puncht <= 32'h80000000;	// (mark ra_puncht as Unused).
-				ra_state <= 8'd8;				// Done!
+				ra_state <= 8'd8;			// Done!
 			end
 		end
 		
 		7: if (vram_valid) begin
-			ra_puncht <= ra_vram_din;		// fmt v2 (grab puncht as well).
+			ra_puncht <= ra_vram_din;	// fmt v2 (grab puncht).
 			ra_vram_addr <= ra_vram_addr + 4;
-			ra_state <= ra_state + 1;
+			ra_state <= ra_state + 8'd1;
 		end
 		
 		8: begin
@@ -178,44 +183,56 @@ else begin
 			ra_entry_valid <= 1'b1;
 			type_cnt <= 3'd0;
 			ra_new_tile_start <= 1'b1;
-			ra_state <= ra_state + 1;
+			ra_state <= ra_state + 8'd1;
 		end
 		
 		9: begin
-			type_cnt <= type_cnt + 1;	// Check through each Type.
-			case (type_cnt)
+			// The Background poly has no OPB word.
+			// Copy some flags from the ISP_BACKGND_T reg...
+			if (render_bg) begin
+				opb_word[31:29] <= 3'b101;						// Single Quad. (or Quad Array).
+				opb_word[24]    <= ISP_BACKGND_T[27];		// Shadow.
+				opb_word[23:21] <= ISP_BACKGND_T[26:24];	// Skip.
+				opb_word[28:25] <= 4'd1;						// num_prims ?
+				poly_addr       <= (PARAM_BASE&24'hf00000)+{ISP_BACKGND_T[23:3],2'b00};
+				render_poly     <= 1'b1;
+				ra_state        <= 8'd100;		// Wait for BG Poly to be drawn.
+			end
+			else begin
+				type_cnt <= type_cnt + 1;	// Check through each Type.
+				case (type_cnt)
 				// Point ra_vram_addr to an OBJECT address...
 				// If the MSB bit is CLEARED, it means the type/entry is in use, otherwise we skip to the next type.
 				//
-				// o_opb,om_opb,t_opb,tm_opb,pt_opb gives the OPB size for each prim type...
+				// o_opb, pt_opb, om_opb, t_opb, tm_opb, gives the OPB size for each prim type...
 				// 0=No List, 1=8 Words, 2=16 Words, 3=32 Words.
 				// TODO: Shift won't work for o_opb==0 etc. (we now check for o_opb>0 etc.)
 				//
 				// Note: No need to add PARAM_BASE to ra_opaque[23:0] etc. ra_opaque is already the Absolute VRAM address! ElectronAsh.
 				//
-				0: if (!ra_opaque[31] && o_opb>0)     begin ra_vram_addr <= ra_opaque[23:0];     ol_jump_bytes <= (4<<o_opb )*4; ra_state <= 8'd10; end
-				1: if (!ra_opaque_mod[31] && o_opb>0) begin ra_vram_addr <= ra_opaque_mod[23:0]; ol_jump_bytes <= (4<<om_opb)*4; ra_state <= 8'd10; end
-				2: if (!ra_trans[31] && t_opb>0)      begin ra_vram_addr <= ra_trans[23:0];      ol_jump_bytes <= (4<<t_opb )*4; ra_state <= 8'd10; end
-				3: if (!ra_trans_mod[31] && tm_opb>0) begin ra_vram_addr <= ra_trans_mod[23:0];  ol_jump_bytes <= (4<<tm_opb)*4; ra_state <= 8'd15; end // TESTING
-				4: if (!ra_puncht[31] && pt_opb>0)    begin ra_vram_addr <= ra_puncht[23:0];     ol_jump_bytes <= (4<<pt_opb)*4; ra_state <= 8'd10; end
-				5: ra_state <= 8'd15;	// All prim TYPES in this TILE are done!
+				0: if (!ra_opaque[31] &&  o_opb>0) begin ra_vram_addr <= ra_opaque[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<o_opb )*4; ra_state <= 8'd10; end // Alpha = 1.0 only.
+				1: if (!ra_puncht[31] && pt_opb>0) begin ra_vram_addr <= ra_puncht[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<pt_opb)*4; ra_state <= 8'd10; end // Alpha 0.0 or 1.0 only.
+				//2: if (!ra_op_mod[31] && om_opb>0) begin ra_vram_addr <= ra_op_mod[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<om_opb)*4; ra_state <= 8'd10; end // Modifier Vol, for Opaque/Punch-through
+				3: if (!ra_trans[31]  &&  t_opb>0) begin ra_vram_addr <= ra_trans[23:0];  ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<t_opb )*4; ra_state <= 8'd10; end // Alpha between 0.0 and 1.0.
+				//4: if (!ra_tr_mod[31] && tm_opb>0) begin ra_vram_addr <= ra_tr_mod[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<tm_opb)*4; ra_state <= 8'd10; end // Modifier Vol, for Transparent.
+				5: ra_state <= 8'd14;	// All prim TYPES in this Object are done!
 				default: ;
-			endcase
+				endcase
+			end
 		end
 		
-		10: begin
-			//ra_vram_addr <= (opb_mode) ? ra_vram_addr-ol_jump_bytes : ra_vram_addr+4;
-			ra_vram_rd <= 1'b1;
-			ra_state <= ra_state + 1;
+		100: if (poly_drawn) begin
+			render_bg <= 1'b0;
+			ra_state <= 8'd9;
 		end
 		
-		11: if (vram_valid) begin
+		10: if (vram_valid) begin
 			opb_word <= ra_vram_din;
-			ra_state <= ra_state + 1;
+			ra_state <= ra_state + 8'd1;
 		end
 		
 		// Check for Object Pointer Block Link, or Primitive Type...
-		12: begin
+		11: begin
 			if (!opb_word[31]) begin					// Triangle Strip.
 				poly_addr <= (PARAM_BASE&24'hf00000)+{opb_word[20:0], 2'b00};
 				if (isp_idle) begin
@@ -238,14 +255,14 @@ else begin
 				end
 			end
 			else if (opb_word[31:29]==3'b111) begin		// Pointer Block Link.
-				if (eol) begin										// Is it the End of this OBJECT List?
-					render_to_tile <= 1'b1;						// If so, tell the ISP to Render to the Tile accumulation buffer,
-					ra_state <= 8'd14;							// then check the next primitive TYPE in the current Region Array block.
+				if (eol) begin							// Is it the End of this OBJECT List? opb_word[28].[31:28]==F.
+					render_to_tile <= 1'b1;
+					ra_state <= 8'd13;					// If so, check the next primitive TYPE in the current Region Array block.
 				end
 				else begin
-					ra_vram_addr <= {opb_word[23:2], 2'b00};	// Take the Link address jump.
+					ra_vram_addr <= {opb_word[23:2], 2'b00};	// Take the Link address jump. [31:28]==E.
 					ra_vram_rd <= 1'b1;
-					ra_state <= 8'd11;							// Jump back to previous state, to grab the next OL entry word.
+					ra_state <= 8'd10;							// Jump back to previous state, to grab the next OL entry word.
 				end
 			end
 			else begin
@@ -254,38 +271,37 @@ else begin
 			end
 		end
 		
-		// Wait for poly "Drawn". (or for the Poly to be written to the Tag buffer).
-		13: begin
+		12: begin
 			if (poly_drawn) begin
 				if (ra_cont_last) draw_last_tile <= 1'b1;
 				ra_vram_addr <= ra_vram_addr + 4;	// Go to next WORD in OL.
+				ra_vram_rd <= 1'b1;
 				ra_state <= 10;
 			end
 		end
 		
-		// Wait for the tile to be written to the Accumulation buffer.
-		14: if (tile_accum_done) begin
+		13: if (tile_accum_done) begin
 			if (opb_word[31:29]==3'b111 || poly_drawn) begin
-				ra_state <= 8'd9;	// Check next Object prim TYPE.
+				ra_state <= 8'd9;	// Read the next Prim TYPE entry.
 			end
 		end
 		
-		// All prim TYPES in this TILE have been processed!
-		15: if (isp_idle) begin
+		14: if (isp_idle) begin	// All primitive TYPES within this Tile have been processed!
 			tile_prims_done <= 1'b1;
-			if (ra_cont_last) ra_state <= 8'd16;	// TESTING. Don't repeat rendering the same frame, just stop.
+
+			if (ra_cont_last) ra_state <= 8'd15;	// TESTING. Don't repeat rendering the same frame, just stop.
 			else begin
-				ra_vram_addr <= next_region;	// Check the next Region Array block.
+				ra_vram_addr <= next_region;	// Check the next Region Array entry.
+				render_bg <= 1'b1;
 				ra_vram_rd <= 1'b1;
 				ra_state <= 8'd2;
-			end
+			end	
 		end
 		
-		16: begin
-		
-		end
+		15: ;	// All tiles Done! (this ra_state is used to pause the sim after all Tiles have been rendered.)
 		
 		default: ;
+	
 	endcase
 end
 
