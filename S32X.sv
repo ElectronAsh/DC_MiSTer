@@ -197,15 +197,20 @@ module emu
 
 
 wire [23:0] FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
+wire [23:0] FB_R_SOF2 = pvr_ptr['h54>>2][23:0];
+
+wire [23:0] FB_W_SOF1 = pvr_ptr['h60>>2][23:0];
+wire [23:0] FB_W_SOF2 = pvr_ptr['h64>>2][23:0];
+
 
 wire bgr       = status[6];
 wire [2:0] bpp = !status[7] ? 3'b100 : 3'b110;
 
 assign FB_EN     = 1'b1;
-assign FB_BASE   = (DDRAM_BASE<<3) + (FB_R_SOF1[22:0] << 1);
+assign FB_BASE   = (DDRAM_BASE<<3) + (FB_R_SOF1[21:0] << 1);	// Limit FB_R_SOF1 to 4MB, as we have BOTH halves of VRAM in each 64-bit word.
 assign FB_WIDTH  = 12'd640;
 assign FB_HEIGHT = 12'd480;
-assign FB_FORMAT = {bgr,1'b0,bpp};	// [4] 0=RGB 1=BGR. [3] 0=16bit 565, 1=16bit 1555. [2:0] 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp.
+assign FB_FORMAT = {bgr,1'b0,bpp};			// [4] 0=RGB 1=BGR. [3] 0=16bit 565, 1=16bit 1555. [2:0] 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp.
 assign FB_STRIDE = 14'd640<<status[9:8];	// Either 0 (rounded to 256 bytes) or multiple of pixel size (in bytes)
 assign FB_FORCE_BLANK = 0;
 
@@ -298,11 +303,15 @@ localparam CONF_STR = {
 	"FC2,BIN,Load PVR Regs;",
 	"FC3,BIN,Load VRAM Dump;",
 	"-;",
+	"T[13],Trigger Render;",
 	"O[6],FB Format,RGB,BGR;",
 	"O[7],FB BPP,16bpp,32bpp;",
 	"O[9:8],FB Stride,640,1280,2560,5120;",
-	"O[11:10],Addr Shift,0,1,2,3;",
 	"O[12],Texel Reads,Off,On;",
+	"O[14],Tex Word Order,Norm,Swap;",
+	"O[15],Final Blend,Off,On;",
+	"O[16],FB Writeback,R SOF1,W SOF1;",
+	"O[17],Param Word Order,Norm,Swap;",
 	"-;",
 	"P1,Audio & Video;", 
  	"-;",
@@ -931,7 +940,7 @@ wire reset = /*RESET |*/ status[0] | boot1_loading | vram_dump_loading;
 (*noprune*)reg [31:00] rom_word32;
 reg pvr_wr = 1'b0;
 
-reg [31:0] pvr_ptr [0:80];	// 0x140/4 words. Enough to load up to TA_ALLOC_CTRL.
+reg [31:0] pvr_ptr [0:80];	// 80 WORDS.
 
 
 (*keep*)wire boot1_loading = ioctl_index=={2'd1, 6'd0} && ioctl_download;	// VRAM dump loaded at core-load.
@@ -940,8 +949,23 @@ reg [7:0] download_be;
 reg ddr_wr = 1'b0;
 
 
-//always @(posedge SH4_CKIO2) begin
-always @(posedge clk_sys) begin
+wire trig_pvr_update;
+reg pvr_reg_update;
+reg pvr_reg_rd;
+reg [15:0] pvr_read_offs;
+
+//always @(posedge SH4_CKIO2 or posedge reset) begin
+always @(posedge clk_sys or posedge reset)
+if (reset) begin
+	pvr_wr <= 1'b0;
+	ddr_wr <= 1'b0;
+	pvr_reg_update <= 1'b0;
+	pvr_read_offs <= 16'd0;
+	pvr_reg_rd <= 1'b0;
+end
+else begin
+	if (!vram_wait) pvr_reg_rd <= 1'b0;
+
 	if (ioctl_download && ioctl_wr) begin
 		if (!ioctl_addr[1]) rom_word32[15:00] <= ioctl_data;
 		else begin
@@ -952,12 +976,14 @@ always @(posedge clk_sys) begin
 	end
 	
 	download_be <= (!ioctl_addr[22]) ? 8'b00001111 : 8'b11110000;
-	
+
+	// Handle PVR reg writes for PVR Dump file loading...
 	if (pvr_wr) begin
 		pvr_ptr[ ioctl_addr[23:2] ] <= rom_word32;
 		pvr_wr <= 1'b0;
 	end
 	
+	// Handle DDR3 writes for VRAM Dump file loading...
 	if (ddr_wr) begin
 		if (DDRAM_BUSY) ioctl_wait <= 1'b1;
 		else begin
@@ -965,8 +991,23 @@ always @(posedge clk_sys) begin
 			ddr_wr <= 1'b0;
 		end
 	end
+	
+	// Handle PVR reg writes from minicast emu...
+	if (trig_pvr_update) begin
+		pvr_read_offs <= 16'd0;		// Zero the BYTE count.
+		pvr_reg_update <= 1'b1;		// Start the PVR reg update (from DDR3).
+		pvr_reg_rd <= 1'b1;			// This will do a BURST read of 128 WORDS (64-bit)!
+	end
+	
+	if (pvr_reg_update) begin
+		if (vram_valid) begin												// Write two 32-bit words to the PVR regs at once.
+			pvr_ptr[ pvr_read_offs[15:2]+0 ] <= vram_din[31:00];	// Words are read from each 64-bit DDR3 Word in this order.
+			pvr_ptr[ pvr_read_offs[15:2]+1 ] <= vram_din[63:32];	// Each 32-bit Word is NON-byteswapped, so the same order we use in the core.
+			pvr_read_offs <= pvr_read_offs + 16'd8;					// Increment the BYTE counter by 8 (to the next 64-bit WORD).
+		end
+		if (pvr_read_offs[15:3]>=79) pvr_reg_update <= 1'b0;	// Have we read in 80 WORDS (64-bit) yet?
+	end
 end
-
 
 
 /*
@@ -1040,23 +1081,27 @@ wire vram_valid = DDRAM_DOUT_READY;
 //wire vram_valid = CACHE_VALID;
 
 wire [28:0] DDRAM_BASE = (32'h32000000 >>3);	// 800MB. (DDRAM_BASE is the 64-bit WORD address!)
+wire [28:0] VRAM_8MB   = (24'h800000>>3);		// 8MB.
 
 // Limit the write/read addresses to 4MB!
 wire [28:0] dl_word_addr   = DDRAM_BASE + ioctl_addr[21:2];
-wire [28:0] vram_word_addr = DDRAM_BASE +  vram_addr[21:2];
+wire [28:0] vram_word_addr = (pvr_reg_update) ? (DDRAM_BASE+VRAM_8MB+pvr_read_offs[15:3]) : (DDRAM_BASE + vram_addr[21:2]);
 
-wire [28:0] fb_word_addr   = DDRAM_BASE +  FB_R_SOF1[21:2] + (fb_addr[21:0]>>status[11:10]);
+wire [28:0] fb_wr_word_addr_R_SOF1 = DDRAM_BASE + FB_R_SOF1[21:2] + fb_addr[21:0];
+wire [28:0] fb_wr_word_addr_W_SOF1 = DDRAM_BASE + FB_W_SOF1[21:2] + fb_addr[21:0];
+
+wire [28:0] fb_word_addr   = (!status[16]) ? fb_wr_word_addr_R_SOF1 : fb_wr_word_addr_W_SOF1;
 
 wire [63:0] dl_writedata   = {rom_word32,rom_word32};
 
 assign DDRAM_CLK      = clk_sys;
 //assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : CACHE_BURSTCNT;
-assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : vram_burst_cnt;
+assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : pvr_reg_update ? 8'd80 : vram_burst_cnt;
 assign DDRAM_ADDR     = ioctl_download ? dl_word_addr : fb_we ? fb_word_addr : vram_word_addr;
 assign DDRAM_DIN      = ioctl_download ? dl_writedata : fb_we ? fb_writedata : vram_dout;			// We are loading the 8MB VRAM dumps into each 32-bit half of DDR3 now.
 assign DDRAM_WE       = ioctl_download ? ddr_wr       : fb_we ? 1'b1         : vram_wr;			// This is so we can do texture reads of the full 64-bit word.
 assign DDRAM_BE       = ioctl_download ? download_be  : fb_we ? fb_byteena   : 8'b11111111;
-assign DDRAM_RD       = ioctl_download ? 1'b0 : vram_rd;
+assign DDRAM_RD       = ioctl_download ? 1'b0 : pvr_reg_update ? pvr_reg_rd : vram_rd;
 //assign DDRAM_RD     = ioctl_download ? 1'b0 : CACHE_RD;
 
 wire [22:0] fb_addr;
@@ -1098,13 +1143,33 @@ wire CACHE_VALID;
 
 wire debug_ena_texel_reads = status[12];
 
+wire [31:0] TEST_SELECT   = pvr_ptr['h18>>2];
+
+wire [31:0] PARAM_BASE    = pvr_ptr['h20>>2];
+wire [31:0] REGION_BASE   = pvr_ptr['h2c>>2];
+
+wire [31:0] FPU_PARAM_CFG = pvr_ptr['h7c>>2];
+wire [31:0] TEXT_CONTROL  = pvr_ptr['hE4>>2];
+wire [31:0] PAL_RAM_CTRL  = pvr_ptr['h108>>2];
+wire [31:0] TA_ALLOC_CTRL = pvr_ptr['h140>>2];
+
+
 pvr pvr (
 	.clock( clk_sys ),			// input  clock
 	.reset_n( !reset ),			// input  reset_n
 	
+	.disable_alpha( !status[15] ),
+	.tex_word_swap( status[14] ),
+	.param_word_swap( status[17] ),
+	
 	//.ta_fifo_cs( ta_fifo_cs ),	// input  ta_fifo_cs
 	//.ta_yuv_cs( ta_yuv_cs ),		// input  ta_yuv_cs
 	//.ta_tex_cs( ta_tex_cs ),		// input  ta_tex_cs
+	
+	.ra_trig( status[13] ),
+	
+	.trig_pvr_update( trig_pvr_update ),	// output  trig_pvr_update
+	.pvr_reg_update(  pvr_reg_update ),		// input  pvr_reg_update
 	
 	// CPU<->PVR interface...
 	.pvr_reg_cs( pvr_reg_cs ),	// input  pvr_reg_cs
@@ -1114,16 +1179,21 @@ pvr pvr (
 	.pvr_rd( pvr_rd ),			// input  pvr_rd
 	.pvr_dout( pvr_dout ),		// output [31:0]  pvr_dout
 	
-	.PARAM_BASE( pvr_ptr[    'h20>>2 ] ),
-	.REGION_BASE( pvr_ptr[   'h2c>>2 ] ),
+	.TEST_SELECT( TEST_SELECT ),
 	
-	.FB_R_SOF1( pvr_ptr['h50>>2] ),
-	.FB_R_SOF2( pvr_ptr['h54>>2] ),
+	.PARAM_BASE(  PARAM_BASE ),
+	.REGION_BASE( REGION_BASE ),
 	
-	.FPU_PARAM_CFG( pvr_ptr[ 'h7c>>2 ] ),
-	.TEXT_CONTROL( pvr_ptr[  'hE4>>2 ] ),
-	.PAL_RAM_CTRL( pvr_ptr[  'h108>>2 ] ),
-	.TA_ALLOC_CTRL( pvr_ptr[ 'h140>>2 ] ),
+	.FB_R_SOF1( FB_R_SOF1 ),
+	.FB_R_SOF2( FB_R_SOF2 ),
+	
+	.FB_W_SOF1( FB_W_SOF1 ),
+	.FB_W_SOF2( FB_W_SOF2 ),
+	
+	.FPU_PARAM_CFG( FPU_PARAM_CFG ),
+	.TEXT_CONTROL(  TEXT_CONTROL ),
+	.PAL_RAM_CTRL(  PAL_RAM_CTRL ),
+	.TA_ALLOC_CTRL( TA_ALLOC_CTRL ),
 	
 	// VRAM (vertex/texture access) interface...
 	

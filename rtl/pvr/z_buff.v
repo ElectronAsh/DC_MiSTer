@@ -305,8 +305,6 @@ else begin
 	end
 end
 
-wire [4:0] row_sel_mux = (z_clear_busy) ? z_clear_row : row_sel;
-
 
 wire [43:0] z_col_0;
 wire [43:0] z_col_1;
@@ -378,6 +376,8 @@ assign prim_tag_out = z_prim_out[43:32];
 assign z_out        = z_prim_out[31:0];
 
 
+wire [4:0] row_sel_mux = (z_clear_busy) ? z_clear_row : row_sel;
+
 z_mem	z_mem_inst_0 ( .clock( clock ), .data( (z_clear_busy) ? 44'd0 : {prim_tag_in,z_in_col_0}  ), .address( row_sel_mux ), .wren( z_write_allow[0 ] ), .q( z_col_0  ) );
 z_mem	z_mem_inst_1 ( .clock( clock ), .data( (z_clear_busy) ? 44'd0 : {prim_tag_in,z_in_col_1}  ), .address( row_sel_mux ), .wren( z_write_allow[1 ] ), .q( z_col_1  ) );
 z_mem	z_mem_inst_2 ( .clock( clock ), .data( (z_clear_busy) ? 44'd0 : {prim_tag_in,z_in_col_2}  ), .address( row_sel_mux ), .wren( z_write_allow[2 ] ), .q( z_col_2  ) );
@@ -419,7 +419,7 @@ endmodule
 module z_mem (
   input clock,
 
-  input [43:0] data,  
+  input [43:0] data,
   input [4:0] address,
   input wren,
 
@@ -435,3 +435,79 @@ end
 
 endmodule
 `endif
+
+
+// Version with Dual-ported RAMs.
+// For some reason, made barely any difference to the speed,
+// when doing the Z-buffer updates all within isp_state 50 ??
+//
+// Using the Dual-ported RAMs should save around 32 clock cycles per PRIM.
+//
+// Since it can read the first row, increment to the next, and Write back to the *previous* row, using row_sel-1.
+//
+/*
+z_mem_dual  z_mem_inst_0 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_0}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[0 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_0  ) );
+z_mem_dual  z_mem_inst_1 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_1}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[1 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_1  ) );
+z_mem_dual  z_mem_inst_2 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_2}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[2 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_2  ) );
+z_mem_dual  z_mem_inst_3 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_3}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[3 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_3  ) );
+z_mem_dual  z_mem_inst_4 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_4}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[4 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_4  ) );
+z_mem_dual  z_mem_inst_5 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_5}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[5 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_5  ) );
+z_mem_dual  z_mem_inst_6 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_6}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[6 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_6  ) );
+z_mem_dual  z_mem_inst_7 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_7}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[7 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_7  ) );
+z_mem_dual  z_mem_inst_8 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_8}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[8 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_8  ) );
+z_mem_dual  z_mem_inst_9 ( .clock( clock ), .data_a( {prim_tag_in,z_in_col_9}  ), .address_a( row_sel-1 ), .wren_a( z_write_allow[9 ] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_9  ) );
+z_mem_dual  z_mem_inst_10( .clock( clock ), .data_a( {prim_tag_in,z_in_col_10} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[10] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_10 ) );
+z_mem_dual  z_mem_inst_11( .clock( clock ), .data_a( {prim_tag_in,z_in_col_11} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[11] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_11 ) );
+z_mem_dual  z_mem_inst_12( .clock( clock ), .data_a( {prim_tag_in,z_in_col_12} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[12] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_12 ) );
+z_mem_dual  z_mem_inst_13( .clock( clock ), .data_a( {prim_tag_in,z_in_col_13} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[13] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_13 ) );
+z_mem_dual  z_mem_inst_14( .clock( clock ), .data_a( {prim_tag_in,z_in_col_14} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[14] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_14 ) );
+z_mem_dual  z_mem_inst_15( .clock( clock ), .data_a( {prim_tag_in,z_in_col_15} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[15] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_15 ) );
+z_mem_dual  z_mem_inst_16( .clock( clock ), .data_a( {prim_tag_in,z_in_col_16} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[16] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_16 ) );
+z_mem_dual  z_mem_inst_17( .clock( clock ), .data_a( {prim_tag_in,z_in_col_17} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[17] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_17 ) );
+z_mem_dual  z_mem_inst_18( .clock( clock ), .data_a( {prim_tag_in,z_in_col_18} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[18] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_18 ) );
+z_mem_dual  z_mem_inst_19( .clock( clock ), .data_a( {prim_tag_in,z_in_col_19} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[19] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_19 ) );
+z_mem_dual  z_mem_inst_20( .clock( clock ), .data_a( {prim_tag_in,z_in_col_20} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[20] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_20 ) );
+z_mem_dual  z_mem_inst_21( .clock( clock ), .data_a( {prim_tag_in,z_in_col_21} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[21] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_21 ) );
+z_mem_dual  z_mem_inst_22( .clock( clock ), .data_a( {prim_tag_in,z_in_col_22} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[22] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_22 ) );
+z_mem_dual  z_mem_inst_23( .clock( clock ), .data_a( {prim_tag_in,z_in_col_23} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[23] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_23 ) );
+z_mem_dual  z_mem_inst_24( .clock( clock ), .data_a( {prim_tag_in,z_in_col_24} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[24] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_24 ) );
+z_mem_dual  z_mem_inst_25( .clock( clock ), .data_a( {prim_tag_in,z_in_col_25} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[25] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_25 ) );
+z_mem_dual  z_mem_inst_26( .clock( clock ), .data_a( {prim_tag_in,z_in_col_26} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[26] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_26 ) );
+z_mem_dual  z_mem_inst_27( .clock( clock ), .data_a( {prim_tag_in,z_in_col_27} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[27] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_27 ) );
+z_mem_dual  z_mem_inst_28( .clock( clock ), .data_a( {prim_tag_in,z_in_col_28} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[28] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_28 ) );
+z_mem_dual  z_mem_inst_29( .clock( clock ), .data_a( {prim_tag_in,z_in_col_29} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[29] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_29 ) );
+z_mem_dual  z_mem_inst_30( .clock( clock ), .data_a( {prim_tag_in,z_in_col_30} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[30] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_30 ) );
+z_mem_dual  z_mem_inst_31( .clock( clock ), .data_a( {prim_tag_in,z_in_col_31} ), .address_a( row_sel-1 ), .wren_a( z_write_allow[31] ), .q_a(), .data_b( 44'd0 ), .address_b( row_sel_mux ), .wren_b( z_clear_busy ), .q_b( z_col_31 ) );
+
+endmodule
+
+
+`ifdef VERILATOR
+module z_mem (
+	input clock,
+
+	input [43:0] data_a,
+	input [4:0] address_a,
+	input wren_a,
+
+	input [43:0] data_b,
+	input [4:0] address_b,
+	input wren_b,
+
+	output reg [43:0] q_a,
+	output reg [43:0] q_b
+);
+
+reg [43:0] z_mem [0:31];
+
+always @(posedge clock) begin
+  if (wren_a) z_mem[ address_a ] <= data_a;
+  if (wren_b) z_mem[ address_b ] <= data_b;
+  
+  q_a <= z_mem[ address_a ];
+  q_b <= z_mem[ address_b ];
+end
+
+endmodule
+`endif
+*/

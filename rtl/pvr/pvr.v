@@ -7,6 +7,15 @@ module pvr (
 	input clock,
 	input reset_n,
 	
+	input disable_alpha,
+	input tex_word_swap,
+	input param_word_swap,
+	
+	input ra_trig,
+	
+	output trig_pvr_update,
+	input pvr_reg_update,
+	
 	input ta_fifo_cs,
 	input ta_yuv_cs,
 	input ta_tex_cs,
@@ -19,11 +28,16 @@ module pvr (
 	input pvr_wr,
 	output reg [31:0] pvr_dout,
 	
+	input [31:0] TEST_SELECT,
+	
 	input [31:0] PARAM_BASE,
 	input [31:0] REGION_BASE,
 	
 	input [31:0] FB_R_SOF1,
 	input [31:0] FB_R_SOF2,
+	
+	input [31:0] FB_W_SOF1,
+	input [31:0] FB_W_SOF2,
 	
 	input [31:0] FPU_PARAM_CFG,
 	input [31:0] TEXT_CONTROL,
@@ -55,7 +69,7 @@ module pvr (
 parameter ID_addr                 = 16'h0000; // R   Device ID
 parameter REVISION_addr           = 16'h0004; // R   Revision number
 parameter SOFTRESET_addr          = 16'h0008; // RW  CORE & TA software reset
-	
+
 parameter STARTRENDER_addr        = 16'h0014; // RW  Drawing start
 parameter TEST_SELECT_addr        = 16'h0018; // RW  Test - writing this register is prohibited.
 
@@ -153,7 +167,7 @@ reg [31:0] REVISION; 			// 16'h0004; R   Revision number
 reg [31:0] SOFTRESET; 			// 16'h0008; RW  CORE & TA software reset
 	
 reg [31:0] STARTRENDER; 		// 16'h0014; RW  Drawing start
-reg [31:0] TEST_SELECT; 		// 16'h0018; RW  Test - writing this register is prohibited.
+//reg [31:0] TEST_SELECT; 		// 16'h0018; RW  Test - writing this register is prohibited.
 
 //reg [31:0] PARAM_BASE; 			// 16'h0020; RW  Base address for ISP regs
 //reg [31:0] REGION_BASE; 		// 16'h002C; RW  Base address for Region Array
@@ -168,8 +182,8 @@ reg [31:0] FB_W_LINESTRIDE; 	// 16'h004C; RW  Frame buffer line stride
 //reg [31:0] FB_R_SOF2; 			// 16'h0054; RW  Read start address for field - 2/strip - 2
 
 reg [31:0] FB_R_SIZE; 			// 16'h005C; RW  Frame buffer XY size	
-reg [31:0] FB_W_SOF1; 			// 16'h0060; RW  Write start address for field - 1/strip - 1
-reg [31:0] FB_W_SOF2; 			// 16'h0064; RW  Write start address for field - 2/strip - 2
+//reg [31:0] FB_W_SOF1; 			// 16'h0060; RW  Write start address for field - 1/strip - 1
+//reg [31:0] FB_W_SOF2; 			// 16'h0064; RW  Write start address for field - 2/strip - 2
 reg [31:0] FB_X_CLIP; 			// 16'h0068; RW  Pixel clip X coordinate
 reg [31:0] FB_Y_CLIP; 			// 16'h006C; RW  Pixel clip Y coordinate
 
@@ -260,7 +274,7 @@ else begin
 			SOFTRESET_addr: SOFTRESET <= pvr_din; 					// 16'h0008; RW  CORE & TA software reset
 				
 			STARTRENDER_addr: STARTRENDER <= pvr_din; 			// 16'h0014; RW  Drawing start
-			TEST_SELECT_addr: TEST_SELECT <= pvr_din; 			// 16'h0018; RW  Test - writing this register is prohibited.
+			//TEST_SELECT_addr: TEST_SELECT <= pvr_din; 			// 16'h0018; RW  Test - writing this register is prohibited.
 
 			//PARAM_BASE_addr: PARAM_BASE <= pvr_din; 			// 16'h0020; RW  Base address for ISP regs
 			//REGION_BASE_addr: REGION_BASE <= pvr_din; 			// 16'h002C; RW  Base address for Region Array
@@ -275,8 +289,8 @@ else begin
 			//FB_R_SOF2_addr: FB_R_SOF2 <= pvr_din; 					// 16'h0054; RW  Read start address for field - 2/strip - 2
 
 			FB_R_SIZE_addr: FB_R_SIZE <= pvr_din; 					// 16'h005C; RW  Frame buffer XY size	
-			FB_W_SOF1_addr: FB_W_SOF1 <= pvr_din; 					// 16'h0060; RW  Write start address for field - 1/strip - 1
-			FB_W_SOF2_addr: FB_W_SOF2 <= pvr_din; 					// 16'h0064; RW  Write start address for field - 2/strip - 2
+			//FB_W_SOF1_addr: FB_W_SOF1 <= pvr_din; 					// 16'h0060; RW  Write start address for field - 1/strip - 1
+			//FB_W_SOF2_addr: FB_W_SOF2 <= pvr_din; 					// 16'h0064; RW  Write start address for field - 2/strip - 2
 			FB_X_CLIP_addr: FB_X_CLIP <= pvr_din; 					// 16'h0068; RW  Pixel clip X coordinate
 			FB_Y_CLIP_addr: FB_Y_CLIP <= pvr_din; 					// 16'h006C; RW  Pixel clip Y coordinate
 
@@ -455,13 +469,15 @@ always @(posedge clock) begin
 end
 
 
-wire ra_trig = 1'b1;
+//wire ra_trig = 1'b1;
 wire render_bg;
 
 wire ra_vram_rd;
 wire ra_vram_wr;
 wire [23:0] ra_vram_addr;
-wire [31:0] ra_vram_din = (ra_vram_addr>=24'h400000) ? vram_din[63:32] : vram_din[31:00];
+wire [31:0] ra_vram_din = (ra_vram_addr[22] ^ param_word_swap) ? vram_din[63:32] : vram_din[31:00];
+
+wire [31:0] ra_vram_dout;
 
 wire [31:0] ra_control;
 wire ra_cont_last;
@@ -492,7 +508,12 @@ ra_parser ra_parser_inst (
 	.clock( clock ),		// input  clock
 	.reset_n( reset_n ),	// input  reset_n
 	
-	.ra_trig( ra_trig ),	// input  ra_trig
+	.TEST_SELECT( TEST_SELECT ),	// input [31:0]  TEST_SELECT
+	
+	.ra_trig( ra_trig ),				// input  ra_trig
+	
+	.trig_pvr_update( trig_pvr_update ),	// output  trig_pvr_update
+	.pvr_reg_update( pvr_reg_update ),		// input  pvr_reg_update
 	
 	.ISP_BACKGND_D( ISP_BACKGND_D ),	// input [31:0]  ISP_BACKGND_D
 	.ISP_BACKGND_T( ISP_BACKGND_T ),	// input [31:0]  ISP_BACKGND_T
@@ -509,6 +530,7 @@ ra_parser ra_parser_inst (
 	.ra_vram_wr( ra_vram_wr ),			// output  ra_vram_wr
 	.ra_vram_addr( ra_vram_addr ),	// output [23:0]  ra_vram_addr
 	.ra_vram_din( ra_vram_din ),		// input [31:0]   ra_vram_din
+	.ra_vram_dout( ra_vram_dout ),		// output [31:0]   ra_vram_dout
 	
 	.ra_control( ra_control ),			// output [31:0]  ra_control
 	.ra_cont_last( ra_cont_last ),		// output ra_cont_last
@@ -559,7 +581,7 @@ wire isp_vram_rd;
 wire isp_vram_wr;
 
 // Keep this as 32-bit for now... (textures are read as 64-bit, via tex_vram_din on the isp_parser).
-wire [31:0] isp_vram_din = (isp_vram_addr_out>=24'h400000) ? vram_din[63:32] : vram_din[31:00];
+wire [31:0] isp_vram_din = (isp_vram_addr_out[22] ^ param_word_swap) ? vram_din[63:32] : vram_din[31:00];
 wire [31:0] isp_vram_dout;
 
 wire isp_entry_valid;
@@ -575,11 +597,11 @@ else begin
 end
 
 // Limit the addresses to 4MB, as we have muxes for the lower and upper 4MB now.
-assign vram_addr = (isp_switch) ? isp_vram_addr_out[21:0] : ra_vram_addr[21:0];
+assign vram_addr      = (isp_switch) ? isp_vram_addr_out[21:0] : ra_vram_addr[21:0];
 assign vram_burst_cnt = (isp_switch) ? isp_vram_burst_cnt : 8'd1;
-assign vram_rd   = (isp_switch) ? isp_vram_rd       : ra_vram_rd;
-assign vram_wr   = (isp_switch) ? isp_vram_wr       : ra_vram_wr;
-assign vram_dout = isp_vram_dout;
+assign vram_rd        = (isp_switch) ? isp_vram_rd       : ra_vram_rd;
+assign vram_wr        = (isp_switch) ? isp_vram_wr       : ra_vram_wr;
+assign vram_dout      = (isp_switch) ? isp_vram_dout     : ra_vram_dout;
 
 wire [7:0] isp_state;
 
@@ -587,9 +609,13 @@ wire [31:0] pal_dout;
 
 wire [7:0] isp_vram_burst_cnt;
 
+wire [63:0] vram_din_swapped = {vram_din[31:00],vram_din[63:32]};
+
 isp_parser isp_parser_inst (
 	.clock( clock ),						// input  clock
 	.reset_n( reset_n ),					// input  reset_n
+	
+	.disable_alpha( disable_alpha ),	// input  disable_alpha
 	
 	.ISP_BACKGND_D( ISP_BACKGND_D ),	// input [31:0]  ISP_BACKGND_D
 	.ISP_BACKGND_T( ISP_BACKGND_T ),	// input [31:0]  ISP_BACKGND_T
@@ -614,7 +640,7 @@ isp_parser isp_parser_inst (
 	.isp_vram_din( isp_vram_din ),				// input  [31:0]  isp_vram_din
 	.isp_vram_dout( isp_vram_dout ),				// output  [31:0]  isp_vram_dout
 	
-	.tex_vram_din( vram_din ),						// full 64-bit input [63:0]
+	.tex_vram_din( (tex_word_swap) ? vram_din_swapped : vram_din ),	// full 64-bit input [63:0]
 	
 	.fb_addr( fb_addr ),								// output [22:0]  fb_addr
 	.fb_writedata( fb_writedata ),				// output [63:0]  fb_writedata
@@ -638,6 +664,9 @@ isp_parser isp_parser_inst (
 	
 	.FB_R_SOF1( FB_R_SOF1 ),
 	.FB_R_SOF2( FB_R_SOF2 ),
+	
+	.FB_W_SOF1( FB_W_SOF1 ),
+	.FB_W_SOF2( FB_W_SOF2 ),
 	
 	.TEXT_CONTROL( TEXT_CONTROL ),			// From TEXT_CONTROL reg. (0xE4 in PVR regs).
 	.PAL_RAM_CTRL( PAL_RAM_CTRL[1:0] ),		// From PAL_RAM_CTRL reg, bits [1:0].

@@ -7,7 +7,7 @@ module codebook_cache (
     
     input wire cache_clear,
     
-    input wire [9:0] tag_in,				// 10-bit unique triangle identifier
+    input wire [11:0] tag_in,				// 10-bit unique triangle identifier
     input wire [7:0] read_index,			// 8-bit offset within the triangle's palette block
     input wire cache_read,					// Read request signal
     

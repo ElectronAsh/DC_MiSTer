@@ -6,7 +6,12 @@ module ra_parser (
 	input clock,
 	input reset_n,
 	
+	input [31:0] TEST_SELECT,
+	
 	input ra_trig,
+	
+	output reg trig_pvr_update,
+	input pvr_reg_update,
 	
 	input [31:0] ISP_BACKGND_D,
 	input [31:0] ISP_BACKGND_T,
@@ -24,6 +29,7 @@ module ra_parser (
 	output reg ra_vram_wr,
 	output reg [23:0] ra_vram_addr,
 	input [31:0] ra_vram_din,
+	output reg [31:0] ra_vram_dout,
 	
 	output reg [31:0] ra_control,
 	output wire ra_cont_last,
@@ -88,10 +94,12 @@ reg [7:0] ol_jump_bytes;
 
 reg draw_last_tile;
 
+reg ra_trig_reg;
+
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	ra_state <= 8'd0;
-	render_bg <= 1'b1;				// TESTING !!
+	render_bg <= 1'b0;				// TESTING !!
 	next_region <= 24'h00000000;
 	opb_word <= 32'h00000000;
 	type_cnt <= 3'd0;
@@ -101,8 +109,12 @@ if (!reset_n) begin
 	ra_new_tile_start <= 1'b0;
 	tile_prims_done <= 1'b0;
 	clear_fb <= 1'b0;
+	ra_trig_reg <= 1'b0;
+	trig_pvr_update <= 1'b0;
 end
 else begin
+	trig_pvr_update <= 1'b0;
+
 	ra_new_tile_start <= 1'b0;
 
 	clear_fb <= 1'b0;
@@ -116,13 +128,31 @@ else begin
 	if (ra_vram_rd && !vram_wait) ra_vram_rd <= 1'b0;
 	if (ra_vram_wr && !vram_wait) ra_vram_wr <= 1'b0;
 
+	if (ra_trig) ra_trig_reg <= 1'b1;
+	
 	case (ra_state)
 		0: begin
 			draw_last_tile <= 1'b0;
+			/*
 			if (ra_trig) begin
 				//clear_fb <= 1'b1;
 				ra_state <= ra_state + 8'd1;
 			end
+			*/
+			// Triggered from the MiSTer menu, or after a PVR dump load...
+			if (ra_trig_reg) begin
+				ra_trig_reg <= 1'b0;
+				ra_state <= 8'd1;		// Start rendering the FRAME.
+			end
+			else begin	// Else, keep polling for the magic number in DDR3 / PVR regs copy...
+				trig_pvr_update <= 1'b1;	// Trigger the PVR reg update.
+				ra_state <= 8'd200;
+			end
+		end
+		
+		200: if (!trig_pvr_update && !pvr_reg_update) begin
+			if (TEST_SELECT != 32'h0000000) ra_state <= 8'd1;	// Start rendering the FRAME.
+			else ra_state <= 8'd0;
 		end
 		
 		1: if (!clear_fb && !clear_fb_pend) begin
@@ -189,7 +219,7 @@ else begin
 		9: begin
 			// The Background poly has no OPB word.
 			// Copy some flags from the ISP_BACKGND_T reg...
-			if (render_bg) begin
+			/*if (render_bg) begin
 				opb_word[31:29] <= 3'b101;						// Single Quad. (or Quad Array).
 				opb_word[24]    <= ISP_BACKGND_T[27];		// Shadow.
 				opb_word[23:21] <= ISP_BACKGND_T[26:24];	// Skip.
@@ -198,7 +228,7 @@ else begin
 				render_poly     <= 1'b1;
 				ra_state        <= 8'd100;		// Wait for BG Poly to be drawn.
 			end
-			else begin
+			else*/ begin
 				type_cnt <= type_cnt + 1;	// Check through each Type.
 				case (type_cnt)
 				// Point ra_vram_addr to an OBJECT address...
@@ -292,13 +322,25 @@ else begin
 			if (ra_cont_last) ra_state <= 8'd15;	// TESTING. Don't repeat rendering the same frame, just stop.
 			else begin
 				ra_vram_addr <= next_region;	// Check the next Region Array entry.
-				render_bg <= 1'b1;
+				//render_bg <= 1'b1;
 				ra_vram_rd <= 1'b1;
 				ra_state <= 8'd2;
 			end	
 		end
 		
-		15: ;	// All tiles Done! (this ra_state is used to pause the sim after all Tiles have been rendered.)
+		15: begin	// All tiles Done! (this ra_state is used to pause the sim after all Tiles have been rendered.)
+			ra_vram_dout <= 32'h00000000;
+			ra_vram_addr <= 24'h7FFFF8;		// 8MB, minus 8 Bytes.
+			ra_vram_wr   <= 1'b1;
+			if (!vram_wait) ra_state <= ra_state + 8'd1;
+		end
+
+		16: begin
+			ra_vram_dout <= 32'h00000000;
+			ra_vram_addr <= 24'h7FFFFC;		// 8MB, minus 4 Bytes.
+			ra_vram_wr   <= 1'b1;
+			if (!vram_wait) ra_state <= 8'd0;
+		end
 		
 		default: ;
 	

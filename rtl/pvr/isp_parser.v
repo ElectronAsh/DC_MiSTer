@@ -13,6 +13,8 @@ module isp_parser (
 	input clock,
 	input reset_n,
 	
+	input disable_alpha,
+	
 	input [31:0] ISP_BACKGND_D,
 	input [31:0] ISP_BACKGND_T,
 	input render_bg,
@@ -56,6 +58,9 @@ module isp_parser (
 	
 	input [31:0] FB_R_SOF1,
 	input [31:0] FB_R_SOF2,
+	
+	input [31:0] FB_W_SOF1,
+	input [31:0] FB_W_SOF2,
 	
 	input [31:0] TEXT_CONTROL,	// From TEXT_CONTROL reg.
 	input  [1:0] PAL_RAM_CTRL,	// From PAL_RAM_CTRL reg, bits [1:0].
@@ -259,7 +264,6 @@ else begin
 	if (isp_vram_wr & !vram_wait) isp_vram_wr <= 1'b0;
 	
 	//if (fb_we && !vram_wait) fb_we <= 1'b0;
-	if (wr_pix && !vram_wait) wr_pix <= 1'b0;
 	
 	no_tex_read <= 1'b0;
 	
@@ -301,6 +305,7 @@ else begin
 			if (render_bg) begin
 				// Using poly_addr from the RA now (isp_vram_addr set in isp_state 0), as it includes the PARAM_BASE offset.
 				//isp_vram_addr <= {ISP_BACKGND_T[23:3],2'b00};
+				//if (!cache_bypass) prim_tag <= prim_tag + 12'd1;
 				isp_vram_rd <= 1'b1;
 				isp_state <= 8'd2;
 			end
@@ -314,7 +319,7 @@ else begin
 						if (strip_mask[strip_cnt]) begin
 							isp_vram_addr <= poly_addr;	// Always use the absolute start address of the poly. Will fetch ISP/TSP/TCW again, but then skip verts.
 							isp_vram_rd <= 1'b1;
-							/*if (!cache_bypass) */prim_tag <= prim_tag + 12'd1;
+							/*if (!cache_bypass)*/ prim_tag <= prim_tag + 12'd1;
 							isp_state <= 8'd2;				// Go to the next state if the current strip_mask bit is set.
 						end
 						else begin									// Current strip_mask bit was NOT set...
@@ -326,7 +331,7 @@ else begin
 				else if (is_tri_array || is_quad_array) begin	// Triangle Array or Quad Array.
 					quad_done <= 1'b0;							// Ready for drawing the first half of a Quad.			
 					array_cnt <= num_prims;	// Shouldn't need a +1 here, because it will render the first triangle with array_cnt==0 anyway. ElectronAsh.
-					/*if (!cache_bypass) */prim_tag <= prim_tag + 12'd1;
+					/*if (!cache_bypass)*/ prim_tag <= prim_tag + 12'd1;
 					isp_vram_rd <= 1'b1;
 					isp_state <= 8'd2;
 				end
@@ -669,17 +674,13 @@ else begin
 
 		// Write triangle spans to Z / Tag buffer, checking 32 "pixels" at once for inTri AND depth_compare.
 		50: begin
-			//isp_state <= 8'd90;
-			isp_state <= 8'd91;
+			isp_state <= 8'd90;
 		end
 		
-		/*
 		90: begin	// Z-buff write is allowed in this state.
 			isp_state <= isp_state + 8'd1;
 		end
-		*/
 		
-		// Testing Z-buff writes in this state !
 		91: begin
 			if (y_ps[4:0]==5'd31) begin
 				isp_vram_addr <= isp_vram_addr_last;
@@ -698,66 +699,73 @@ else begin
 		// Rendering from the Tag buffer now.
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
-		51: if (!z_clear_busy && !read_codebook && !codebook_wait) begin
+		51: if (!z_clear_busy /*&& !read_codebook && !codebook_wait*/) begin
 			pcache_load <= 1'b1;
 			isp_state <= isp_state + 8'd1;
 		end
 		
 		52: begin
-			pcache_load <= 1'b1;			// Needs this?
+			pcache_load <= 1'b1;
 			isp_state <= isp_state + 8'd1;
 		end
 		
 		53: begin
-			/*if (prim_tag_out_old != prim_tag_out) begin		// Check to see if the Tag has changed...
-				prim_tag_out_old <= prim_tag_out;
-			end
-			else*/ begin		// Tag has not changed, but check if the new pixel is flat-shaded/Gouraud, or textured...
-				if (tex_base_word_addr_old != tcw_word/*_out*/[20:0]) begin	// Check to see if the texture BASE address has changed...
-					tex_base_word_addr_old <= tcw_word/*_out*/[20:0];
-					// isp_inst[25]=texture.  tcw_word[30]=vq_comp.
-					if (isp_inst/*_out*/[25] && tcw_word/*_out*/[30]) begin	// Check if VQ compressed.
-						read_codebook <= 1'b1;						// If so, read the new Codebook.
-						isp_state <= 8'd100;
-					end
+			isp_state <= 8'd210;
+		end
+		
+		210: begin
+			isp_state <= 8'd54;
+		end
+		
+		54: begin
+			if (isp_inst[25]) begin		// If textured...
+				if (tcw_word[30] && (tex_base_word_addr_old != tcw_word[20:0])) begin	// VQ, and texture BASE address has changed...
+					tex_base_word_addr_old <= tcw_word[20:0];
+					read_codebook <= 1'b1;						// If so, read the new Codebook.
+					isp_state <= 8'd100;
 				end
-				else begin
-					// If texture flag is set AND if vram_word_addr has changed...
-					if (isp_inst/*_out*/[25] && (vram_word_addr_old!=vram_word_addr)) begin	
+				else begin	// Textured, non-VQ...
+					// Check to see if vram_word_addr (texel addr) has changed...
+					if ((vram_word_addr_old!=vram_word_addr)) begin
 						vram_word_addr_old <= vram_word_addr;
 						if (debug_ena_texel_reads) begin
 							isp_vram_rd <= 1'b1;				// Read a Texel...
-							isp_state <= 8'd54;
+							isp_state <= 8'd55;
 						end
-						else isp_state <= 8'd55;
+						else isp_state <= 8'd56;	// Textures disabled, just write the pixel (flat/Gouraud).
 					end
-					else begin	// Flat-shaded or Gouraud, no need to read a Texel Word...
-						isp_state <= 8'd55;
-					end
+					else isp_state <= 8'd56;	// Textured (non-VQ), but the texel addr hasn't changed, write the pixel anyway.
 				end
+			end
+			else begin	// Flat-shaded or Gouraud pixel, no need to do a Texel fetch...
+				isp_state <= 8'd56;
 			end
 		end
 
 		// Wait for next Texel...
-		54: if (vram_valid) begin
+		55: if (vram_valid) begin
 			isp_state <= isp_state + 8'd1;
 		end
 
-		55: begin	// Delay for Texel processing time.
-			isp_state <= isp_state + 8'd1;
+		56: begin	// Delay for Texel processing time.
+			isp_state <= 8'd211;
+		end
+		
+		211: begin	// Delay for Texel processing time.
+			isp_state <= 8'd57;
 		end
 		
 		// Write pixel to Tile ARGB buffer.
-		56: if (!vram_wait) begin
-			if ((type_cnt-1)==1) begin									// For the Punch-Through prim type...
+		57: begin
+			/*if ((type_cnt-1)==1) begin						// For the Punch-Through prim type...
 				if (final_argb[31:24]==8'hff) wr_pix <= 1'b1;	// Only write to the ARGB tile buffer if the Alpha==0xff (1.0) ??
-			end																// This should probably be a compare to the PT_ALPHA_REF register, no?
-			else wr_pix <= 1'b1;
+			end													// This should probably be a compare to the PT_ALPHA_REF register, no?
+			else*/ wr_pix <= 1'b1;
 			
-			isp_state <= isp_state + 8'd1;
+			if (!vram_wait) isp_state <= isp_state + 8'd1;
 		end
 		
-		57: begin
+		58: begin
 			// On the last (lower-right) pixel of the tile...
 			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin
 				tile_wb <= 1'b1;
@@ -765,41 +773,34 @@ else begin
 				isp_state <= 8'd110;
 			end
 			else begin
-				x_ps[4:0] <= x_ps[4:0] + 5'd1;			// Inc x_ps[4:0].
+				x_ps[4:0] <= x_ps[4:0] + 5'd1;		// Inc x_ps[4:0].
 				if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;
 				isp_state <= 8'd51;	// Jump back.
 			end
 		end
 		
-		
+		// Check if we need to read the Codebook.
 		100: begin
-			if (!cb_cache_hit) begin
-				word_cnt <= 8'd0;
-				isp_state <= isp_state + 8'd1;	// Codebook Cache MISS !
-			end
+			if (!cb_cache_hit) isp_state <= isp_state + 8'd1;	// Codebook Cache MISS !
 			else isp_state <= 8'd51;
 		end
 		
 		101: begin
-			isp_vram_burst_cnt <= 8'd128;		// 128 WORDs max, per burst !!
-			isp_vram_rd <= 1'b1;					// Trigger the contiguous (ish) read Burst.
+			isp_vram_rd <= 1'b1;	// Read the first Codebook word.
 			isp_state <= isp_state + 8'd1;
 		end
 		
 		102: begin
-			if (vram_valid) begin
-				if (word_cnt==8'd127) begin	
-					word_cnt <= 8'd128;
-					isp_state <= 8'd101;
-				end
-				else word_cnt <= word_cnt + 8'd1;
-			end
-			if (!codebook_wait) begin
-				isp_vram_burst_cnt <= 8'd1;	// Set back to ONE Word !
-				isp_state <= 8'd51;
-			end
+			if (!codebook_wait) isp_state <= 8'd103;
+			else if (vram_valid) isp_state <= 8'd101;
 		end
 		
+		103: if (vram_valid) begin	// Wait for the last Codebook word.
+			//isp_vram_rd <= 1'b1;	// Read the first texel, after a Codebook read.
+			//isp_state <= 8'd55;
+			isp_state <= 8'd54;
+		end
+
 		
 		// Wait for Tile writeback to finish.
 		110: if (wb_done /*|| ra_cont_flush_n*/) begin
@@ -910,9 +911,9 @@ wire [31:0] vert_c_off_col_out;
 wire pcache_write = (isp_state==8'd49);
 reg  pcache_load;
 
-reg [9:0] prim_tag_out_old;
+reg [11:0] prim_tag_out_old;
 
-wire [9:0] prim_tag_mux = (isp_state>=8'd51) ? prim_tag_out : prim_tag;
+wire [11:0] prim_tag_mux = (isp_state>=8'd51) ? prim_tag_out : prim_tag;
 
 param_buffer  param_buffer_inst
 (
@@ -1117,7 +1118,8 @@ inTri_calc  inTri_calc_inst (
 	.FY2_FIXED( FY2_FIXED ),	// input signed [47:0]  FY2
 	.FY3_FIXED( FY3_FIXED ),	// input signed [47:0]  FY3
 
-	.x_ps( x_ps ),
+	//.x_ps( x_ps ),
+	.x_ps( {x_ps[10:4],4'd0} ),
 	.y_ps( y_ps ),
 	
 	//.inTriangle( inTriangle ),	// output inTriangle
@@ -1289,8 +1291,9 @@ texture_address  texture_address_inst (
 	.pal_rd( pal_rd ),					// input  pal_rd
 	.pal_dout( pal_dout ),				// output [31:0]  pal_dout
 
-	//.prim_tag( prim_tag_out ),		// input [9:0]  prim_tag
-	.prim_tag( tcw_word_out[15:5] ),		// input [9:0]  prim_tag
+	//.prim_tag( prim_tag_out ),		// input [11:0]  prim_tag
+	.prim_tag( tcw_word[13:5] ),		// input [11:0]  prim_tag
+	
 	.cb_cache_clear( cb_cache_clear ),	// input  cb_cache_clear (on new tile start).
 	.cb_cache_hit( cb_cache_hit ),		// output  cb_cache_hit
 	
@@ -1352,7 +1355,7 @@ wire [9:0] prim_tag_out;
 */
 wire [2:0] depth_comp_in = depth_comp;
 
-wire trig_z_row_write = isp_state==8'd91 && y_ps<=(tiley_start+31) && !z_write_disable;
+wire trig_z_row_write = isp_state==8'd90 /*&& y_ps<=(tiley_start+31)*/ && !z_write_disable;
 
 z_buff  z_buff_inst(
 	.clock( clock ),
@@ -1431,10 +1434,12 @@ wire [7:0] blu_blend = ((new_alpha+1) * final_argb[07:00] + (256-new_alpha) * ol
 // Write new Alpha value, even if we don't compare aginst it (yet).
 assign tile_buf_argb_in[31:24] = new_alpha;
 
+wire opaque_type = ((type_cnt-1)==0);
+
 // Opaque pixels bypass the final Alpha blend.
-assign tile_buf_argb_in[23:16] = ((type_cnt-1)==0) ? final_argb[23:16] : red_blend;
-assign tile_buf_argb_in[15:08] = ((type_cnt-1)==0) ? final_argb[15:08] : grn_blend;
-assign tile_buf_argb_in[07:00] = ((type_cnt-1)==0) ? final_argb[07:00] : blu_blend;
+assign tile_buf_argb_in[23:16] = (opaque_type || disable_alpha) ? final_argb[23:16] : red_blend;
+assign tile_buf_argb_in[15:08] = (opaque_type || disable_alpha) ? final_argb[15:08] : grn_blend;
+assign tile_buf_argb_in[07:00] = (opaque_type || disable_alpha) ? final_argb[07:00] : blu_blend;
 
 
 wire [31:0] tile_buf_argb_in;
@@ -1446,10 +1451,9 @@ assign fb_addr = wb_word_addr;
 wire [15:0] pix0 = twopix_out[31:16];
 wire [15:0] pix1 = twopix_out[15:00];
 
-assign fb_writedata = {pix1, pix1, pix0, pix0};	// Write TWO pixels per clock!
+assign fb_writedata = {pix0, pix1, pix0, pix1};	// Write TWO pixels per clock!
 assign fb_byteena   = 8'b11111111;
-
-//assign fb_byteena = (!FB_R_SOF1[22]) ? 8'b00001111 : 8'b11110000;
+//assign fb_byteena = (FB_W_SOF1>23'h400000) ? 8'b11110000 : 8'b00001111;
 
 tile_argb_buffer  tile_argb_buffer_inst (
 	.clock( clock ),			// input  clock

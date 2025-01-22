@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-localparam ENTRIES = 1024;
+localparam ENTRIES = 4096;
 
 module param_buffer (
 	input clock,
@@ -157,8 +157,36 @@ always @(posedge clock) begin
 		pcache_vert_c_base_col_0[prim_tag]	<= vert_c_base_col_0_in;
 		pcache_vert_c_off_col[prim_tag] 		<= vert_c_off_col_in;
 	end
+	
+	isp_inst_out				<= pcache_isp_inst[prim_tag];
+	tsp_inst_out				<= pcache_tsp_inst[prim_tag];
+	tcw_word_out				<= pcache_tcw_word[prim_tag];
+	
+	vert_a_x_out				<= pcache_vert_a_x[prim_tag];
+	vert_a_y_out				<= pcache_vert_a_y[prim_tag];
+	vert_a_z_out				<= pcache_vert_a_z[prim_tag];
+	vert_a_u0_out				<= pcache_vert_a_u0[prim_tag];
+	vert_a_v0_out				<= pcache_vert_a_v0[prim_tag];
+	vert_a_base_col_0_out	<= pcache_vert_a_base_col_0[prim_tag];
+	vert_a_off_col_out		<= pcache_vert_a_off_col[prim_tag];
+	
+	vert_b_x_out				<= pcache_vert_b_x[prim_tag];
+	vert_b_y_out				<= pcache_vert_b_y[prim_tag];
+	vert_b_z_out				<= pcache_vert_b_z[prim_tag];
+	vert_b_u0_out				<= pcache_vert_b_u0[prim_tag];
+	vert_b_v0_out				<= pcache_vert_b_v0[prim_tag];
+	vert_b_base_col_0_out	<= pcache_vert_b_base_col_0[prim_tag];
+	vert_b_off_col_out		<= pcache_vert_b_off_col[prim_tag];
+	
+	vert_c_x_out				<= pcache_vert_c_x[prim_tag];
+	vert_c_y_out				<= pcache_vert_c_y[prim_tag];
+	vert_c_z_out				<= pcache_vert_c_z[prim_tag];
+	vert_c_u0_out				<= pcache_vert_c_u0[prim_tag];
+	vert_c_v0_out				<= pcache_vert_c_v0[prim_tag];
+	vert_c_base_col_0_out	<= pcache_vert_c_base_col_0[prim_tag];
+	vert_c_off_col_out		<= pcache_vert_c_off_col[prim_tag];
 end
-
+/*
 assign isp_inst_out				= pcache_isp_inst[prim_tag];
 assign tsp_inst_out				= pcache_tsp_inst[prim_tag];
 assign tcw_word_out				= pcache_tcw_word[prim_tag];
@@ -186,6 +214,7 @@ assign vert_c_u0_out				= pcache_vert_c_u0[prim_tag];
 assign vert_c_v0_out				= pcache_vert_c_v0[prim_tag];
 assign vert_c_base_col_0_out	= pcache_vert_c_base_col_0[prim_tag];
 assign vert_c_off_col_out		= pcache_vert_c_off_col[prim_tag];
+*/
 `endif
 
 
