@@ -695,7 +695,13 @@ wire clk_pal = clk_audio;
 wire  [27:0] vbuf_address;
 wire   [7:0] vbuf_burstcount;
 wire         vbuf_waitrequest;
+
 wire [127:0] vbuf_readdata;
+/*
+wire [63:0] pix01 = (!FB_R_SOF1[22]) ? {vbuf_readdata[127:95],vbuf_readdata[127:95]} : {vbuf_readdata[94:63],vbuf_readdata[94:63]};
+wire [63:0] pix23 = (!FB_R_SOF1[22]) ? {vbuf_readdata[63:32 ],vbuf_readdata[ 63:32]} : {vbuf_readdata[31:00],vbuf_readdata[31:00]};
+wire [127:0] ascal_readdata = {pix01, pix23};
+*/
 wire         vbuf_readdatavalid;
 wire         vbuf_read;
 wire [127:0] vbuf_writedata;
@@ -813,7 +819,10 @@ ascal
 
 	.avl_clk          (clk_100m),
 	.avl_waitrequest  (vbuf_waitrequest),
+	
 	.avl_readdata     (vbuf_readdata),
+	//.avl_readdata     (ascal_readdata),	
+	
 	.avl_readdatavalid(vbuf_readdatavalid),
 	.avl_burstcount   (vbuf_burstcount),
 	.avl_writedata    (vbuf_writedata),
@@ -1690,6 +1699,8 @@ reg  [1:0] sl_r;
 wire [1:0] sl = sl_r;
 always @(posedge clk_sys) sl_r <= FB_EN ? 2'b00 : scanlines;
 
+wire [23:0] FB_R_SOF1;
+
 emu emu
 (
 	.CLK_50M(FPGA_CLK2_50),
@@ -1708,6 +1719,8 @@ emu emu
 	.VGA_SL(scanlines),
 	.VIDEO_ARX(ARX),
 	.VIDEO_ARY(ARY),
+	
+	.FB_R_SOF1(FB_R_SOF1),
 
 `ifdef MISTER_FB
 	.FB_EN(fb_en),

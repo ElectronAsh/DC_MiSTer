@@ -62,7 +62,7 @@ wire signed [31:0] edge0_y = FY2-FY1;
 wire signed [31:0] edge1_y = FY3-FY2;
 wire signed [31:0] edge2_y = FY1-FY3;
 
-wire signed [31:0] base_x = {x_ps[10:5],5'd0}<<<FRAC_BITS;
+wire signed [31:0] base_x = {x_ps[10:5],5'd0} <<<FRAC_BITS;
 
 // Pre-calculate base values with explicit sign handling
 wire signed [63:0] edge_eval0[0:32];

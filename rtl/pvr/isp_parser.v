@@ -699,7 +699,7 @@ else begin
 		// Rendering from the Tag buffer now.
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
-		51: if (!z_clear_busy /*&& !read_codebook && !codebook_wait*/) begin
+		51: begin
 			pcache_load <= 1'b1;
 			isp_state <= isp_state + 8'd1;
 		end
@@ -721,25 +721,23 @@ else begin
 			if (isp_inst[25]) begin		// If textured...
 				if (tcw_word[30] && (tex_base_word_addr_old != tcw_word[20:0])) begin	// VQ, and texture BASE address has changed...
 					tex_base_word_addr_old <= tcw_word[20:0];
-					read_codebook <= 1'b1;						// If so, read the new Codebook.
+					read_codebook <= 1'b1;							// If so, read the new Codebook.
 					isp_state <= 8'd100;
 				end
 				else begin	// Textured, non-VQ...
 					// Check to see if vram_word_addr (texel addr) has changed...
-					if ((vram_word_addr_old!=vram_word_addr)) begin
-						vram_word_addr_old <= vram_word_addr;
+					//if ((vram_word_addr_old!=vram_word_addr)) begin
+						//vram_word_addr_old <= vram_word_addr;
 						if (debug_ena_texel_reads) begin
 							isp_vram_rd <= 1'b1;				// Read a Texel...
 							isp_state <= 8'd55;
 						end
 						else isp_state <= 8'd56;	// Textures disabled, just write the pixel (flat/Gouraud).
-					end
-					else isp_state <= 8'd56;	// Textured (non-VQ), but the texel addr hasn't changed, write the pixel anyway.
+					//end
+					//else isp_state <= 8'd56;	// Textured (non-VQ), but the texel addr hasn't changed, write the pixel anyway.
 				end
 			end
-			else begin	// Flat-shaded or Gouraud pixel, no need to do a Texel fetch...
-				isp_state <= 8'd56;
-			end
+			else isp_state <= 8'd56;	// Flat-shaded or Gouraud pixel, no need to do a Texel fetch...
 		end
 
 		// Wait for next Texel...
@@ -752,6 +750,10 @@ else begin
 		end
 		
 		211: begin	// Delay for Texel processing time.
+			isp_state <= 8'd212;
+		end
+		
+		212: begin	// Delay for Texel processing time.
 			isp_state <= 8'd57;
 		end
 		
@@ -761,19 +763,17 @@ else begin
 				if (final_argb[31:24]==8'hff) wr_pix <= 1'b1;	// Only write to the ARGB tile buffer if the Alpha==0xff (1.0) ??
 			end													// This should probably be a compare to the PT_ALPHA_REF register, no?
 			else*/ wr_pix <= 1'b1;
-			
-			if (!vram_wait) isp_state <= isp_state + 8'd1;
+			isp_state <= isp_state + 8'd1;
 		end
 		
 		58: begin
-			// On the last (lower-right) pixel of the tile...
-			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin
-				tile_wb <= 1'b1;
+			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// Last pixel written, was the last (lower-right) pixel of the tile...
+				tile_wb <= 1'b1;										// Do the Tile ARGB buffer Writeback!
 				//tile_wb <= !ra_cont_flush_n;
-				isp_state <= 8'd110;
+				isp_state <= 8'd110;									// Wait for the Writeback to finish.
 			end
-			else begin
-				x_ps[4:0] <= x_ps[4:0] + 5'd1;		// Inc x_ps[4:0].
+			else begin		// Not on the last Tile pixel yet...
+				x_ps[4:0] <= x_ps[4:0] + 5'd1;
 				if (x_ps[4:0]==5'd31) y_ps[4:0] <= y_ps[4:0] + 5'd1;
 				isp_state <= 8'd51;	// Jump back.
 			end
@@ -796,8 +796,6 @@ else begin
 		end
 		
 		103: if (vram_valid) begin	// Wait for the last Codebook word.
-			//isp_vram_rd <= 1'b1;	// Read the first texel, after a Codebook read.
-			//isp_state <= 8'd55;
 			isp_state <= 8'd54;
 		end
 
@@ -1118,8 +1116,7 @@ inTri_calc  inTri_calc_inst (
 	.FY2_FIXED( FY2_FIXED ),	// input signed [47:0]  FY2
 	.FY3_FIXED( FY3_FIXED ),	// input signed [47:0]  FY3
 
-	//.x_ps( x_ps ),
-	.x_ps( {x_ps[10:4],4'd0} ),
+	.x_ps( x_ps ),
 	.y_ps( y_ps ),
 	
 	//.inTriangle( inTriangle ),	// output inTriangle
@@ -1419,7 +1416,7 @@ wire tile_wb_we;
 wire [19:0] wb_word_addr;
 wire [31:0] twopix_out;
 wire [7:0] wb_burst_cnt;
-wire burst_begin;
+//wire burst_begin;
 
 // Alpha blending, for the writes to the tile ARGB buffer...
 wire [7:0] new_alpha = final_argb[31:24];
@@ -1452,8 +1449,8 @@ wire [15:0] pix0 = twopix_out[31:16];
 wire [15:0] pix1 = twopix_out[15:00];
 
 assign fb_writedata = {pix0, pix1, pix0, pix1};	// Write TWO pixels per clock!
-assign fb_byteena   = 8'b11111111;
-//assign fb_byteena = (FB_W_SOF1>23'h400000) ? 8'b11110000 : 8'b00001111;
+//assign fb_byteena   = 8'b11111111;
+assign fb_byteena = (FB_W_SOF1[22]) ? 8'b11110000 : 8'b00001111;
 
 tile_argb_buffer  tile_argb_buffer_inst (
 	.clock( clock ),			// input  clock
@@ -1473,8 +1470,8 @@ tile_argb_buffer  tile_argb_buffer_inst (
 	.wb_word_addr( wb_word_addr ),	// output [19:0]  wb_word_addr
 	.twopix_out( twopix_out ),			// output [31:0]  twopix_out
 	
-	.wb_burst_cnt( wb_burst_cnt ),	// output [7:0]  wb_burst_cnt
-	.burst_begin( burst_begin ),		// output  burst_begin
+	//.wb_burst_cnt( wb_burst_cnt ),	// output [7:0]  wb_burst_cnt
+	//.burst_begin( burst_begin ),		// output  burst_begin
 	.vram_wr( tile_wb_we ),				// output  vram_wr
 	.vram_wait( vram_wait )				// input  vram_wait
 );
@@ -1501,8 +1498,8 @@ module tile_argb_buffer (
 	output reg [19:0] wb_word_addr,		// VRAM dual-pixel writeback (32-bit WORD address).
 	output wire [31:0] twopix_out,
 	
-	output reg [7:0] wb_burst_cnt,
-	output reg burst_begin,
+	//output reg [7:0] wb_burst_cnt,
+	//output reg burst_begin,
 	output reg vram_wr,
 	input vram_wait
 );
@@ -1544,13 +1541,13 @@ always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	wb_word_addr <= 20'd0;
 	wb_word_cnt <= 10'd512;
-	wb_burst_cnt <= 8'd16;
-	burst_begin <= 1'b0;
+	//wb_burst_cnt <= 8'd16;
+	//burst_begin <= 1'b0;
 	vram_wr <= 1'b0;
 	wb_done <= 1'b0;
 end
 else begin
-	burst_begin <= 1'b0;
+	//burst_begin <= 1'b0;
 	vram_wr <= 1'b0;
 	wb_done <= 1'b0;
 
@@ -1558,17 +1555,17 @@ else begin
 		tilex <= x_ps[9:5];
 		tiley <= y_ps[9:5];
 		wb_word_cnt <= 10'd0;	// Kick off the writeback!
-		burst_begin <= 1'b1;
+		//burst_begin <= 1'b1;
 	end
 
 	// Handle Tile writeback...
 	if (wb_active) begin		// wb_word_cnt < 10'd512
 		vram_wr <= 1'b1;
 		if (!vram_wait) begin
-			// Write a word and increment burst counter
+			// Write a word and increment Word counter
 			wb_word_addr <= ({tiley,wb_word_cnt[8:4]}*320) + {tilex,wb_word_cnt[3:0]};	// (tiley * (640/2)) + tilex.
 			wb_word_cnt <= wb_word_cnt + 10'd1;											// We write TWO pixels per Word, to VRAM.
-			if (wb_word_cnt[3:0]==4'd15) burst_begin <= 1'b1;	// Pulse at the start of each 16-Word (32-pixel) burst.
+			//if (wb_word_cnt[3:0]==4'd15) burst_begin <= 1'b1;	// Pulse at the start of each 16-Word (32-pixel) burst.
 			if (wb_word_cnt==10'd511) wb_done <= 1'b1;
 		end
 	end

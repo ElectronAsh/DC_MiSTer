@@ -192,11 +192,14 @@ module emu
 	//ADC
 	inout   [3:0] ADC_BUS,
 
-	input         OSD_STATUS
+	input         OSD_STATUS,
+	
+	output wire [23:0] FB_R_SOF1
 );
 
 
-wire [23:0] FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
+//wire [23:0] FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
+assign FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
 wire [23:0] FB_R_SOF2 = pvr_ptr['h54>>2][23:0];
 
 wire [23:0] FB_W_SOF1 = pvr_ptr['h60>>2][23:0];
