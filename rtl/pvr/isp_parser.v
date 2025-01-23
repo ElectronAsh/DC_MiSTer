@@ -71,9 +71,6 @@ module isp_parser (
 	input pal_rd,
 	output [31:0] pal_dout,
 	
-	input clear_fb,
-	output reg clear_fb_pend,
-	
 	output reg [7:0] isp_state,
 	
 	input debug_ena_texel_reads
@@ -221,7 +218,6 @@ if (!reset_n) begin
 	read_codebook <= 1'b0;
 	tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
 	cb_cache_clear <= 1'b0;
-	clear_fb_pend <= 1'b0;
 	clear_z <= 1'b0;
 	vram_word_addr_old <= 22'h3fffff;
 	no_tex_read <= 1'b0;
@@ -363,7 +359,7 @@ else begin
 			isp_vram_rd <= 1'b1;
 		end
 		10: if (vram_valid) begin
-			if (uv_16_bit) begin	// Read U and V from the same VRAM word.
+			if (uv_16_bit) begin		// Read U and V from the same VRAM word.
 				vert_a_u0 <= {isp_vram_din[31:16],16'h0000};
 				vert_a_v0 <= {isp_vram_din[15:00],16'h0000};
 				isp_state <= 8'd12;	// Skip reading v0 from VRAM.
@@ -802,25 +798,6 @@ else begin
 	
 	if (isp_vram_rd) isp_vram_rd_pend     <= 1'b1;
 	else if (vram_valid) isp_vram_rd_pend <= 1'b0;
-
-	/*
-	// FB Clear disabled in ra_parser atm. 
-	
-	if (clear_fb) begin
-		fb_addr <= 23'd0;
-		clear_fb_pend <= 1'b1;
-	end
-	else if (clear_fb_pend) begin
-		fb_writedata <= 64'd0;
-		fb_byteena <= 8'hff;
-		fb_we <= 1'b1;
-		fb_addr <= fb_addr + 1;
-		if (fb_addr > (640*480)) begin
-			fb_we <= 1'b0;
-			clear_fb_pend <= 1'b0;
-		end
-	end
-	*/
 	
 	//if (pcache_load && !cache_bypass) begin
 	if (pcache_load) begin
@@ -1060,7 +1037,6 @@ interp  interp_inst_z (
 	.interp24( IP_Z[24] ), .interp25( IP_Z[25] ), .interp26( IP_Z[26] ), .interp27( IP_Z[27] ), .interp28( IP_Z[28] ), .interp29( IP_Z[29] ), .interp30( IP_Z[30] ), .interp31( IP_Z[31] )
 );
 
-//wire signed [47:0] IP_Z_INTERP = FZ1_FIXED;	// Using the fixed Z value atm. Can't fit the Z interp on the DE10. ElectronAsh.
 //wire signed [47:0] IP_Z_INTERP;
 wire signed [47:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
 

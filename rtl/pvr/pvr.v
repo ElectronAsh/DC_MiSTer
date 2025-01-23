@@ -561,9 +561,6 @@ ra_parser ra_parser_inst (
 	.render_poly( render_poly ),		// output  render_poly
 	.render_to_tile( render_to_tile ),	// output  render_to_tile
 	
-	.clear_fb( clear_fb ),				// output  clear_fb
-	.clear_fb_pend( clear_fb_pend ),	// input   clear_fb_done
-	
 	.poly_drawn( poly_drawn ),			// input  poly_drawn
 	.tile_prims_done( tile_prims_done ),	// output tile_prims_done
 	
@@ -660,9 +657,6 @@ isp_parser isp_parser_inst (
 	
 	.tilex( ra_cont_tilex ),
 	.tiley( ra_cont_tiley ),
-	
-	.clear_fb( clear_fb ),						// input  clear_fb
-	.clear_fb_pend( clear_fb_pend ),			// output clear_fb_done
 	
 	.FB_R_SOF1( FB_R_SOF1 ),
 	.FB_R_SOF2( FB_R_SOF2 ),

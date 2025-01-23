@@ -59,9 +59,6 @@ module ra_parser (
 	output reg render_poly,
 	output reg render_to_tile,
 	
-	output reg clear_fb,
-	input clear_fb_pend,
-	
 	input poly_drawn,
 	output reg tile_prims_done,
 	
@@ -110,7 +107,6 @@ if (!reset_n) begin
 	render_to_tile <= 1'b0;
 	ra_new_tile_start <= 1'b0;
 	tile_prims_done <= 1'b0;
-	clear_fb <= 1'b0;
 	ra_trig_reg <= 1'b0;
 	trig_pvr_update <= 1'b0;
 end
@@ -118,8 +114,6 @@ else begin
 	trig_pvr_update <= 1'b0;
 
 	ra_new_tile_start <= 1'b0;
-
-	clear_fb <= 1'b0;
 
 	ra_entry_valid <= 1'b0;
 	render_poly <= 1'b0;
@@ -135,12 +129,6 @@ else begin
 	case (ra_state)
 		0: begin
 			draw_last_tile <= 1'b0;
-			/*
-			if (ra_trig) begin
-				//clear_fb <= 1'b1;
-				ra_state <= ra_state + 8'd1;
-			end
-			*/
 			// Triggered from the MiSTer menu, or after a PVR dump load...
 			if (ra_trig_reg) begin
 				ra_trig_reg <= 1'b0;
@@ -157,7 +145,7 @@ else begin
 			else ra_state <= 8'd0;
 		end
 		
-		1: if (!clear_fb && !clear_fb_pend) begin
+		1: begin
 			ra_vram_addr <= REGION_BASE[23:0];	// Allowing the full 16MB VRAM address here.
 			ra_vram_rd <= 1'b1;
 			ra_state <= ra_state + 1;
