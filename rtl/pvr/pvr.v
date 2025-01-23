@@ -8,10 +8,11 @@ module pvr (
 	input reset_n,
 	
 	input disable_alpha,
-	input tex_word_swap,
-	input param_word_swap,
+	input both_buff,
 	
 	input ra_trig,
+	
+	input bg_poly_en,
 	
 	output trig_pvr_update,
 	input pvr_reg_update,
@@ -475,7 +476,7 @@ wire render_bg;
 wire ra_vram_rd;
 wire ra_vram_wr;
 wire [23:0] ra_vram_addr;
-wire [31:0] ra_vram_din = (ra_vram_addr[22] ^ param_word_swap) ? vram_din[63:32] : vram_din[31:00];
+wire [31:0] ra_vram_din = (ra_vram_addr[22]) ? vram_din[63:32] : vram_din[31:00];
 
 wire [31:0] ra_vram_dout;
 
@@ -511,6 +512,8 @@ ra_parser ra_parser_inst (
 	.TEST_SELECT( TEST_SELECT ),	// input [31:0]  TEST_SELECT
 	
 	.ra_trig( ra_trig ),				// input  ra_trig
+	
+	.bg_poly_en( bg_poly_en ),		// input  bg_poly_en
 	
 	.trig_pvr_update( trig_pvr_update ),	// output  trig_pvr_update
 	.pvr_reg_update( pvr_reg_update ),		// input  pvr_reg_update
@@ -581,7 +584,7 @@ wire isp_vram_rd;
 wire isp_vram_wr;
 
 // Keep this as 32-bit for now... (textures are read as 64-bit, via tex_vram_din on the isp_parser).
-wire [31:0] isp_vram_din = (isp_vram_addr_out[22] ^ param_word_swap) ? vram_din[63:32] : vram_din[31:00];
+wire [31:0] isp_vram_din = (isp_vram_addr_out[22]) ? vram_din[63:32] : vram_din[31:00];
 wire [31:0] isp_vram_dout;
 
 wire isp_entry_valid;
@@ -609,13 +612,12 @@ wire [31:0] pal_dout;
 
 wire [7:0] isp_vram_burst_cnt;
 
-wire [63:0] vram_din_swapped = {vram_din[31:00],vram_din[63:32]};
-
 isp_parser isp_parser_inst (
 	.clock( clock ),						// input  clock
 	.reset_n( reset_n ),					// input  reset_n
 	
 	.disable_alpha( disable_alpha ),	// input  disable_alpha
+	.both_buff( both_buff ),			// input  both_buff
 	
 	.ISP_BACKGND_D( ISP_BACKGND_D ),	// input [31:0]  ISP_BACKGND_D
 	.ISP_BACKGND_T( ISP_BACKGND_T ),	// input [31:0]  ISP_BACKGND_T
@@ -640,7 +642,7 @@ isp_parser isp_parser_inst (
 	.isp_vram_din( isp_vram_din ),				// input  [31:0]  isp_vram_din
 	.isp_vram_dout( isp_vram_dout ),				// output  [31:0]  isp_vram_dout
 	
-	.tex_vram_din( (tex_word_swap) ? vram_din_swapped : vram_din ),	// full 64-bit input [63:0]
+	.tex_vram_din( vram_din ),	// full 64-bit input [63:0]
 	
 	.fb_addr( fb_addr ),								// output [22:0]  fb_addr
 	.fb_writedata( fb_writedata ),				// output [63:0]  fb_writedata

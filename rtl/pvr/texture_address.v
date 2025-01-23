@@ -145,8 +145,8 @@ end
 wire [19:0] norm_offs_1024 = 20'haaab0;
 
 reg [19:0] mipmap_byte_offs_norm;
-//reg [19:0] mipmap_byte_offs_vq;	// The VQ mipmap offset table is just norm[]>>3, so I ditched the table.
-//reg [19:0] mipmap_byte_offs_pal;	// The palette mipmap offset table is just norm[]>>1, so I ditched the table.
+//reg [19:0] mipmap_byte_offs_vq;	// The VQ mipmap offset table is just mipmap_byte_offs_norm>>3, so I ditched the table.
+//reg [19:0] mipmap_byte_offs_pal;	// The palette mipmap offset table is just mipmap_byte_offs_norm>>1, so I ditched the table.
 
 reg [19:0] mipmap_byte_offs;
 
@@ -171,7 +171,7 @@ always @(posedge clock) begin
 		9:  mipmap_byte_offs_norm <= norm_offs_1024[17:0];	// 20'h2aab0; 	// 512 texels
 		10: mipmap_byte_offs_norm <= norm_offs_1024[19:0];	// 20'haaab0; 	// 1024 texels
 	endcase
-	
+
 	// mipmap table mux (or zero offset, for non-mipmap)...
 	mipmap_byte_offs <= (!is_mipmap) ? 0 :
 						  (vq_comp) ? (mipmap_byte_offs_norm>>3) :	// Note: The mipmap byte offset table for VQ textures is just mipmap_byte_offs_norm[]>>3.

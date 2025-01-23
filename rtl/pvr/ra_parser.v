@@ -10,6 +10,8 @@ module ra_parser (
 	
 	input ra_trig,
 	
+	input bg_poly_en,
+	
 	output reg trig_pvr_update,
 	input pvr_reg_update,
 	
@@ -219,7 +221,7 @@ else begin
 		9: begin
 			// The Background poly has no OPB word.
 			// Copy some flags from the ISP_BACKGND_T reg...
-			/*if (render_bg) begin
+			if (bg_poly_en && render_bg) begin
 				opb_word[31:29] <= 3'b101;						// Single Quad. (or Quad Array).
 				opb_word[24]    <= ISP_BACKGND_T[27];		// Shadow.
 				opb_word[23:21] <= ISP_BACKGND_T[26:24];	// Skip.
@@ -228,7 +230,7 @@ else begin
 				render_poly     <= 1'b1;
 				ra_state        <= 8'd100;		// Wait for BG Poly to be drawn.
 			end
-			else*/ begin
+			else begin
 				type_cnt <= type_cnt + 1;	// Check through each Type.
 				case (type_cnt)
 				// Point ra_vram_addr to an OBJECT address...
@@ -322,7 +324,7 @@ else begin
 			if (ra_cont_last) ra_state <= 8'd15;	// TESTING. Don't repeat rendering the same frame, just stop.
 			else begin
 				ra_vram_addr <= next_region;	// Check the next Region Array entry.
-				//render_bg <= 1'b1;
+				if (bg_poly_en) render_bg <= 1'b1;
 				ra_vram_rd <= 1'b1;
 				ra_state <= 8'd2;
 			end	

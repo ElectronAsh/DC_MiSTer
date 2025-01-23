@@ -420,50 +420,6 @@ set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_trigger_in[0] 
 set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_data_in[0] -to "emu:emu|DDRAM_BUSY" -section_id auto_signaltap_0
 set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[6] -to auto_signaltap_0|gnd -section_id auto_signaltap_0
 set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[13] -to auto_signaltap_0|gnd -section_id auto_signaltap_0
-set_global_assignment -name VERILOG_FILE rtl/pvr/codebook_cache.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/z_buff.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/float_fixed_five.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/leading_trailing.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/z_buffer.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/inTri_calc.v
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/sdram.sv
-set_global_assignment -name VERILOG_FILE rtl/sdram_old.v
-set_global_assignment -name QIP_FILE rtl/FX68K/fx68k.qip
-set_global_assignment -name QIP_FILE rtl/GEN/GEN.qip
-set_global_assignment -name QIP_FILE rtl/CART/cart.qip
-set_global_assignment -name QIP_FILE rtl/SH/SH7604/SH7604.qip
-set_global_assignment -name VERILOG_FILE rtl/SH_mem.v
-set_global_assignment -name QIP_FILE rtl/32X/32X.qip
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/32X_mem.sv
-set_global_assignment -name VHDL_FILE rtl/bram.vhd
-set_global_assignment -name VHDL_FILE rtl/mlab.vhd
-set_global_assignment -name VHDL_FILE rtl/CEGen.vhd
-set_global_assignment -name VHDL_FILE rtl/snd_mix.vhd
-set_global_assignment -name VERILOG_FILE rtl/pvr/ra_parser.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/pvr.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/param_cache.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/isp_parser.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/interp.v
-set_global_assignment -name VERILOG_FILE rtl/defines.v
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/lightgun.sv
-set_global_assignment -name CDF_FILE jtag.cdf
-set_global_assignment -name QIP_FILE sys/sys.qip
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/ddram.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/cache_2way.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/cofi.sv
-set_global_assignment -name SDC_FILE S32X.sdc
-set_global_assignment -name SYSTEMVERILOG_FILE S32X.sv
-set_global_assignment -name SIGNALTAP_FILE stp1.stp
-set_global_assignment -name VERILOG_FILE rtl/pvr/texture_address.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/intri_calc.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/float_to_fixed.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/depth_compare.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/simple_cache.v
-set_global_assignment -name VERILOG_FILE rtl/pvr/interp_32.v
-set_global_assignment -name QIP_FILE z_mem.qip
-set_global_assignment -name VERILOG_FILE rtl/pvr/param_buffer.v
-set_global_assignment -name QIP_FILE pcache_mem.qip
 set_instance_assignment -name MAX_NUMBER_OF_REGISTERS_FROM_UNINFERRED_RAMS 8192 -to *
 set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[5] -to auto_signaltap_0|vcc -section_id auto_signaltap_0
 set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[17] -to auto_signaltap_0|vcc -section_id auto_signaltap_0
@@ -494,7 +450,6 @@ set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[29] -
 set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_SEGMENT_SIZE=512" -section_id auto_signaltap_0
 set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_SAMPLE_DEPTH=512" -section_id auto_signaltap_0
 set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[30] -to auto_signaltap_0|vcc -section_id auto_signaltap_0
-set_global_assignment -name QIP_FILE z_mem_dual.qip
 set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_trigger_in[1] -to "emu:emu|DDRAM_DIN[0]" -section_id auto_signaltap_0
 set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_trigger_in[2] -to "emu:emu|DDRAM_DIN[10]" -section_id auto_signaltap_0
 set_instance_assignment -name CONNECT_TO_SLD_NODE_ENTITY_PORT acq_trigger_in[3] -to "emu:emu|DDRAM_DIN[11]" -section_id auto_signaltap_0
@@ -1049,3 +1004,48 @@ set_global_assignment -name SLD_NODE_PARAMETER_ASSIGNMENT "SLD_INVERSION_MASK_LE
 set_instance_assignment -name POST_FIT_CONNECT_TO_SLD_NODE_ENTITY_PORT crc[10] -to auto_signaltap_0|vcc -section_id auto_signaltap_0
 set_global_assignment -name SLD_FILE db/stp1_auto_stripped.stp
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
+set_global_assignment -name QIP_FILE rtl/pvr/z_mem_dual.qip
+set_global_assignment -name QIP_FILE rtl/pvr/z_mem.qip
+set_global_assignment -name VERILOG_FILE rtl/pvr/codebook_cache.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/z_buff.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/float_fixed_five.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/leading_trailing.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/z_buffer.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/inTri_calc.v
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sdram.sv
+set_global_assignment -name VERILOG_FILE rtl/sdram_old.v
+set_global_assignment -name QIP_FILE rtl/FX68K/fx68k.qip
+set_global_assignment -name QIP_FILE rtl/GEN/GEN.qip
+set_global_assignment -name QIP_FILE rtl/CART/cart.qip
+set_global_assignment -name QIP_FILE rtl/SH/SH7604/SH7604.qip
+set_global_assignment -name VERILOG_FILE rtl/SH_mem.v
+set_global_assignment -name QIP_FILE rtl/32X/32X.qip
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/32X_mem.sv
+set_global_assignment -name VHDL_FILE rtl/bram.vhd
+set_global_assignment -name VHDL_FILE rtl/mlab.vhd
+set_global_assignment -name VHDL_FILE rtl/CEGen.vhd
+set_global_assignment -name VHDL_FILE rtl/snd_mix.vhd
+set_global_assignment -name VERILOG_FILE rtl/pvr/ra_parser.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/pvr.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/param_cache.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/isp_parser.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/interp.v
+set_global_assignment -name VERILOG_FILE rtl/defines.v
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/lightgun.sv
+set_global_assignment -name CDF_FILE jtag.cdf
+set_global_assignment -name QIP_FILE sys/sys.qip
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ddram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/cache_2way.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/cofi.sv
+set_global_assignment -name SDC_FILE S32X.sdc
+set_global_assignment -name SYSTEMVERILOG_FILE S32X.sv
+set_global_assignment -name SIGNALTAP_FILE stp1.stp
+set_global_assignment -name VERILOG_FILE rtl/pvr/texture_address.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/intri_calc.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/float_to_fixed.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/depth_compare.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/simple_cache.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/interp_32.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/param_buffer.v
+set_global_assignment -name QIP_FILE pcache_mem.qip

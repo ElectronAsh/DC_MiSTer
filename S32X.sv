@@ -307,14 +307,14 @@ localparam CONF_STR = {
 	"FC3,BIN,Load VRAM Dump;",
 	"-;",
 	"T[13],Trigger Render;",
+	"O[14],BG Poly,Off,On;",
 	"O[6],FB Format,RGB,BGR;",
 	"O[7],FB BPP,16bpp,32bpp;",
 	"O[9:8],FB Stride,640,1280,2560,5120;",
 	"O[12],Texel Reads,Off,On;",
-	"O[14],Tex Word Order,Norm,Swap;",
 	"O[15],Final Blend,Off,On;",
 	"O[16],FB Writeback,R SOF1,W SOF1;",
-	"O[17],Param Word Order,Norm,Swap;",
+	"O[17],FB to display,Single,Both;",
 	"-;",
 	"P1,Audio & Video;", 
  	"-;",
@@ -1162,14 +1162,15 @@ pvr pvr (
 	.reset_n( !reset ),			// input  reset_n
 	
 	.disable_alpha( !status[15] ),
-	.tex_word_swap( status[14] ),
-	.param_word_swap( status[17] ),
+	.both_buff( status[17] ),
 	
 	//.ta_fifo_cs( ta_fifo_cs ),	// input  ta_fifo_cs
 	//.ta_yuv_cs( ta_yuv_cs ),		// input  ta_yuv_cs
 	//.ta_tex_cs( ta_tex_cs ),		// input  ta_tex_cs
 	
 	.ra_trig( status[13] ),
+	
+	.bg_poly_en( status[14] ),		// input  bg_poly_en
 	
 	.trig_pvr_update( trig_pvr_update ),	// output  trig_pvr_update
 	.pvr_reg_update(  pvr_reg_update ),		// input  pvr_reg_update
