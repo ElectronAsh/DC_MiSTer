@@ -110,22 +110,22 @@ wire [2:0] volume_inst = isp_inst[31:29];
 
 // TSP Instruction Word...
 (*noprune*)reg [31:0] tsp_inst;
-wire tex_u_flip = tsp_inst[18];
-wire tex_v_flip = tsp_inst[17];
-wire tex_u_clamp = tsp_inst[16];
-wire tex_v_clamp = tsp_inst[15];
-wire [2:0] tex_u_size = tsp_inst[5:3];
-wire [2:0] tex_v_size = tsp_inst[2:0];
+wire tex_u_flip = tsp_inst_out[18];
+wire tex_v_flip = tsp_inst_out[17];
+wire tex_u_clamp = tsp_inst_out[16];
+wire tex_v_clamp = tsp_inst_out[15];
+wire [2:0] tex_u_size = tsp_inst_out[5:3];
+wire [2:0] tex_v_size = tsp_inst_out[2:0];
 
 
 // Texture Control Word...
 (*noprune*)reg [31:0] tcw_word;
-wire mip_map = tcw_word[31];
-wire vq_comp = tcw_word[30];
-wire [2:0] pix_fmt = tcw_word[29:27];
-wire scan_order = tcw_word[26];
-wire stride_flag = tcw_word[25];
-wire [20:0] tex_word_addr = tcw_word[20:0];		// 64-bit WORD address! (but only shift <<2 when accessing 32-bit "halves" of VRAM).
+wire mip_map = tcw_word_out[31];
+wire vq_comp = tcw_word_out[30];
+wire [2:0] pix_fmt = tcw_word_out[29:27];
+wire scan_order = tcw_word_out[26];
+wire stride_flag = tcw_word_out[25];
+wire [20:0] tex_word_addr = tcw_word_out[20:0];		// 64-bit WORD address! (but only shift <<2 when accessing 32-bit "halves" of VRAM).
 
 reg [20:0] tex_base_word_addr_old;
 
@@ -223,7 +223,6 @@ if (!reset_n) begin
 	no_tex_read <= 1'b0;
 	isp_vram_rd_pend <= 1'b0;
 	prim_tag <= 12'd0;
-	pcache_load <= 1'b0;
 	tile_accum_done <= 1'b0;
 	tile_wb <= 1'b0;
 	wr_pix <= 1'b0;
@@ -243,7 +242,6 @@ else begin
 	
 	read_codebook <= 1'b0;
 	
-	pcache_load <= 1'b0;
 	tile_accum_done <= 1'b0;
 
 	if (isp_vram_rd & !vram_wait) isp_vram_rd <= 1'b0;
@@ -282,7 +280,6 @@ else begin
 				x_ps <= tilex_start;
 				y_ps <= tiley_start;
 				vram_word_addr_old <= 22'h3fffff;
-				pcache_load <= 1'b1;	// Have to pre-load this, so it renders the first pixel (Tag) correctly.
 				isp_state <= 8'd51;
 			end
 		end
@@ -660,14 +657,12 @@ else begin
 
 		// Write triangle spans to Z / Tag buffer, checking 32 "pixels" at once for inTri AND depth_compare.
 		50: begin
-			isp_state <= 8'd91;
+			isp_state <= 8'd90;
 		end
 		
-		/*
 		90: begin	// Z-buff write is allowed in this state.
 			isp_state <= isp_state + 8'd1;
 		end
-		*/
 		
 		91: begin
 			if (y_ps[4:0]==5'd31) begin
@@ -688,16 +683,14 @@ else begin
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
 		51: begin
-			pcache_load <= 1'b1;
 			isp_state <= isp_state + 8'd1;
 		end
 		
 		52: begin
-			pcache_load <= 1'b1;
-			isp_state <= isp_state + 8'd1;
+			isp_state <= 8'd209;
 		end
 		
-		53: begin
+		209: begin
 			isp_state <= 8'd210;
 		end
 		
@@ -706,9 +699,9 @@ else begin
 		end
 		
 		54: begin
-			if (isp_inst[25]) begin		// If textured...
-				if (tcw_word[30] && (tex_base_word_addr_old != tcw_word[20:0])) begin	// VQ, and texture BASE address has changed...
-					tex_base_word_addr_old <= tcw_word[20:0];
+			if (isp_inst_out[25]) begin		// If textured...
+				if (tcw_word_out[30] && (tex_base_word_addr_old != tcw_word_out[20:0])) begin	// VQ, and texture BASE address has changed...
+					tex_base_word_addr_old <= tcw_word_out[20:0];
 					read_codebook <= 1'b1;							// If so, read the new Codebook.
 					isp_state <= 8'd100;
 				end
@@ -730,26 +723,29 @@ else begin
 
 		// Wait for Texture word...
 		55: if (vram_valid) begin
-			isp_state <= isp_state + 8'd1;
+			isp_state <= 8'd56;
 		end
 
 		56: begin	// Delay for Texel processing time.
 			wb_x_ps <= x_ps;
 			wb_y_ps <= y_ps;
+			isp_state <= 8'd211;
+		end
+		
+		211: begin	// Delay for Texel processing time.
 			isp_state <= 8'd212;
 		end
-
+		
 		212: begin	// Delay for Texel processing time.
+			/*if ((type_cnt-1)==1) begin						// For the Punch-Through prim type...
+			if (final_argb[31:24]==8'hff) wr_pix <= 1'b1;	// Only write to the ARGB tile buffer if the Alpha==0xff (1.0) ??
+			end													// This should probably be a compare to the PT_ALPHA_REF register, no?
+			else*/ wr_pix <= 1'b1;
 			isp_state <= 8'd57;
 		end
 		
 		// Write pixel to Tile ARGB buffer.
 		57: begin
-			/*if ((type_cnt-1)==1) begin						// For the Punch-Through prim type...
-				if (final_argb[31:24]==8'hff) wr_pix <= 1'b1;	// Only write to the ARGB tile buffer if the Alpha==0xff (1.0) ??
-			end													// This should probably be a compare to the PT_ALPHA_REF register, no?
-			else*/ wr_pix <= 1'b1;
-
 			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// Last pixel written, was the last (lower-right) pixel of the tile...
 				tile_wb <= 1'b1;										// Do the Tile ARGB buffer Writeback!
 				//tile_wb <= !ra_cont_flush_n;
@@ -798,37 +794,6 @@ else begin
 	
 	if (isp_vram_rd) isp_vram_rd_pend     <= 1'b1;
 	else if (vram_valid) isp_vram_rd_pend <= 1'b0;
-	
-	//if (pcache_load && !cache_bypass) begin
-	if (pcache_load) begin
-		isp_inst				<= isp_inst_out;
-		tsp_inst				<= tsp_inst_out;
-		tcw_word				<= tcw_word_out;
-	
-		vert_a_x				<= vert_a_x_out;
-		vert_a_y				<= vert_a_y_out;
-		vert_a_z				<= vert_a_z_out;
-		vert_a_u0			<= vert_a_u0_out;
-		vert_a_v0			<= vert_a_v0_out;
-		vert_a_base_col_0	<= vert_a_base_col_0_out;
-		vert_a_off_col		<= vert_a_off_col_out;
-		
-		vert_b_x				<= vert_b_x_out;
-		vert_b_y				<= vert_b_y_out;
-		vert_b_z				<= vert_b_z_out;
-		vert_b_u0			<= vert_b_u0_out;
-		vert_b_v0			<= vert_b_v0_out;
-		vert_b_base_col_0	<= vert_b_base_col_0_out;
-		vert_b_off_col		<= vert_b_off_col_out;
-		
-		vert_c_x				<= vert_c_x_out;
-		vert_c_y				<= vert_c_y_out;
-		vert_c_z				<= vert_c_z_out;
-		vert_c_u0			<= vert_c_u0_out;
-		vert_c_v0			<= vert_c_v0_out;
-		vert_c_base_col_0	<= vert_c_base_col_0_out;
-		vert_c_off_col		<= vert_c_off_col_out;
-	end
 end
 
 
@@ -836,110 +801,6 @@ wire [10:0] tilex_start = {tilex, 5'b00000};
 wire [10:0] tiley_start = {tiley, 5'b00000};
 
 wire [7:0] vert_words = (two_volume&shadow) ? ((skip*2)+3) : (skip+3);
-
-
-wire [31:0] isp_inst_out;
-wire [31:0] tsp_inst_out;
-wire [31:0] tcw_word_out;
-
-wire [31:0] vert_a_x_out;
-wire [31:0] vert_a_y_out;
-wire [31:0] vert_a_z_out;
-wire [31:0] vert_a_u0_out;
-wire [31:0] vert_a_v0_out;
-wire [31:0] vert_a_base_col_0_out;
-wire [31:0] vert_a_off_col_out;
-
-wire [31:0] vert_b_x_out;
-wire [31:0] vert_b_y_out;
-wire [31:0] vert_b_z_out;
-wire [31:0] vert_b_u0_out;
-wire [31:0] vert_b_v0_out;
-wire [31:0] vert_b_base_col_0_out;
-wire [31:0] vert_b_off_col_out;
-
-wire [31:0] vert_c_x_out;
-wire [31:0] vert_c_y_out;
-wire [31:0] vert_c_z_out;
-wire [31:0] vert_c_u0_out;
-wire [31:0] vert_c_v0_out;
-wire [31:0] vert_c_base_col_0_out;
-wire [31:0] vert_c_off_col_out;
-
-
-//wire pcache_write = (isp_state==8'd49 && !cache_bypass);
-wire pcache_write = (isp_state==8'd49);
-reg  pcache_load;
-
-reg [11:0] prim_tag_out_old;
-
-wire [11:0] prim_tag_mux = (isp_state>=8'd51) ? prim_tag_out : prim_tag;
-
-param_buffer  param_buffer_inst
-(
-	.clock(clock) ,									// input  clock
-	.reset_n(reset_n) ,								// input  reset_n
-	
-	.prim_tag(prim_tag_mux) ,						// input [11:0] prim_tag
-	
-	.pcache_write(pcache_write) ,					// input  pcache_write
-	
-	.isp_inst_in(isp_inst) ,						// input [31:0] isp_inst_in
-	.tsp_inst_in(tsp_inst) ,						// input [31:0] tsp_inst_in
-	.tcw_word_in(tcw_word) ,						// input [31:0] tcw_word_in
-	
-	.vert_a_x_in(         vert_a_x) ,			// input [31:0] vert_a_x_in
-	.vert_a_y_in(         vert_a_y) ,			// input [31:0] vert_a_y_in
-	.vert_a_z_in(         vert_a_z) ,			// input [31:0] vert_a_z_in
-	.vert_a_u0_in(        vert_a_u0) ,			// input [31:0] vert_a_u0_in
-	.vert_a_v0_in(        vert_a_v0) ,			// input [31:0] vert_a_v0_in
-	.vert_a_base_col_0_in(vert_a_base_col_0) ,// input [31:0] vert_a_base_col_0_in
-	.vert_a_off_col_in(   vert_a_off_col) ,	// input [31:0] vert_a_off_col_in
-	
-	.vert_b_x_in(         vert_b_x) ,			// input [31:0] vert_b_x_in
-	.vert_b_y_in(         vert_b_y) ,			// input [31:0] vert_b_y_in
-	.vert_b_z_in(         vert_b_z) ,			// input [31:0] vert_b_z_in
-	.vert_b_u0_in(        vert_b_u0) ,			// input [31:0] vert_b_u0_in
-	.vert_b_v0_in(        vert_b_v0) ,			// input [31:0] vert_b_v0_in
-	.vert_b_base_col_0_in(vert_b_base_col_0) ,// input [31:0] vert_b_base_col_0_in
-	.vert_b_off_col_in(   vert_b_off_col) ,	// input [31:0] vert_b_off_col_in
-	
-	.vert_c_x_in(         vert_c_x) ,			// input [31:0] vert_c_x_in
-	.vert_c_y_in(         vert_c_y) ,			// input [31:0] vert_c_y_in
-	.vert_c_z_in(         vert_c_z) ,			// input [31:0] vert_c_z_in
-	.vert_c_u0_in(        vert_c_u0) ,			// input [31:0] vert_c_u0_in
-	.vert_c_v0_in(        vert_c_v0) ,			// input [31:0] vert_c_v0_in
-	.vert_c_base_col_0_in(vert_c_base_col_0) ,// input [31:0] vert_c_base_col_0_in
-	.vert_c_off_col_in(   vert_c_off_col) ,	// input [31:0] vert_c_off_col_in
-	
-	.isp_inst_out(isp_inst_out) ,					// output [31:0] isp_inst_out
-	.tsp_inst_out(tsp_inst_out) ,					// output [31:0] tsp_inst_out
-	.tcw_word_out(tcw_word_out) ,					// output [31:0] tcw_word_out
-	
-	.vert_a_x_out(vert_a_x_out) ,					// output [31:0] vert_a_x_out
-	.vert_a_y_out(vert_a_y_out) ,					// output [31:0] vert_a_y_out
-	.vert_a_z_out(vert_a_z_out) ,					// output [31:0] vert_a_z_out
-	.vert_a_u0_out(vert_a_u0_out) ,					// output [31:0] vert_a_u0_out
-	.vert_a_v0_out(vert_a_v0_out) ,					// output [31:0] vert_a_v0_out
-	.vert_a_base_col_0_out(vert_a_base_col_0_out) ,	// output [31:0] vert_a_base_col_0_out
-	.vert_a_off_col_out(vert_a_off_col_out) ,		// output [31:0] vert_a_off_col_out
-	
-	.vert_b_x_out(vert_b_x_out) ,					// output [31:0] vert_b_x_out
-	.vert_b_y_out(vert_b_y_out) ,					// output [31:0] vert_b_y_out
-	.vert_b_z_out(vert_b_z_out) ,					// output [31:0] vert_b_z_out
-	.vert_b_u0_out(vert_b_u0_out) ,					// output [31:0] vert_b_u0_out
-	.vert_b_v0_out(vert_b_v0_out) ,					// output [31:0] vert_b_v0_out
-	.vert_b_base_col_0_out(vert_b_base_col_0_out) ,	// output [31:0] vert_b_base_col_0_out
-	.vert_b_off_col_out(vert_b_off_col_out) ,		// output [31:0] vert_b_off_col_out
-	
-	.vert_c_x_out(vert_c_x_out) ,					// output [31:0] vert_c_x_out
-	.vert_c_y_out(vert_c_y_out) ,					// output [31:0] vert_c_y_out
-	.vert_c_z_out(vert_c_z_out) ,					// output [31:0] vert_c_z_out
-	.vert_c_u0_out(vert_c_u0_out) ,					// output [31:0] vert_c_u0_out
-	.vert_c_v0_out(vert_c_v0_out) ,					// output [31:0] vert_c_v0_out
-	.vert_c_base_col_0_out(vert_c_base_col_0_out) ,	// output [31:0] vert_c_base_col_0_out
-	.vert_c_off_col_out(vert_c_off_col_out) 		// output [31:0] vert_c_off_col_out
-);
 
 
 // Vertex float-to-fixed conversion...
@@ -986,41 +847,104 @@ reg [10:0] x_ps;
 reg [10:0] y_ps;
 
 
-inTri_calc  inTri_calc_inst (
-	.FX1_FIXED( FX1_FIXED ),	// input signed [47:0]  FX1
-	.FX2_FIXED( FX2_FIXED ),	// input signed [47:0]  FX2
-	.FX3_FIXED( FX3_FIXED ),	// input signed [47:0]  FX3
-	
-	.FY1_FIXED( FY1_FIXED ),	// input signed [47:0]  FY1
-	.FY2_FIXED( FY2_FIXED ),	// input signed [47:0]  FY2
-	.FY3_FIXED( FY3_FIXED ),	// input signed [47:0]  FY3
+wire [31:0] isp_inst_out;
+wire [31:0] tsp_inst_out;
+wire [31:0] tcw_word_out;
 
-	.x_ps( x_ps ),
-	.y_ps( y_ps ),
+wire signed [47:0] vert_a_x_out;
+wire signed [47:0] vert_a_y_out;
+wire signed [47:0] vert_a_z_out;
+wire signed [47:0] vert_a_u0_out;
+wire signed [47:0] vert_a_v0_out;
+wire [31:0] vert_a_base_col_0_out;
+wire [31:0] vert_a_off_col_out;
+
+wire signed [47:0] vert_b_x_out;
+wire signed [47:0] vert_b_y_out;
+wire signed [47:0] vert_b_z_out;
+wire signed [47:0] vert_b_u0_out;
+wire signed [47:0] vert_b_v0_out;
+wire [31:0] vert_b_base_col_0_out;
+wire [31:0] vert_b_off_col_out;
+
+wire signed [47:0] vert_c_x_out;
+wire signed [47:0] vert_c_y_out;
+wire signed [47:0] vert_c_z_out;
+wire signed [47:0] vert_c_u0_out;
+wire signed [47:0] vert_c_v0_out;
+wire [31:0] vert_c_base_col_0_out;
+wire [31:0] vert_c_off_col_out;
+
+//wire pcache_write = (isp_state==8'd49 && !cache_bypass);
+wire pcache_write = isp_state==8'd49;
+//reg  pcache_load;
+
+reg [11:0] prim_tag_out_old;
+
+wire [11:0] prim_tag_mux = (isp_state>=8'd51) ? prim_tag_out : prim_tag;
+
+param_buffer  param_buffer_inst
+(
+	.clock(clock) ,									// input  clock
+	.reset_n(reset_n) ,								// input  reset_n
 	
+	.prim_tag(prim_tag_mux) ,						// input [11:0] prim_tag
+	.pcache_write(pcache_write) ,					// input  pcache_write
+	
+	// input [31:0]
+	.isp_inst_in(isp_inst), .tsp_inst_in(tsp_inst), .tcw_word_in(tcw_word),
+	
+	// input [47:0]
+	.vert_a_x_in(FX1_FIXED), .vert_a_y_in(FY1_FIXED), .vert_a_z_in(FZ1_FIXED), .vert_a_u0_in(FU1_FIXED), .vert_a_v0_in(FV1_FIXED),
+	.vert_a_base_col_0_in(vert_a_base_col_0), .vert_a_off_col_in(vert_a_off_col),
+
+	.vert_b_x_in(FX2_FIXED), .vert_b_y_in(FY2_FIXED), .vert_b_z_in(FZ2_FIXED), .vert_b_u0_in(FU2_FIXED), .vert_b_v0_in(FV2_FIXED),
+	.vert_b_base_col_0_in(vert_b_base_col_0), .vert_b_off_col_in(vert_b_off_col),
+
+	.vert_c_x_in(FX3_FIXED), .vert_c_y_in(FY3_FIXED), .vert_c_z_in(FZ3_FIXED), .vert_c_u0_in(FU3_FIXED), .vert_c_v0_in(FV3_FIXED),
+	.vert_c_base_col_0_in(vert_c_base_col_0), .vert_c_off_col_in(vert_c_off_col),
+	
+	// output [31:0]
+	.isp_inst_out(isp_inst_out), .tsp_inst_out(tsp_inst_out), .tcw_word_out(tcw_word_out),
+	
+	// output [47:0]
+	.vert_a_x_out( vert_a_x_out), .vert_a_y_out(vert_a_y_out), .vert_a_z_out(vert_a_z_out), .vert_a_u0_out(vert_a_u0_out), .vert_a_v0_out(vert_a_v0_out),
+	.vert_a_base_col_0_out(vert_a_base_col_0_out), .vert_a_off_col_out(vert_a_off_col_out),
+	
+	.vert_b_x_out( vert_b_x_out), .vert_b_y_out(vert_b_y_out), .vert_b_z_out(vert_b_z_out), .vert_b_u0_out(vert_b_u0_out), .vert_b_v0_out(vert_b_v0_out),
+	.vert_b_base_col_0_out(vert_b_base_col_0_out), .vert_b_off_col_out(vert_b_off_col_out),
+
+	.vert_c_x_out( vert_c_x_out), .vert_c_y_out(vert_c_y_out), .vert_c_z_out(vert_c_z_out), .vert_c_u0_out(vert_c_u0_out), .vert_c_v0_out(vert_c_v0_out),
+	.vert_c_base_col_0_out(vert_c_base_col_0_out), .vert_c_off_col_out(vert_c_off_col_out)
+);
+
+
+inTri_calc  inTri_calc_inst (
+	.FX1_FIXED( FX1_FIXED ), .FX2_FIXED( FX2_FIXED ), .FX3_FIXED( FX3_FIXED ),	// input signed [47:0]
+	.FY1_FIXED( FY1_FIXED ), .FY2_FIXED( FY2_FIXED ), .FY3_FIXED( FY3_FIXED ),	// input signed [47:0]
+	.x_ps( x_ps ), .y_ps( y_ps ),
 	//.inTriangle( inTriangle ),	// output inTriangle
 	.inTri( inTri )	// output [31:0]  inTri
 );
-
 //(*keep*)wire inTriangle;
 (*keep*)wire [31:0] inTri;
 
 
 // Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
-
+wire signed [47:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
 interp  interp_inst_z (
 	.clock( clock ),			// input  clock
 	
 	//.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
 	.FRAC_BITS( Z_FRAC_BITS ),	// input [7:0] FRAC_BITS
 
-	.FX1( FX1_FIXED<<<FRAC_DIFF ),		// input signed [47:0] x1
-	.FX2( FX2_FIXED<<<FRAC_DIFF ),		// input signed [47:0] x2
-	.FX3( FX3_FIXED<<<FRAC_DIFF ),		// input signed [47:0] x3
+	.FX1( FX1_FIXED <<<FRAC_DIFF ),		// input signed [47:0] x1
+	.FX2( FX2_FIXED <<<FRAC_DIFF ),		// input signed [47:0] x2
+	.FX3( FX3_FIXED <<<FRAC_DIFF ),		// input signed [47:0] x3
 	
-	.FY1( FY1_FIXED<<<FRAC_DIFF ),		// input signed [47:0] y1
-	.FY2( FY2_FIXED<<<FRAC_DIFF ),		// input signed [47:0] y2
-	.FY3( FY3_FIXED<<<FRAC_DIFF ),		// input signed [47:0] y3
+	.FY1( FY1_FIXED <<<FRAC_DIFF ),		// input signed [47:0] y1
+	.FY2( FY2_FIXED <<<FRAC_DIFF ),		// input signed [47:0] y2
+	.FY3( FY3_FIXED <<<FRAC_DIFF ),		// input signed [47:0] y3
 	
 	.FZ1( FZ1_FIXED ),		// input signed [47:0] z1
 	.FZ2( FZ2_FIXED ),		// input signed [47:0] z2
@@ -1037,125 +961,106 @@ interp  interp_inst_z (
 	.interp24( IP_Z[24] ), .interp25( IP_Z[25] ), .interp26( IP_Z[26] ), .interp27( IP_Z[27] ), .interp28( IP_Z[28] ), .interp29( IP_Z[29] ), .interp30( IP_Z[30] ), .interp31( IP_Z[31] )
 );
 
-//wire signed [47:0] IP_Z_INTERP;
-wire signed [47:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
-
 
 // int w = tex_u_size_full;
 // U.Setup(x1,x2,x3, y1,y2,y3, u1*w*z1, u2*w*z2, u3*w*z3);
 //
 // Don't need to shift right after, as tex_u_size_full is not fixed-point...
-wire signed [47:0] u1_mult_width = FU1_FIXED * tex_u_size_full;
-wire signed [47:0] u2_mult_width = FU2_FIXED * tex_u_size_full;
-wire signed [47:0] u3_mult_width = FU3_FIXED * tex_u_size_full;
-
+wire signed [47:0] u1_mult_width = vert_a_u0_out * tex_u_size_full;
+wire signed [47:0] u2_mult_width = vert_b_u0_out * tex_u_size_full;
+wire signed [47:0] u3_mult_width = vert_c_u0_out * tex_u_size_full;
+wire signed [47:0] IP_U_INTERP;
 interp  interp_inst_u (
 	.clock( clock ),			// input  clock
 	
 	//.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
 	.FRAC_BITS( Z_FRAC_BITS ),	// input [7:0] FRAC_BITS
 
-	.FX1( FX1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x1
-	.FX2( FX2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x2
-	.FX3( FX3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x3
+	.FX1( vert_a_x_out <<<FRAC_DIFF ),		// input signed [31:0] x1
+	.FX2( vert_b_x_out <<<FRAC_DIFF ),		// input signed [31:0] x2
+	.FX3( vert_c_x_out <<<FRAC_DIFF ),		// input signed [31:0] x3
 	
-	.FY1( FY1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y1
-	.FY2( FY2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y2
-	.FY3( FY3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y3
+	.FY1( vert_a_y_out <<<FRAC_DIFF ),		// input signed [31:0] y1
+	.FY2( vert_b_y_out <<<FRAC_DIFF ),		// input signed [31:0] y2
+	.FY3( vert_c_y_out <<<FRAC_DIFF ),		// input signed [31:0] y3
 	
-	.FZ1( (u1_mult_width * FZ1_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z1
-	.FZ2( (u2_mult_width * FZ2_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z2
-	.FZ3( (u3_mult_width * FZ3_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z3
+	.FZ1( (u1_mult_width * vert_a_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z1
+	.FZ2( (u2_mult_width * vert_b_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z2
+	.FZ3( (u3_mult_width * vert_c_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z3
 	
 	.x_ps( x_ps ),		// input [10:0] x_ps
 	.y_ps( y_ps ),		// input [10:0] y_ps
 	
-	.interp( IP_U_INTERP )//,	// output signed [31:0]  interp
-
-	//.interp0(  IP_U[0] ),  .interp1(  IP_U[1] ),  .interp2(  IP_U[2] ),  .interp3(  IP_U[3] ),  .interp4(  IP_U[4] ),  .interp5(  IP_U[5] ),  .interp6(  IP_U[6] ),  .interp7(  IP_U[7] ),
-	//.interp8(  IP_U[8] ),  .interp9(  IP_U[9] ),  .interp10( IP_U[10] ), .interp11( IP_U[11] ), .interp12( IP_U[12] ), .interp13( IP_U[13] ), .interp14( IP_U[14] ), .interp15( IP_U[15] ),
-	//.interp16( IP_U[16] ), .interp17( IP_U[17] ), .interp18( IP_U[18] ), .interp19( IP_U[19] ), .interp20( IP_U[20] ), .interp21( IP_U[21] ), .interp22( IP_U[22] ), .interp23( IP_U[23] ),
-	//.interp24( IP_U[24] ), .interp25( IP_U[25] ), .interp26( IP_U[26] ), .interp27( IP_U[27] ), .interp28( IP_U[28] ), .interp29( IP_U[29] ), .interp30( IP_U[30] ), .interp31( IP_U[31] )
+	.interp( IP_U_INTERP )	// output signed [31:0]  interp
 );
-
-wire signed [47:0] IP_U_INTERP;
-//wire signed [47:0] IP_U [0:31];	// [0:31] is the tile COLUMN.
 
 
 // int h = tex_v_size_full;
 // V.Setup(x1,x2,x3, y1,y2,y3, v1*h*z1, v2*h*z2, v3*h*z3);
 //
-wire signed [47:0] v1_mult_height = FV1_FIXED * tex_v_size_full;	// Don't need to shift right after, as tex_v_size_full is not fixed-point?
-wire signed [47:0] v2_mult_height = FV2_FIXED * tex_v_size_full;
-wire signed [47:0] v3_mult_height = FV3_FIXED * tex_v_size_full;
-
+wire signed [47:0] v1_mult_height = vert_a_v0_out * tex_v_size_full;	// Don't need to shift right after, as tex_v_size_full is not fixed-point?
+wire signed [47:0] v2_mult_height = vert_b_v0_out * tex_v_size_full;
+wire signed [47:0] v3_mult_height = vert_c_v0_out * tex_v_size_full;
+wire signed [47:0] IP_V_INTERP;
 interp  interp_inst_v (
 	.clock( clock ),			// input  clock
 	
 	//.FRAC_BITS( FRAC_BITS ),	// input [7:0] FRAC_BITS
 	.FRAC_BITS( Z_FRAC_BITS ),	// input [7:0] FRAC_BITS
 
-	.FX1( FX1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x1
-	.FX2( FX2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x2
-	.FX3( FX3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] x3
+	.FX1( vert_a_x_out <<<FRAC_DIFF ),		// input signed [31:0] x1
+	.FX2( vert_b_x_out <<<FRAC_DIFF ),		// input signed [31:0] x2
+	.FX3( vert_c_x_out <<<FRAC_DIFF ),		// input signed [31:0] x3
 	
-	.FY1( FY1_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y1
-	.FY2( FY2_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y2
-	.FY3( FY3_FIXED <<<FRAC_DIFF ),		// input signed [31:0] y3
+	.FY1( vert_a_y_out <<<FRAC_DIFF ),		// input signed [31:0] y1
+	.FY2( vert_b_y_out <<<FRAC_DIFF ),		// input signed [31:0] y2
+	.FY3( vert_c_y_out <<<FRAC_DIFF ),		// input signed [31:0] y3
 	
-	.FZ1( (v1_mult_height * FZ1_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z1
-	.FZ2( (v2_mult_height * FZ2_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z2
-	.FZ3( (v3_mult_height * FZ3_FIXED) >>>Z_FRAC_BITS ),	// input signed [31:0] z3
+	.FZ1( (v1_mult_height * vert_a_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z1
+	.FZ2( (v2_mult_height * vert_b_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z2
+	.FZ3( (v3_mult_height * vert_c_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z3
 	
 	.x_ps( x_ps ),		// input [10:0] x_ps
 	.y_ps( y_ps ),		// input [10:0] y_ps
 	
-	.interp( IP_V_INTERP )//,	// output signed [31:0]  interp
-
-	//.interp0(  IP_V[0] ),  .interp1(  IP_V[1] ),  .interp2(  IP_V[2] ),  .interp3(  IP_V[3] ),  .interp4(  IP_V[4] ),  .interp5(  IP_V[5] ),  .interp6(  IP_V[6] ),  .interp7(  IP_V[7] ),
-	//.interp8(  IP_V[8] ),  .interp9(  IP_V[9] ),  .interp10( IP_V[10] ), .interp11( IP_V[11] ), .interp12( IP_V[12] ), .interp13( IP_V[13] ), .interp14( IP_V[14] ), .interp15( IP_V[15] ),
-	//.interp16( IP_V[16] ), .interp17( IP_V[17] ), .interp18( IP_V[18] ), .interp19( IP_V[19] ), .interp20( IP_V[20] ), .interp21( IP_V[21] ), .interp22( IP_V[22] ), .interp23( IP_V[23] ),
-	//.interp24( IP_V[24] ), .interp25( IP_V[25] ), .interp26( IP_V[26] ), .interp27( IP_V[27] ), .interp28( IP_V[28] ), .interp29( IP_V[29] ), .interp30( IP_V[30] ), .interp31( IP_V[31] )
+	.interp( IP_V_INTERP )	// output signed [31:0]  interp
 );
-
-wire signed [47:0] IP_V_INTERP;
-//wire signed [47:0] IP_V [0:31];	// [0:31] is the tile COLUMN.
 
 
 // Highest value is 1024 (8<<7) so we need 11 bits to store it! ElectronAsh.
 wire [10:0] tex_u_size_full = (8<<tex_u_size);
 wire [10:0] tex_v_size_full = (8<<tex_v_size);
 
-//wire signed [10:0] u_div_z = (IP_U_INTERP<<<FRAC_DIFF) / IP_Z_INTERP;
-//wire signed [10:0] v_div_z = (IP_V_INTERP<<<FRAC_DIFF) / IP_Z_INTERP;
-wire signed [10:0] u_div_z = (IP_U_INTERP<<<FRAC_DIFF) / z_out;
-wire signed [10:0] v_div_z = (IP_V_INTERP<<<FRAC_DIFF) / z_out;
+wire [9:0] u_flipped;
+wire [9:0] v_flipped;
 
-wire [9:0] u_clamped = (tex_u_clamp && u_div_z>=tex_u_size_full) ? tex_u_size_full-1 :	// Clamp, if U > texture width.
-							  (tex_u_clamp && u_div_z[10]) ? 10'd0 :									// Zero U coord if u_div_z is negative.
-													u_div_z;														// Else, don't clamp nor zero.
-
-wire [9:0] v_clamped = (tex_v_clamp && v_div_z>=tex_v_size_full) ? tex_v_size_full-1 :	// Clamp, if V > texture height.
-							  (tex_v_clamp && v_div_z[10]) ? 10'd0 :									// Zero U coord if u_div_z is negative.
-													v_div_z;														// Else, don't clamp nor zero.
-
-wire [9:0] u_masked  = u_clamped&((tex_u_size_full<<1)-1);	// Mask with TWICE the texture width?
-wire [9:0] v_masked  = v_clamped&((tex_v_size_full<<1)-1);	// Mask with TWICE the texture height?
-
-wire [9:0] u_mask_flip = (u_masked&tex_u_size_full) ? u_div_z^((tex_u_size_full<<1)-1) : u_div_z;
-wire [9:0] v_mask_flip = (v_masked&tex_v_size_full) ? v_div_z^((tex_v_size_full<<1)-1) : v_div_z;
-
-wire [9:0] u_flipped = (tex_u_clamp) ? u_clamped : (tex_u_flip) ? u_mask_flip : u_div_z&(tex_u_size_full-1);
-wire [9:0] v_flipped = (tex_v_clamp) ? v_clamped : (tex_v_flip) ? v_mask_flip : v_div_z&(tex_v_size_full-1);
+uv_clamp_flip  uv_clamp_flip_inst(
+	.tex_u_size_full( tex_u_size_full ),	// input [10:0]  tex_u_size_full
+	.tex_v_size_full( tex_v_size_full ),	// input [10:0]  tex_v_size_full
+	
+	.IP_U_INTERP( IP_U_INTERP ),		// input signed [47:0]  IP_U_INTERP
+	.IP_V_INTERP( IP_V_INTERP ),		// input signed [47:0]  IP_V_INTERP
+	
+	.z_out( z_out ),					// input signed [47:0]  z_out
+	
+	.tex_u_clamp( tex_u_clamp ),		// input  tex_u_clamp
+	.tex_v_clamp( tex_v_clamp ),		// input  tex_v_clamp
+	
+	.tex_u_flip( tex_u_flip ),			// input  tex_u_flip
+	.tex_v_flip( tex_v_flip ),			// input  tex_v_flip
+	
+	.u_flipped( u_flipped ),			// output [9:0]  u_flipped
+	.v_flipped( v_flipped )				// output [9:0]  v_flipped
+);
 
 
 texture_address  texture_address_inst (
 	.clock( clock ),
 	.reset_n( reset_n ),
 	
-	.isp_inst( isp_inst ),	// input [31:0]  isp_inst.
-	.tsp_inst( tsp_inst ),	// input [31:0]  tsp_inst.
-	.tcw_word( tcw_word ),	// input [31:0]  tcw_word.
+	.isp_inst( isp_inst_out ),	// input [31:0]  isp_inst.
+	.tsp_inst( tsp_inst_out ),	// input [31:0]  tsp_inst.
+	.tcw_word( tcw_word_out ),	// input [31:0]  tcw_word.
 	
 	.TEXT_CONTROL( TEXT_CONTROL ),	// input [31:0]  TEXT_CONTROL.
 
@@ -1167,7 +1072,7 @@ texture_address  texture_address_inst (
 	.pal_dout( pal_dout ),				// output [31:0]  pal_dout
 
 	//.prim_tag( prim_tag_out ),		// input [11:0]  prim_tag
-	.prim_tag( tcw_word[13:5] ),		// input [11:0]  prim_tag
+	.prim_tag( tcw_word_out[13:5] ),		// input [11:0]  prim_tag
 	
 	.cb_cache_clear( cb_cache_clear ),	// input  cb_cache_clear (on new tile start).
 	.cb_cache_hit( cb_cache_hit ),		// output  cb_cache_hit
@@ -1185,12 +1090,13 @@ texture_address  texture_address_inst (
 	.vram_word_addr( vram_word_addr ),	// output [21:0]  vram_word_addr. 32-bit or 64-bit WORD address! Hard to explain. lol
 	.vram_din( tex_vram_din ),				// input [63:0]  vram_din. Full 64-bit data for texture reads.
 	
-	.base_argb( vert_c_base_col_0 ),	// input [31:0]  base_argb.  Flat-shading colour input. (will also do Gouraud eventually).
-	.offs_argb( vert_c_off_col ),		// input [31:0]  offs_argb.  Offset colour input.
+	.base_argb( vert_c_base_col_0_out ),	// input [31:0]  base_argb.  Flat-shading colour input. (will also do Gouraud eventually).
+	.offs_argb( vert_c_off_col_out ),		// input [31:0]  offs_argb.  Offset colour input.
 	
 	.texel_argb( texel_argb ),			// output [31:0]  texel_argb. Texel ARGB 8888 output.
 	.final_argb( final_argb )			// output [31:0]  final_argb. Final blended ARGB 8888 output.
 );
+
 
 reg read_codebook;
 wire codebook_wait;
@@ -1208,7 +1114,7 @@ wire [31:0] final_argb;
 wire z_clear_busy;
 
 wire signed [31:0] z_out;
-wire [9:0] prim_tag_out;
+wire [11:0] prim_tag_out;
 
 /* reicast offline-renderer...
         if (render_mode == RM_PUNCHTHROUGH)
@@ -1226,7 +1132,7 @@ wire [9:0] prim_tag_out;
 */
 wire [2:0] depth_comp_in = depth_comp;
 
-wire trig_z_row_write = isp_state==8'd91 /*&& y_ps<=(tiley_start+31)*/ && !z_write_disable;
+wire trig_z_row_write = isp_state==8'd90 && !z_write_disable;
 
 z_buff  z_buff_inst(
 	.clock( clock ),

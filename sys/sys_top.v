@@ -829,9 +829,13 @@ ascal
 	.avl_address      (vbuf_address),
 	.avl_write        (vbuf_write),
 	.avl_read         (vbuf_read),
-	.avl_byteenable   (vbuf_byteenable)
+	.avl_byteenable   (vbuf_byteenable),
+	
+	.fb_sel_upper( fb_sel_upper )
 );
 `endif
+
+wire fb_sel_upper = FB_R_SOF1[22];
 
 reg        LFB_EN     = 0;
 reg        LFB_FLT    = 0;

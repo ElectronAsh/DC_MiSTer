@@ -313,8 +313,7 @@ localparam CONF_STR = {
 	"O[9:8],FB Stride,640,1280,2560,5120;",
 	"O[12],Texel Reads,Off,On;",
 	"O[15],Final Blend,Off,On;",
-	"O[16],FB Writeback,R SOF1,W SOF1;",
-	"O[17],FB to display,Single,Both;",
+	"O[16],FB to display,Single,Both;",
 	"-;",
 	"P1,Audio & Video;", 
  	"-;",
@@ -943,7 +942,7 @@ wire reset = /*RESET |*/ status[0] | boot1_loading | vram_dump_loading;
 (*noprune*)reg [31:00] rom_word32;
 reg pvr_wr = 1'b0;
 
-reg [31:0] pvr_ptr [0:80];	// 80 WORDS.
+reg [31:0] pvr_ptr [0:80];	// 80 WORDS +1.
 
 
 (*keep*)wire boot1_loading = ioctl_index=={2'd1, 6'd0} && ioctl_download;	// VRAM dump loaded at core-load.
@@ -1090,10 +1089,7 @@ wire [28:0] VRAM_8MB   = (24'h800000>>3);		// 8MB.
 wire [28:0] dl_word_addr   = DDRAM_BASE + ioctl_addr[21:2];
 wire [28:0] vram_word_addr = (pvr_reg_update) ? (DDRAM_BASE+VRAM_8MB+pvr_read_offs[15:3]) : (DDRAM_BASE + vram_addr[21:2]);
 
-wire [28:0] fb_wr_word_addr_R_SOF1 = DDRAM_BASE + FB_R_SOF1[21:2] + fb_addr[21:0];
-wire [28:0] fb_wr_word_addr_W_SOF1 = DDRAM_BASE + FB_W_SOF1[21:2] + fb_addr[21:0];
-
-wire [28:0] fb_word_addr   = (!status[16]) ? fb_wr_word_addr_R_SOF1 : fb_wr_word_addr_W_SOF1;
+wire [28:0] fb_word_addr   = DDRAM_BASE + FB_W_SOF1[21:2] + fb_addr[21:0];
 
 wire [63:0] dl_writedata   = {rom_word32,rom_word32};
 
@@ -1162,7 +1158,7 @@ pvr pvr (
 	.reset_n( !reset ),			// input  reset_n
 	
 	.disable_alpha( !status[15] ),
-	.both_buff( status[17] ),
+	.both_buff( status[16] ),
 	
 	//.ta_fifo_cs( ta_fifo_cs ),	// input  ta_fifo_cs
 	//.ta_yuv_cs( ta_yuv_cs ),		// input  ta_yuv_cs

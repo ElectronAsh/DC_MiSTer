@@ -598,10 +598,10 @@ end
 
 // Limit the addresses to 4MB, as we have muxes for the lower and upper 4MB now.
 assign vram_addr      = (isp_switch) ? isp_vram_addr_out[21:0] : ra_vram_addr[21:0];
-assign vram_burst_cnt = (isp_switch) ? isp_vram_burst_cnt : 8'd1;
-assign vram_rd        = (isp_switch) ? isp_vram_rd       : ra_vram_rd;
-assign vram_wr        = (isp_switch) ? isp_vram_wr       : ra_vram_wr;
-assign vram_dout      = (isp_switch) ? isp_vram_dout     : ra_vram_dout;
+assign vram_burst_cnt = (isp_switch) ? isp_vram_burst_cnt      : 8'd1;
+assign vram_rd        = (isp_switch) ? isp_vram_rd             : ra_vram_rd;
+assign vram_wr        = (isp_switch) ? isp_vram_wr             : ra_vram_wr;
+assign vram_dout      = (isp_switch) ? isp_vram_dout           : ra_vram_dout;
 
 wire [7:0] isp_state;
 

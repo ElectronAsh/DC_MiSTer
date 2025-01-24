@@ -251,8 +251,10 @@ ENTITY ascal IS
 		avl_byteenable     : OUT   std_logic_vector(N_DW/8-1 DOWNTO 0);
 
 		------------------------------------
-		reset_na           : IN    std_logic
-		);
+		reset_na           : IN    std_logic;
+		
+		fb_sel_upper       : IN    std_logic
+);
 
 BEGIN
 	ASSERT N_DW=64 OR N_DW=128 REPORT "DW" SEVERITY failure;
@@ -650,6 +652,7 @@ ARCHITECTURE rtl OF ascal IS
 
 	FUNCTION shift_opix (shift  : unsigned(0 TO N_DW+15);
 								format : unsigned(5 DOWNTO 0);
+								fb_sel_upper : std_logic;
 								o_fb_ena : std_logic) RETURN type_pix IS
 	BEGIN
 		CASE format(3 DOWNTO 0) IS
@@ -664,9 +667,9 @@ ARCHITECTURE rtl OF ascal IS
 			WHEN "0101" | "0110" =>  -- 24bpp / 32bpp
 					-- Testing. Interpret AsCAL FB as 16-bit when "o_fb_ena" is High, for direct display of the Dreamcast PVR2 VRAM FB.
             IF o_fb_ena = '1' THEN
-                RETURN (b=>shift(8 TO 12) & shift(8 TO 10),
-                       g=>shift(13 TO 15) & shift(0 TO 2) & shift(13 TO 14),
-                       r=>shift(3 TO 7) & shift(3 TO 5) );
+					 RETURN (b=>shift(8 TO 12) & shift(8 TO 10),
+							  g=>shift(13 TO 15) & shift(0 TO 2) & shift(13 TO 14),
+							  r=>shift(3 TO 7) & shift(3 TO 5) );
             ELSE
                 RETURN (r=>shift(0 TO 7),	-- Interpret as 32-bit, for normal output from the core, via ASCAL's FB.
                        g=>shift(8 TO 15),
@@ -2212,7 +2215,7 @@ BEGIN
 			IF o_sh3='1' THEN
 				shift_v:=shift_opack(o_acpt4,o_shift,o_dr,o_format);
 				o_shift<=shift_v;
-				o_hpixs<=shift_opix(shift_v,o_format,o_fb_ena);
+				o_hpixs<=shift_opix(shift_v,o_format,fb_sel_upper,o_fb_ena);
 			END IF;
 
 			IF o_sh4='1' THEN
