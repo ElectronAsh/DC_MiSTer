@@ -6,7 +6,6 @@ parameter Z_FRAC_BITS = 8'd19;	// Z_FRAC_BITS needs to be >= FRAC_BITS.
 
 parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS);
 
-
 module isp_parser (
 	input clock,
 	input reset_n,
@@ -38,12 +37,12 @@ module isp_parser (
 	
 	input [63:0] tex_vram_din,					// The full 64-bit wide data, for Texel reads.
 	
-	output reg isp_entry_valid,
-	
 	output reg [22:0] fb_addr,
 	output reg [63:0] fb_writedata,
 	output reg [7:0] fb_byteena,
 	output reg fb_we,
+
+	output reg isp_entry_valid,
 
 	input ra_new_tile_start,
 	input ra_entry_valid,
@@ -223,6 +222,7 @@ if (!reset_n) begin
 	no_tex_read <= 1'b0;
 	isp_vram_rd_pend <= 1'b0;
 	prim_tag <= 12'd0;
+	//trig_z_row_write <= 1'b0;
 	tile_accum_done <= 1'b0;
 	tile_wb <= 1'b0;
 	wr_pix <= 1'b0;
@@ -242,6 +242,7 @@ else begin
 	
 	read_codebook <= 1'b0;
 	
+	//trig_z_row_write <= 1'b0;
 	tile_accum_done <= 1'b0;
 
 	if (isp_vram_rd & !vram_wait) isp_vram_rd <= 1'b0;
@@ -280,6 +281,7 @@ else begin
 				x_ps <= tilex_start;
 				y_ps <= tiley_start;
 				vram_word_addr_old <= 22'h3fffff;
+				//pcache_load <= 1'b1;	// Have to pre-load this, so it renders the first pixel (Tag) correctly.
 				isp_state <= 8'd51;
 			end
 		end
@@ -298,11 +300,11 @@ else begin
 						poly_drawn <= 1'b1;				// Tell the RA we're done.
 						isp_state <= 8'd0;				// Go back to idle state.
 					end
-					else if (strip_cnt < 6) begin	// Check strip_mask bits 0 through 5...
+					else if (strip_cnt < 3'd6) begin	// Check strip_mask bits 0 through 5...
 						if (strip_mask[strip_cnt]) begin
 							isp_vram_addr <= poly_addr;	// Always use the absolute start address of the poly. Will fetch ISP/TSP/TCW again, but then skip verts.
 							isp_vram_rd <= 1'b1;
-							/*if (!cache_bypass)*/ prim_tag <= prim_tag + 12'd1;
+							/*if (!cache_bypass)*/prim_tag <= prim_tag + 12'd1;
 							isp_state <= 8'd2;				// Go to the next state if the current strip_mask bit is set.
 						end
 						else begin									// Current strip_mask bit was NOT set...
@@ -657,10 +659,12 @@ else begin
 
 		// Write triangle spans to Z / Tag buffer, checking 32 "pixels" at once for inTri AND depth_compare.
 		50: begin
+			//trig_z_row_write <= !z_write_disable;
+			//trig_z_row_write <= 1'b1;
 			isp_state <= 8'd90;
 		end
 		
-		90: begin	// Z-buff write is allowed in this state.
+		90: begin
 			isp_state <= isp_state + 8'd1;
 		end
 		
@@ -683,22 +687,21 @@ else begin
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
 		51: begin
-			isp_state <= isp_state + 8'd1;
+			if (debug_ena_texel_reads) begin
+				isp_state <= isp_state + 8'd1;
+			end
+			else begin
+				wb_x_ps <= x_ps;
+				wb_y_ps <= y_ps;
+				isp_state <= 8'd56;
+			end
 		end
 		
 		52: begin
-			isp_state <= 8'd209;
+			isp_state <= isp_state + 8'd1;
 		end
 		
-		209: begin
-			isp_state <= 8'd210;
-		end
-		
-		210: begin	// Definitely seems to need at least three wait states, to allow the Tags + pcache stuff time to update!
-			isp_state <= 8'd54;
-		end
-		
-		54: begin
+		53: begin
 			if (isp_inst_out[25]) begin		// If textured...
 				if (tcw_word_out[30] && (tex_base_word_addr_old != tcw_word_out[20:0])) begin	// VQ, and texture BASE address has changed...
 					tex_base_word_addr_old <= tcw_word_out[20:0];
@@ -709,43 +712,40 @@ else begin
 					// Check to see if vram_word_addr (texel addr) has changed...
 					if ((vram_word_addr_old!=vram_word_addr)) begin
 						vram_word_addr_old <= vram_word_addr;
-						if (debug_ena_texel_reads) begin
-							isp_vram_rd <= 1'b1;				// Read a Texel...
-							isp_state <= 8'd55;
-						end
-						else isp_state <= 8'd56;	// Textures disabled, just write the pixel (flat/Gouraud).
+						isp_vram_rd <= 1'b1;				// Read a Texel...
+						isp_state <= 8'd54;
 					end
-					else isp_state <= 8'd56;	// Textured (non-VQ), but the texel addr hasn't changed, write the pixel anyway.
+					else isp_state <= 8'd55;	// Textured (non-VQ), but the texel addr hasn't changed, write the pixel anyway.
 				end
 			end
-			else isp_state <= 8'd56;	// Flat-shaded or Gouraud pixel, no need to do a Texel fetch...
+			else isp_state <= 8'd55;	// Flat-shaded or Gouraud pixel, no need to do a Texel fetch...
 		end
 
 		// Wait for Texture word...
-		55: if (vram_valid) begin
-			isp_state <= 8'd56;
+		54: if (vram_valid) begin
+			isp_state <= isp_state + 8'd1;
 		end
 
-		56: begin	// Delay for Texel processing time.
+		55: begin
 			wb_x_ps <= x_ps;
 			wb_y_ps <= y_ps;
-			isp_state <= 8'd211;
+			isp_state <= isp_state + 8'd1;
 		end
 		
-		211: begin	// Delay for Texel processing time.
-			isp_state <= 8'd212;
-		end
-		
-		212: begin	// Delay for Texel processing time.
-			/*if ((type_cnt-1)==1) begin						// For the Punch-Through prim type...
-			if (final_argb[31:24]==8'hff) wr_pix <= 1'b1;	// Only write to the ARGB tile buffer if the Alpha==0xff (1.0) ??
-			end													// This should probably be a compare to the PT_ALPHA_REF register, no?
-			else*/ wr_pix <= 1'b1;
-			isp_state <= 8'd57;
+		56: begin
+			isp_state <= isp_state + 8'd1;
 		end
 		
 		// Write pixel to Tile ARGB buffer.
 		57: begin
+			/*if ((type_cnt-1)==1) begin						// For the Punch-Through prim type...
+			if (final_argb[31:24]==8'hff) wr_pix <= 1'b1;	// Only write to the ARGB tile buffer if the Alpha==0xff (1.0) ??
+			end													// This should probably be a compare to the PT_ALPHA_REF register, no?
+			else*/ wr_pix <= 1'b1;
+			isp_state <= isp_state + 8'd1;
+		end
+		
+		58: begin
 			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// Last pixel written, was the last (lower-right) pixel of the tile...
 				tile_wb <= 1'b1;										// Do the Tile ARGB buffer Writeback!
 				//tile_wb <= !ra_cont_flush_n;
@@ -777,9 +777,9 @@ else begin
 		103: if (vram_valid) begin	// Wait for the last Codebook word.
 			if (debug_ena_texel_reads) begin
 				isp_vram_rd <= 1'b1;				// Read the first VQ texture Word...
-				isp_state <= 8'd55;
+				isp_state <= 8'd54;
 			end
-			else isp_state <= 8'd56;	// Textures disabled.
+			else isp_state <= 8'd55;	// Textures disabled.
 		end
 
 		
@@ -930,6 +930,7 @@ inTri_calc  inTri_calc_inst (
 (*keep*)wire [31:0] inTri;
 
 
+
 // Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
 wire signed [47:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
 interp  interp_inst_z (
@@ -1026,6 +1027,129 @@ interp  interp_inst_v (
 	.interp( IP_V_INTERP )	// output signed [31:0]  interp
 );
 
+/*
+reg signed [31:0] FY2_sub_FY1;
+reg signed [31:0] FY3_sub_FY1;
+reg signed [31:0] FX2_sub_FX1;
+reg signed [31:0] FX3_sub_FX1;
+
+reg signed [63:0] C_mult_1;
+reg signed [63:0] C_mult_2;
+reg signed [47:0] BIG_C;
+
+wire signed [47:0] FX1_FIXED_MUX = (isp_state>=8'd51) ? vert_a_x_out : FX1_FIXED;
+wire signed [47:0] FX2_FIXED_MUX = (isp_state>=8'd51) ? vert_b_x_out : FX2_FIXED;
+wire signed [47:0] FX3_FIXED_MUX = (isp_state>=8'd51) ? vert_c_x_out : FX3_FIXED;
+
+wire signed [47:0] FY1_FIXED_MUX = (isp_state>=8'd51) ? vert_a_y_out : FY1_FIXED;
+wire signed [47:0] FY2_FIXED_MUX = (isp_state>=8'd51) ? vert_b_y_out : FY2_FIXED;
+wire signed [47:0] FY3_FIXED_MUX = (isp_state>=8'd51) ? vert_c_y_out : FY3_FIXED;
+	
+always @(*) begin
+	FY2_sub_FY1 = ((FY2_FIXED_MUX<<<FRAC_DIFF) - (FY1_FIXED_MUX<<<FRAC_DIFF));
+	FY3_sub_FY1 = ((FY3_FIXED_MUX<<<FRAC_DIFF) - (FY1_FIXED_MUX<<<FRAC_DIFF));
+	FX2_sub_FX1 = ((FX2_FIXED_MUX<<<FRAC_DIFF) - (FX1_FIXED_MUX<<<FRAC_DIFF));
+	FX3_sub_FX1 = ((FX3_FIXED_MUX<<<FRAC_DIFF) - (FX1_FIXED_MUX<<<FRAC_DIFF));
+
+	C_mult_1 = (FX2_sub_FX1 * FY3_sub_FY1) >>>Z_FRAC_BITS;
+	C_mult_2 = (FX3_sub_FX1 * FY2_sub_FY1) >>>Z_FRAC_BITS;
+	BIG_C    = C_mult_2 - C_mult_1;  // Swapped the order of subtraction, so we can ditch the neg sign on -C below...
+end
+
+// Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
+wire signed [47:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
+interp  interp_inst_z (
+	.clock( clock ),			// input  clock
+	.FRAC_BITS( Z_FRAC_BITS ),		// input [7:0] FRAC_BITS
+	
+	.FY2_sub_FY1( FY2_sub_FY1 ),	// input signed [31:0]  
+	.FY3_sub_FY1( FY3_sub_FY1 ),	// input signed [31:0]  
+	.FX2_sub_FX1( FX2_sub_FX1 ),	// input signed [31:0]  
+	.FX3_sub_FX1( FX3_sub_FX1 ),	// input signed [31:0]  
+	.BIG_C( BIG_C ),				// input signed [47:0]  BIG_C
+
+	.FX1( FX1_FIXED <<<FRAC_DIFF ),		// input signed [47:0] x1
+	.FY1( FY1_FIXED <<<FRAC_DIFF ),		// input signed [47:0] y1
+
+	.FZ1( FZ1_FIXED ),		// input signed [47:0] z1
+	.FZ2( FZ2_FIXED ),		// input signed [47:0] z2
+	.FZ3( FZ3_FIXED ),		// input signed [47:0] z3
+	
+	.x_ps( x_ps ),		// input [10:0] x_ps
+	.y_ps( y_ps ),		// input [10:0] y_ps
+	
+	//.interp( IP_Z_INTERP ),	// output signed [31:0]  interp
+
+	.interp0(  IP_Z[0] ),  .interp1(  IP_Z[1] ),  .interp2(  IP_Z[2] ),  .interp3(  IP_Z[3] ),  .interp4(  IP_Z[4] ),  .interp5(  IP_Z[5] ),  .interp6(  IP_Z[6] ),  .interp7(  IP_Z[7] ),
+	.interp8(  IP_Z[8] ),  .interp9(  IP_Z[9] ),  .interp10( IP_Z[10] ), .interp11( IP_Z[11] ), .interp12( IP_Z[12] ), .interp13( IP_Z[13] ), .interp14( IP_Z[14] ), .interp15( IP_Z[15] ),
+	.interp16( IP_Z[16] ), .interp17( IP_Z[17] ), .interp18( IP_Z[18] ), .interp19( IP_Z[19] ), .interp20( IP_Z[20] ), .interp21( IP_Z[21] ), .interp22( IP_Z[22] ), .interp23( IP_Z[23] ),
+	.interp24( IP_Z[24] ), .interp25( IP_Z[25] ), .interp26( IP_Z[26] ), .interp27( IP_Z[27] ), .interp28( IP_Z[28] ), .interp29( IP_Z[29] ), .interp30( IP_Z[30] ), .interp31( IP_Z[31] )
+);
+
+
+// int w = tex_u_size_full;
+// U.Setup(x1,x2,x3, y1,y2,y3, u1*w*z1, u2*w*z2, u3*w*z3);
+//
+// Don't need to shift right after, as tex_u_size_full is not fixed-point...
+wire signed [47:0] u1_mult_width = vert_a_u0_out * tex_u_size_full;
+wire signed [47:0] u2_mult_width = vert_b_u0_out * tex_u_size_full;
+wire signed [47:0] u3_mult_width = vert_c_u0_out * tex_u_size_full;
+wire signed [47:0] IP_U_INTERP;
+interp  interp_inst_u (
+	.clock( clock ),			// input  clock
+	.FRAC_BITS( Z_FRAC_BITS ),		// input [7:0] FRAC_BITS
+	
+	.FY2_sub_FY1( FY2_sub_FY1 ),	// input signed [31:0]  
+	.FY3_sub_FY1( FY3_sub_FY1 ),	// input signed [31:0]  
+	.FX2_sub_FX1( FX2_sub_FX1 ),	// input signed [31:0]  
+	.FX3_sub_FX1( FX3_sub_FX1 ),	// input signed [31:0] 
+	.BIG_C( BIG_C ),				// input signed [47:0]  BIG_C
+
+	.FX1( vert_a_x_out <<<FRAC_DIFF ),		// input signed [47:0] x1
+	.FY1( vert_a_y_out <<<FRAC_DIFF ),		// input signed [47:0] y1
+	
+	.FZ1( (u1_mult_width * vert_a_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z1
+	.FZ2( (u2_mult_width * vert_b_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z2
+	.FZ3( (u3_mult_width * vert_c_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z3
+	
+	.x_ps( x_ps ),		// input [10:0] x_ps
+	.y_ps( y_ps ),		// input [10:0] y_ps
+	
+	.interp( IP_U_INTERP )	// output signed [31:0]  interp
+);
+
+
+// int h = tex_v_size_full;
+// V.Setup(x1,x2,x3, y1,y2,y3, v1*h*z1, v2*h*z2, v3*h*z3);
+//
+// Don't need to shift right after, as tex_u_size_full is not fixed-point...
+wire signed [47:0] v1_mult_height = vert_a_v0_out * tex_v_size_full;	// Don't need to shift right after, as tex_v_size_full is not fixed-point?
+wire signed [47:0] v2_mult_height = vert_b_v0_out * tex_v_size_full;
+wire signed [47:0] v3_mult_height = vert_c_v0_out * tex_v_size_full;
+wire signed [47:0] IP_V_INTERP;
+interp  interp_inst_v (
+	.clock( clock ),			// input  clock
+	.FRAC_BITS( Z_FRAC_BITS ),		// input [7:0] FRAC_BITS
+	
+	.FY2_sub_FY1( FY2_sub_FY1 ),	// input signed [31:0]  
+	.FY3_sub_FY1( FY3_sub_FY1 ),	// input signed [31:0]  
+	.FX2_sub_FX1( FX2_sub_FX1 ),	// input signed [31:0]  
+	.FX3_sub_FX1( FX3_sub_FX1 ),	// input signed [31:0] 
+	.BIG_C( BIG_C ),				// input signed [47:0]  BIG_C
+
+	.FX1( vert_a_x_out <<<FRAC_DIFF ),		// input signed [47:0] x1
+	.FY1( vert_a_y_out <<<FRAC_DIFF ),		// input signed [47:0] y1
+	
+	.FZ1( (v1_mult_height * vert_a_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z1
+	.FZ2( (v2_mult_height * vert_b_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z2
+	.FZ3( (v3_mult_height * vert_c_z_out) >>>Z_FRAC_BITS ),	// input signed [31:0] z3
+	
+	.x_ps( x_ps ),		// input [10:0] x_ps
+	.y_ps( y_ps ),		// input [10:0] y_ps
+	
+	.interp( IP_V_INTERP )	// output signed [31:0]  interp
+);
+*/
 
 // Highest value is 1024 (8<<7) so we need 11 bits to store it! ElectronAsh.
 wire [10:0] tex_u_size_full = (8<<tex_u_size);
@@ -1054,6 +1178,17 @@ uv_clamp_flip  uv_clamp_flip_inst(
 );
 
 
+reg read_codebook;
+wire codebook_wait;
+
+reg cb_cache_clear;
+wire cb_cache_hit;
+
+wire [21:0] vram_word_addr;
+reg [21:0] vram_word_addr_old;
+
+wire [31:0] texel_argb;
+wire [31:0] final_argb;
 texture_address  texture_address_inst (
 	.clock( clock ),
 	.reset_n( reset_n ),
@@ -1098,19 +1233,6 @@ texture_address  texture_address_inst (
 );
 
 
-reg read_codebook;
-wire codebook_wait;
-
-reg cb_cache_clear;
-wire cb_cache_hit;
-
-wire [21:0] vram_word_addr;
-reg [21:0] vram_word_addr_old;
-
-wire [31:0] texel_argb;
-wire [31:0] final_argb;
-
-
 wire z_clear_busy;
 
 wire signed [31:0] z_out;
@@ -1132,7 +1254,8 @@ wire [11:0] prim_tag_out;
 */
 wire [2:0] depth_comp_in = depth_comp;
 
-wire trig_z_row_write = isp_state==8'd90 && !z_write_disable;
+wire trig_z_row_write = ((isp_state==8'd90) && !z_write_disable);
+//reg trig_z_row_write;
 
 z_buff  z_buff_inst(
 	.clock( clock ),
@@ -1141,51 +1264,28 @@ z_buff  z_buff_inst(
 	.clear_z( clear_z && !ra_cont_zclear_n ),	// clear_z && !ra_cont_zclear_n  New tile started AND ra_cont_zclear_n is asserted (Low).
 	.z_clear_busy( z_clear_busy ),
 	
-	.col_sel( x_ps[4:0] ),			// input [4:0] col_sel  x_ps[4:0]
-	.row_sel( y_ps[4:0] ),			// input [4:0] row_sel  y_ps[4:0]
+	.col_sel( x_ps[4:0] ),					// input [4:0] col_sel  x_ps[4:0]
+	.row_sel( y_ps[4:0] ),					// input [4:0] row_sel  y_ps[4:0]
 	
 	.z_out( z_out ),						// output signed  [31:0]  z_out
-	.prim_tag_out( prim_tag_out ),	// output [11:0]  prim_tag_out
+	.prim_tag_out( prim_tag_out ),			// output [11:0]  prim_tag_out
 	
 	.inTri( inTri ),						// input [31:0]  z_write_allow   (Bitwise AND).
 	.trig_z_row_write( trig_z_row_write ),
 	
-	.depth_comp_in( depth_comp_in ),
+	.depth_comp_in( depth_comp_in ),		// input [2:0]  depth_comp_in
 	
-	.prim_tag_in( prim_tag ),		// input [11:0] prim_tag_in
+	.prim_tag_in( prim_tag ),				// input [11:0] prim_tag_in
 	
-	.z_in_col_0 ( IP_Z[0] ),		// input [47:0] z_in_col_0  IP_Z[0]
-	.z_in_col_1 ( IP_Z[1] ),
-	.z_in_col_2 ( IP_Z[2] ),
-	.z_in_col_3 ( IP_Z[3] ),
-	.z_in_col_4 ( IP_Z[4] ),
-	.z_in_col_5 ( IP_Z[5] ),
-	.z_in_col_6 ( IP_Z[6] ),
-	.z_in_col_7 ( IP_Z[7] ),
-	.z_in_col_8 ( IP_Z[8] ),
-	.z_in_col_9 ( IP_Z[9] ),
-	.z_in_col_10( IP_Z[10] ),
-	.z_in_col_11( IP_Z[11] ),
-	.z_in_col_12( IP_Z[12] ),
-	.z_in_col_13( IP_Z[13] ),
-	.z_in_col_14( IP_Z[14] ),
-	.z_in_col_15( IP_Z[15] ),
-	.z_in_col_16( IP_Z[16] ),
-	.z_in_col_17( IP_Z[17] ),
-	.z_in_col_18( IP_Z[18] ),
-	.z_in_col_19( IP_Z[19] ),
-	.z_in_col_20( IP_Z[20] ),
-	.z_in_col_21( IP_Z[21] ),
-	.z_in_col_22( IP_Z[22] ),
-	.z_in_col_23( IP_Z[23] ),
-	.z_in_col_24( IP_Z[24] ),
-	.z_in_col_25( IP_Z[25] ),
-	.z_in_col_26( IP_Z[26] ),
-	.z_in_col_27( IP_Z[27] ),
-	.z_in_col_28( IP_Z[28] ),
-	.z_in_col_29( IP_Z[29] ),
-	.z_in_col_30( IP_Z[30] ),
-	.z_in_col_31( IP_Z[31] )
+	// input [47:0] z_in_col_0  IP_Z[0]
+	.z_in_col_0 ( IP_Z[0] ),  .z_in_col_1 ( IP_Z[1] ),  .z_in_col_2 ( IP_Z[2] ),  .z_in_col_3 ( IP_Z[3] ),
+	.z_in_col_4 ( IP_Z[4] ),  .z_in_col_5 ( IP_Z[5] ),  .z_in_col_6 ( IP_Z[6] ),  .z_in_col_7 ( IP_Z[7] ),
+	.z_in_col_8 ( IP_Z[8] ),  .z_in_col_9 ( IP_Z[9] ),  .z_in_col_10( IP_Z[10] ), .z_in_col_11( IP_Z[11] ),
+	.z_in_col_12( IP_Z[12] ), .z_in_col_13( IP_Z[13] ), .z_in_col_14( IP_Z[14] ), .z_in_col_15( IP_Z[15] ),
+	.z_in_col_16( IP_Z[16] ), .z_in_col_17( IP_Z[17] ), .z_in_col_18( IP_Z[18] ), .z_in_col_19( IP_Z[19] ),
+	.z_in_col_20( IP_Z[20] ), .z_in_col_21( IP_Z[21] ), .z_in_col_22( IP_Z[22] ), .z_in_col_23( IP_Z[23] ),
+	.z_in_col_24( IP_Z[24] ), .z_in_col_25( IP_Z[25] ), .z_in_col_26( IP_Z[26] ), .z_in_col_27( IP_Z[27] ),
+	.z_in_col_28( IP_Z[28] ), .z_in_col_29( IP_Z[29] ), .z_in_col_30( IP_Z[30] ), .z_in_col_31( IP_Z[31] )
 );
 
 
@@ -1214,9 +1314,13 @@ assign tile_buf_argb_in[31:24] = new_alpha;
 wire opaque_type = ((type_cnt-1)==0);
 
 // Opaque pixels bypass the final Alpha blend.
-assign tile_buf_argb_in[23:16] = (opaque_type || disable_alpha) ? final_argb[23:16] : red_blend;
-assign tile_buf_argb_in[15:08] = (opaque_type || disable_alpha) ? final_argb[15:08] : grn_blend;
-assign tile_buf_argb_in[07:00] = (opaque_type || disable_alpha) ? final_argb[07:00] : blu_blend;
+wire vert_c_base_white = (vert_c_base_col_0_out[23:00]==24'hffffff);
+wire [7:0] debug_red = (vert_c_base_white) ? (z_out>>9) : vert_c_base_col_0_out[23:16];
+wire [7:0] debug_grn = (vert_c_base_white) ? (z_out>>9) : vert_c_base_col_0_out[15:08];
+wire [7:0] debug_blu = (vert_c_base_white) ? (z_out>>9) : vert_c_base_col_0_out[07:00];
+assign tile_buf_argb_in[23:16] = (!debug_ena_texel_reads) ? debug_red : (opaque_type || disable_alpha) ? final_argb[23:16] : red_blend;
+assign tile_buf_argb_in[15:08] = (!debug_ena_texel_reads) ? debug_grn : (opaque_type || disable_alpha) ? final_argb[15:08] : grn_blend;
+assign tile_buf_argb_in[07:00] = (!debug_ena_texel_reads) ? debug_blu : (opaque_type || disable_alpha) ? final_argb[07:00] : blu_blend;
 
 
 wire [31:0] tile_buf_argb_in;
@@ -1253,8 +1357,6 @@ tile_argb_buffer  tile_argb_buffer_inst (
 	.wb_word_addr( wb_word_addr ),	// output [19:0]  wb_word_addr
 	.twopix_out( twopix_out ),			// output [31:0]  twopix_out
 	
-	//.wb_burst_cnt( wb_burst_cnt ),	// output [7:0]  wb_burst_cnt
-	//.burst_begin( burst_begin ),		// output  burst_begin
 	.vram_wr( tile_wb_we ),				// output  vram_wr
 	.vram_wait( vram_wait )				// input  vram_wait
 );
@@ -1281,8 +1383,6 @@ module tile_argb_buffer (
 	output reg [19:0] wb_word_addr,		// VRAM dual-pixel writeback (32-bit WORD address).
 	output wire [31:0] twopix_out,
 	
-	//output reg [7:0] wb_burst_cnt,
-	//output reg burst_begin,
 	output reg vram_wr,
 	input vram_wait
 );
@@ -1306,7 +1406,7 @@ tile_argb_mem  tile_argb_mem_inst (
 	.clock( clock ),					// input  clock
 	
 	.addr( buff_addr ),				// input [8:0]  addr
-	.din( {argb_in, argb_in} ),	// input [63:0]  din
+	.din( {argb_in, argb_in} ),	// input [63:0] din
 	.be( buff_be ),					// input [1:0]  be
 	.we( wr_pix ),						// input  we
 	
@@ -1324,13 +1424,10 @@ always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	wb_word_addr <= 20'd0;
 	wb_word_cnt <= 10'd512;
-	//wb_burst_cnt <= 8'd16;
-	//burst_begin <= 1'b0;
 	vram_wr <= 1'b0;
 	wb_done <= 1'b0;
 end
 else begin
-	//burst_begin <= 1'b0;
 	vram_wr <= 1'b0;
 	wb_done <= 1'b0;
 
@@ -1338,17 +1435,14 @@ else begin
 		tilex <= x_ps[9:5];
 		tiley <= y_ps[9:5];
 		wb_word_cnt <= 10'd0;	// Kick off the writeback!
-		//burst_begin <= 1'b1;
 	end
 
 	// Handle Tile writeback...
 	if (wb_active) begin		// wb_word_cnt < 10'd512
 		vram_wr <= 1'b1;
 		if (!vram_wait) begin
-			// Write a word and increment Word counter
 			wb_word_addr <= ({tiley,wb_word_cnt[8:4]}*320) + {tilex,wb_word_cnt[3:0]};	// (tiley * (640/2)) + tilex.
 			wb_word_cnt <= wb_word_cnt + 10'd1;											// We write TWO pixels per Word, to VRAM.
-			//if (wb_word_cnt[3:0]==4'd15) burst_begin <= 1'b1;	// Pulse at the start of each 16-Word (32-pixel) burst.
 			if (wb_word_cnt==10'd511) wb_done <= 1'b1;
 		end
 	end
