@@ -693,7 +693,10 @@ else begin
 			else begin
 				wb_x_ps <= x_ps;
 				wb_y_ps <= y_ps;
-				isp_state <= 8'd56;
+				//isp_state <= 8'd56;
+				
+				wr_pix <= 1'b1;			// TESTING !!
+				isp_state <= 8'd58;
 			end
 		end
 		
