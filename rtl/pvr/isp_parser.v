@@ -290,7 +290,6 @@ else begin
 			if (render_bg) begin
 				// Using poly_addr from the RA now (isp_vram_addr set in isp_state 0), as it includes the PARAM_BASE offset.
 				//isp_vram_addr <= {ISP_BACKGND_T[23:3],2'b00};
-				//if (!cache_bypass) prim_tag <= prim_tag + 12'd1;
 				isp_vram_rd <= 1'b1;
 				isp_state <= 8'd2;
 			end
@@ -304,7 +303,6 @@ else begin
 						if (strip_mask[strip_cnt]) begin
 							isp_vram_addr <= poly_addr;	// Always use the absolute start address of the poly. Will fetch ISP/TSP/TCW again, but then skip verts.
 							isp_vram_rd <= 1'b1;
-							/*if (!cache_bypass)*/prim_tag <= prim_tag + 12'd1;
 							isp_state <= 8'd2;				// Go to the next state if the current strip_mask bit is set.
 						end
 						else begin									// Current strip_mask bit was NOT set...
@@ -316,7 +314,6 @@ else begin
 				else if (is_tri_array || is_quad_array) begin	// Triangle Array or Quad Array.
 					quad_done <= 1'b0;							// Ready for drawing the first half of a Quad.			
 					array_cnt <= num_prims;	// Shouldn't need a +1 here, because it will render the first triangle with array_cnt==0 anyway. ElectronAsh.
-					/*if (!cache_bypass)*/ prim_tag <= prim_tag + 12'd1;
 					isp_vram_rd <= 1'b1;
 					isp_state <= 8'd2;
 				end
@@ -596,7 +593,15 @@ else begin
 			end
 			isp_entry_valid <= 1'b1;
 			isp_vram_addr <= isp_vram_addr + 4;	// I think this is needed, to make isp_vram_addr_last correct in isp_state 49!
-			isp_state <= 8'd49;			// Draw the triangle!
+			
+			if (tri_vis) begin
+				/*if (!cache_bypass)*/ prim_tag <= prim_tag + 12'd1;
+				isp_state <= 8'd49;			// Draw the triangle!
+			end
+			else begin
+				poly_drawn <= 1'b1;			// Skip it!
+				isp_state <= 8'd0;
+			end
 		end
 		
 		48: if (!z_clear_busy) begin
@@ -687,23 +692,22 @@ else begin
 		// We jump to this state when in isp_state==0 AND "tile_prims_done" is triggered.
 		//
 		51: begin
+			wb_x_ps <= x_ps;
+			wb_y_ps <= y_ps;
 			if (debug_ena_texel_reads) begin
-				isp_state <= isp_state + 8'd1;
+				//isp_state <= isp_state + 8'd1;
+				isp_state <= 8'd53;
 			end
 			else begin
-				wb_x_ps <= x_ps;
-				wb_y_ps <= y_ps;
-				//isp_state <= 8'd56;
-				
-				wr_pix <= 1'b1;			// TESTING !!
-				isp_state <= 8'd58;
+				wr_pix <= 1'b1;
+				isp_state <= 8'd58;	// Jumping directly to this state, seems to work fine for flat-shaded mode.
 			end
 		end
-		
+		/*
 		52: begin
 			isp_state <= isp_state + 8'd1;
 		end
-		
+		*/
 		53: begin
 			if (isp_inst_out[25]) begin		// If textured...
 				if (tcw_word_out[30] && (tex_base_word_addr_old != tcw_word_out[20:0])) begin	// VQ, and texture BASE address has changed...
@@ -718,20 +722,24 @@ else begin
 						isp_vram_rd <= 1'b1;				// Read a Texel...
 						isp_state <= 8'd54;
 					end
-					else isp_state <= 8'd55;	// Textured (non-VQ), but the texel addr hasn't changed, write the pixel anyway.
+					else begin
+						wr_pix <= 1'b1;
+						isp_state <= 8'd58;	// Textured (non-VQ), but the texel addr hasn't changed, write the pixel anyway.
+					end
 				end
 			end
-			else isp_state <= 8'd55;	// Flat-shaded or Gouraud pixel, no need to do a Texel fetch...
+			else begin
+				wr_pix <= 1'b1;
+				isp_state <= 8'd58;	// Flat-shaded or Gouraud pixel, no need to do a Texel fetch...
+			end
 		end
 
 		// Wait for Texture word...
 		54: if (vram_valid) begin
 			isp_state <= isp_state + 8'd1;
 		end
-
+		
 		55: begin
-			wb_x_ps <= x_ps;
-			wb_y_ps <= y_ps;
 			isp_state <= isp_state + 8'd1;
 		end
 		
@@ -748,6 +756,7 @@ else begin
 			isp_state <= isp_state + 8'd1;
 		end
 		
+		// Check if we're on the last (lower-left) pixel of the Tile.
 		58: begin
 			if (y_ps[4:0]==5'd31 && x_ps[4:0]==5'd31) begin	// Last pixel written, was the last (lower-right) pixel of the tile...
 				tile_wb <= 1'b1;										// Do the Tile ARGB buffer Writeback!
@@ -804,6 +813,34 @@ wire [10:0] tilex_start = {tilex, 5'b00000};
 wire [10:0] tiley_start = {tiley, 5'b00000};
 
 wire [7:0] vert_words = (two_volume&shadow) ? ((skip*2)+3) : (skip+3);
+
+
+wire tri_vis;
+wire signed [47:0] FX1_CLIPPED;
+wire signed [47:0] FY1_CLIPPED;
+wire signed [47:0] FX2_CLIPPED;
+wire signed [47:0] FY2_CLIPPED;
+wire signed [47:0] FX3_CLIPPED;
+wire signed [47:0] FY3_CLIPPED;
+vertex_clipper  vertex_clipper_inst (
+	.FRAC_BITS( FRAC_BITS ),	// input [7:0]  FRAC_BITS
+	.FX1( FX1_FIXED ),
+	.FY1( FY1_FIXED ),
+	.FX2( FX2_FIXED ),
+	.FY2( FY2_FIXED ),
+	.FX3( FX3_FIXED ),
+	.FY3( FY3_FIXED ),
+	.max_width(  31'd1000000 ),	// input [15:0]
+	.max_height( 31'd1000000 ),	// input [15:0]
+	.FX1_clipped( FX1_CLIPPED ),			// output signed [47:0]
+	.FY1_clipped( FY1_CLIPPED ),
+	.FX2_clipped( FX2_CLIPPED ),
+	.FY2_clipped( FY2_CLIPPED ),
+	.FX3_clipped( FX3_CLIPPED ),
+	.FY3_clipped( FY3_CLIPPED ),
+
+	.triangle_visible( tri_vis )
+);
 
 
 // Vertex float-to-fixed conversion...
