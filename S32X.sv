@@ -1,5 +1,3 @@
-
-
 //`define SH4_HAT
 
 `define MISTER_FB
@@ -209,7 +207,8 @@ module emu
 	output wire [23:0] FB_R_SOF2,
 	
 	output wire [23:0] FB_W_SOF1,
-	output wire [23:0] FB_W_SOF2
+	output wire [23:0] FB_W_SOF2,
+	output wire        FB_DISP_HALF
 );
 
 
@@ -226,7 +225,8 @@ wire [3:0] fb_scan_sel = status[21:18];
 wire fb_scan_en = fb_scan_sel != 4'd0;
 
 wire [23:0] fb_disp_sof = !status[15] ? FB_R_SOF1 : FB_W_SOF1;
-wire [31:0] fb_disp_base_side   = {9'd0, fb_disp_sof[21:2], 3'b000} + {29'd0, fb_disp_sof[22], 2'b00};
+assign FB_DISP_HALF = fb_disp_sof[22];
+wire [31:0] fb_disp_base_side   = {9'd0, fb_disp_sof[21:2], 3'b000};
 wire [31:0] fb_disp_base_linear = {9'd0, fb_disp_sof[22:2], 2'b00};
 wire [31:0] fb_disp_base_scan   = {9'd0, fb_scan_sel, 19'd0};
 wire [31:0] fb_disp_base = fb_scan_en ? fb_disp_base_scan :
@@ -1838,3 +1838,4 @@ end
 */
 
 endmodule
+

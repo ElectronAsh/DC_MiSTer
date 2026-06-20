@@ -108,7 +108,6 @@ module pvr #(
 	input fb_wait,
 	output fb_pending,
 	output wire tile_accum_done,
-	output wire [31:0] FB_W_SOF1_out,
 
 	input debug_ena_texel_reads,
 	
@@ -140,8 +139,6 @@ parameter FB_R_SIZE_addr          = 16'h005C; reg [31:0] FB_R_SIZE;			// RW  Fra
 
 parameter FB_W_SOF1_addr          = 16'h0060; reg [31:0] FB_W_SOF1;			// RW  Write start address for field - 1/strip - 1
 parameter FB_W_SOF2_addr          = 16'h0064; reg [31:0] FB_W_SOF2;			// RW  Write start address for field - 2/strip - 2
-
-assign FB_W_SOF1_out = FB_W_SOF1;
 
 parameter FB_X_CLIP_addr          = 16'h0068; reg [31:0] FB_X_CLIP;			// RW  Pixel clip X coordinate
 parameter FB_Y_CLIP_addr          = 16'h006C; reg [31:0] FB_Y_CLIP;			// RW  Pixel clip Y coordinate

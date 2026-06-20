@@ -253,7 +253,9 @@ ENTITY ascal IS
 		------------------------------------
 		reset_na           : IN    std_logic;
 		
-		fb_sel_upper       : IN    std_logic
+		fb_sel_upper       : IN    std_logic;
+		
+		fb_split_en        : IN    std_logic := '0'
 );
 
 BEGIN
@@ -578,12 +580,35 @@ ARCHITECTURE rtl OF ascal IS
 		END CASE;
 	END FUNCTION;
 
+	FUNCTION fb_split_word(dr           : unsigned(N_DW-1 DOWNTO 0);
+								 fb_sel_upper : std_logic;
+								 fb_split_en  : std_logic;
+								 format       : unsigned(5 DOWNTO 0)) RETURN unsigned IS
+		VARIABLE e : unsigned(N_DW-1 DOWNTO 0);
+	BEGIN
+		e:=dr;
+		IF N_DW=128 AND fb_split_en='1' AND format(2 DOWNTO 0)="100" THEN
+			-- Dreamcast split VRAM FB: one 32-bit half of each 64-bit DDR word is useful.
+			-- Pack four useful 16bpp pixels into the front of the ASCAL shift stream.
+			IF fb_sel_upper='1' THEN
+				e:=dr(95 DOWNTO 64) & dr(31 DOWNTO 0) & dr(95 DOWNTO 64) & dr(31 DOWNTO 0);
+			ELSE
+				e:=dr(127 DOWNTO 96) & dr(63 DOWNTO 32) & dr(127 DOWNTO 96) & dr(63 DOWNTO 32);
+			END IF;
+		END IF;
+		RETURN e;
+	END FUNCTION;
+
 	FUNCTION shift_opack(acpt   : natural RANGE 0 TO 15;
 								shift  : unsigned(0 TO N_DW+15);
 								dr     : unsigned(N_DW-1 DOWNTO 0);
-								format : unsigned(5 DOWNTO 0)) RETURN unsigned IS
+								format : unsigned(5 DOWNTO 0);
+								fb_sel_upper : std_logic;
+								fb_split_en : std_logic) RETURN unsigned IS
 		VARIABLE shift_v : unsigned(0 TO N_DW+15);
+		VARIABLE dr_v    : unsigned(N_DW-1 DOWNTO 0);
 	BEGIN
+		dr_v:=fb_split_word(dr,fb_sel_upper,fb_split_en,format);
 		CASE format(2 DOWNTO 0) IS
 			WHEN "011" => -- 8bpp
 				IF (N_DW=128 AND acpt=0) OR (N_DW=64 AND (acpt MOD 8)=0) THEN
@@ -593,7 +618,13 @@ ARCHITECTURE rtl OF ascal IS
 				END IF;
 
 			WHEN "100" => -- 16bpp
-				IF (N_DW=128 AND (acpt MOD 8)=0) OR (N_DW=64 AND (acpt MOD 4)=0) THEN
+				IF fb_split_en='1' AND N_DW=128 THEN
+					IF (acpt MOD 4)=0 THEN
+						shift_v:=dr_v & dr_v(15 DOWNTO 0);
+					ELSE
+						shift_v:=shift(16 TO N_DW+15) & dr_v(15 DOWNTO 0);
+					END IF;
+				ELSIF (N_DW=128 AND (acpt MOD 8)=0) OR (N_DW=64 AND (acpt MOD 4)=0) THEN
 					shift_v:=dr & dr(15 DOWNTO 0);
 				ELSE
 					shift_v:=shift(16 TO N_DW+15) & dr(15 DOWNTO 0);
@@ -632,15 +663,20 @@ ARCHITECTURE rtl OF ascal IS
 	END FUNCTION;
 
 	FUNCTION shift_onext (acpt   : natural RANGE 0 TO 15;
-								 format : unsigned(5 DOWNTO 0)) RETURN boolean IS
+								 format : unsigned(5 DOWNTO 0);
+								 fb_split_en : std_logic) RETURN boolean IS
 	BEGIN
 		CASE format(2 DOWNTO 0) IS
 			WHEN "011" => -- 8bpp
 				RETURN (N_DW=128 AND acpt=0) OR
 						 (N_DW=64  AND ((acpt MOD 8)=0));
 			WHEN "100" => -- 16bpp
-				RETURN (N_DW=128 AND ((acpt MOD 8)=0)) OR
-						 (N_DW=64  AND ((acpt MOD 4)=0));
+				IF fb_split_en='1' AND N_DW=128 THEN
+					RETURN (acpt MOD 4)=0;
+				ELSE
+					RETURN (N_DW=128 AND ((acpt MOD 8)=0)) OR
+							 (N_DW=64  AND ((acpt MOD 4)=0));
+				END IF;
 			WHEN "101" => -- 24bpp
 				RETURN (N_DW=128 AND (acpt=0 OR acpt=5 OR acpt=10)) OR
 						 (N_DW=64  AND ((acpt MOD 8)=0 OR (acpt MOD 8)=2 OR (acpt MOD 8)=5));
@@ -1939,7 +1975,12 @@ BEGIN
 			-- 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp
 			CASE o_format(2 DOWNTO 0) IS
 				WHEN "011" => o_ihsize_temp <= o_ihsize;
-				WHEN "100" => o_ihsize_temp <= o_ihsize * 2;
+				WHEN "100" =>
+					IF fb_split_en='1' THEN
+						o_ihsize_temp <= o_ihsize * 4; -- split VRAM: 4 physical bytes per displayed 16bpp pixel
+					ELSE
+						o_ihsize_temp <= o_ihsize * 2;
+					END IF;
 				WHEN "110" => o_ihsize_temp <= o_ihsize * 4;
 				WHEN OTHERS => o_ihsize_temp <= o_ihsize * 3;
 			END CASE;
@@ -1948,7 +1989,11 @@ BEGIN
 			o_hburst <= o_ihsize_temp2 / N_BURST;
 
 			IF o_fb_ena='1' AND o_fb_stride /= 0 THEN
-				o_stride<=o_fb_stride;
+				IF fb_split_en='1' AND o_format(2 DOWNTO 0)="100" THEN
+					o_stride<=o_fb_stride(12 DOWNTO 0) & '0';
+				ELSE
+					o_stride<=o_fb_stride;
+				END IF;
 			ELSE
 				o_stride<=to_unsigned(o_ihsize_temp2,14);
 				o_stride(NB_BURST-1 DOWNTO 0)<=(OTHERS =>'0');
@@ -2147,7 +2192,7 @@ BEGIN
 					o_hacpt<=o_hacpt+1;
 					o_sh<='1';
 					o_acpt<=(o_acpt+1) MOD 16;
-					IF shift_onext(o_acpt,o_format) THEN
+					IF shift_onext(o_acpt,o_format,fb_split_en) THEN
 						o_ad<=(o_ad+1) MOD (2*BLEN);
 					END IF;
 					o_pshift<=o_pshift-1;
@@ -2189,11 +2234,11 @@ BEGIN
 						o_last1<=o_last;
 						o_last2<=o_last1;
 
-						IF shift_onext(o_acpt,o_format) THEN
+						IF shift_onext(o_acpt,o_format,fb_split_en) THEN
 							o_ad<=(o_ad+1) MOD (2*BLEN);
 						END IF;
 
-						IF o_adturn='1' AND (shift_onext((o_acpt+1) MOD 16,o_format)) AND
+						IF o_adturn='1' AND (shift_onext((o_acpt+1) MOD 16,o_format,fb_split_en)) AND
 							(((o_ad MOD BLEN=0) AND o_lastv(0)='0') OR o_last2='1')  THEN
 							o_copy<=sWAIT;
 							lev_dec_v:='1';
@@ -2213,7 +2258,7 @@ BEGIN
 
 			------------------------------------------------------
 			IF o_sh3='1' THEN
-				shift_v:=shift_opack(o_acpt4,o_shift,o_dr,o_format);
+				shift_v:=shift_opack(o_acpt4,o_shift,o_dr,o_format,fb_sel_upper,fb_split_en);
 				o_shift<=shift_v;
 				o_hpixs<=shift_opix(shift_v,o_format,fb_sel_upper,o_fb_ena);
 			END IF;
@@ -2385,7 +2430,7 @@ BEGIN
 			END IF;
 		END PROCESS;
 
-		pal_idx <= shift_opack(o_acpt4,o_shift,o_dr,o_format)(0 TO 7);
+		pal_idx <= shift_opack(o_acpt4,o_shift,o_dr,o_format,fb_sel_upper,fb_split_en)(0 TO 7);
 		pal_idx_lsb <= pal_idx(0) WHEN rising_edge(o_clk);
 		o_fb_pal_dr_x2 <= pal1_mem(to_integer(pal_idx(7 DOWNTO 1))) WHEN rising_edge(o_clk);
 	END GENERATE GenPal1;
@@ -2921,3 +2966,9 @@ BEGIN
 
 	----------------------------------------------------------------------------
 END ARCHITECTURE rtl;
+
+
+
+
+
+

@@ -315,7 +315,6 @@ wire tex_vram_req_ack_core;
 wire tile_accum_done_core;
 wire fb_wait;
 wire fb_pending;
-wire [31:0] pvr_fb_w_sof1;
 wire pvr_trig_pvr_update_unused;
 reg [31:0] pvr_test_select_mirror;
 
@@ -390,7 +389,6 @@ pvr pvr (
 	.fb_wait( fb_wait ),			// input  fb_wait
 	.fb_pending( fb_pending ),		// output fb_pending
 	.tile_accum_done( tile_accum_done_core ),
-	.FB_W_SOF1_out( pvr_fb_w_sof1 ),
 	
 	.debug_ena_texel_reads( 1'b1 )	// input  debug_ena_texel_reads
 );

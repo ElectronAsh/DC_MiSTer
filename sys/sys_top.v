@@ -700,19 +700,10 @@ wire   [7:0] vbuf_burstcount;
 wire         vbuf_waitrequest;
 
 wire [127:0] vbuf_readdata;
-/*
-wire [63:0] pix01 = (!FB_R_SOF1[22]) ? {vbuf_readdata[127:95],vbuf_readdata[127:95]} : {vbuf_readdata[94:63],vbuf_readdata[94:63]};
-wire [63:0] pix23 = (!FB_R_SOF1[22]) ? {vbuf_readdata[63:32 ],vbuf_readdata[ 63:32]} : {vbuf_readdata[31:00],vbuf_readdata[31:00]};
-
-
-wire [127:0] ascal_readdata = {pix01, pix23};
-*/
-
-//wire [127:0] ascal_readdata = (FB_R_SOF1[22]) ? {vbuf_readdata[95:64], vbuf_readdata[127:96], vbuf_readdata[31:00], vbuf_readdata[63:32]} : vbuf_readdata;
-wire [127:0] ascal_readdata = vbuf_readdata;
-
 wire         vbuf_readdatavalid;
 wire         vbuf_read;
+wire [127:0] ascal_readdata = vbuf_readdata;
+
 wire [127:0] vbuf_writedata;
 wire  [15:0] vbuf_byteenable;
 wire         vbuf_write;
@@ -840,7 +831,8 @@ ascal
 	.avl_read         (vbuf_read),
 	.avl_byteenable   (vbuf_byteenable),
 	
-	.fb_sel_upper( FB_R_SOF1[22] )
+	.fb_sel_upper( FB_DISP_HALF ),
+	.fb_split_en ( !LFB_EN && FB_EN && (FB_FMT[2:0] == 3'b100) )
 );
 `endif
 
@@ -1713,6 +1705,7 @@ always @(posedge clk_sys) sl_r <= FB_EN ? 2'b00 : scanlines;
 
 wire [23:0] FB_R_SOF1;
 
+wire        FB_DISP_HALF;
 emu emu
 (
 	.CLK_50M(FPGA_CLK2_50),
@@ -1734,6 +1727,7 @@ emu emu
 	
 	.FB_R_SOF1(FB_R_SOF1),
 
+	.FB_DISP_HALF(FB_DISP_HALF),
 `ifdef MISTER_FB
 	.FB_EN(fb_en),
 	.FB_FORMAT(fb_fmt),
@@ -1963,3 +1957,6 @@ always @(posedge clk) begin
 end
 
 endmodule
+
+
+

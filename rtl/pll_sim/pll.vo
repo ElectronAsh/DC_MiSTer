@@ -227,7 +227,7 @@ module  pll
 		pll_altera_pll_altera_pll_i_639.n_cnt_odd_div_duty_en = "false",
 		pll_altera_pll_altera_pll_i_639.number_of_clocks = 1,
 		pll_altera_pll_altera_pll_i_639.operation_mode = "direct",
-		pll_altera_pll_altera_pll_i_639.output_clock_frequency0 = "40.000000 MHz",
+		pll_altera_pll_altera_pll_i_639.output_clock_frequency0 = "32.000000 MHz",
 		pll_altera_pll_altera_pll_i_639.output_clock_frequency1 = "0 MHz",
 		pll_altera_pll_altera_pll_i_639.output_clock_frequency10 = "0 MHz",
 		pll_altera_pll_altera_pll_i_639.output_clock_frequency11 = "0 MHz",
