@@ -2,9 +2,15 @@
 `default_nettype none
 
 module vram_read_arbiter_2c #(
+`ifdef VERILATOR
     parameter CACHE_WORDS = 64,
     parameter CACHE_BITS  = 6,
     parameter BURST_WORDS = 32,
+`else
+    parameter CACHE_WORDS = 1,
+    parameter CACHE_BITS  = 1,
+    parameter BURST_WORDS = 1,
+`endif
     parameter WRITE_BURST_WORDS = 8
 ) (
     input  wire        clock,

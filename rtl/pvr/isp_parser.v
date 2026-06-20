@@ -378,8 +378,13 @@ reg zpipe_flush;
 localparam signed [47:0] Z_MAX_INIT = 48'sh7fffffffffff;
 localparam signed [47:0] Z_MIN_INIT = -48'sh800000000000;
 
+`ifdef VERILATOR
 localparam PARAM_WINDOW_WORDS = 56;
 localparam PARAM_WINDOW_BITS = 6;
+`else
+localparam PARAM_WINDOW_WORDS = 1;
+localparam PARAM_WINDOW_BITS = 1;
+`endif
 reg [31:0] param_window [0:PARAM_WINDOW_WORDS-1];
 reg [PARAM_WINDOW_WORDS-1:0] param_window_valid;
 reg [23:0] param_window_base;
