@@ -74,6 +74,27 @@ always_comb begin edge_da[0] = da_const_term - dy_da * (x_base_fixed - FX4_FIXED
 wire signed [63:0] tri_area2 = dx_ab * (FY3_FIXED - FY1_FIXED) - dy_ab * (FX3_FIXED - FX1_FIXED);
 wire sign_ref = tri_area2 >= 0;
 
+wire include_ab = sign_ref ? ((dy_ab < 0) || ((dy_ab == 0) && (dx_ab > 0))) :
+                            ((dy_ab > 0) || ((dy_ab == 0) && (dx_ab < 0)));
+wire include_bc = sign_ref ? ((dy_bc < 0) || ((dy_bc == 0) && (dx_bc > 0))) :
+                            ((dy_bc > 0) || ((dy_bc == 0) && (dx_bc < 0)));
+wire include_ca = sign_ref ? ((dy_ca < 0) || ((dy_ca == 0) && (dx_ca > 0))) :
+                            ((dy_ca > 0) || ((dy_ca == 0) && (dx_ca < 0)));
+wire include_cd = sign_ref ? ((dy_cd < 0) || ((dy_cd == 0) && (dx_cd > 0))) :
+                            ((dy_cd > 0) || ((dy_cd == 0) && (dx_cd < 0)));
+wire include_da = sign_ref ? ((dy_da < 0) || ((dy_da == 0) && (dx_da > 0))) :
+                            ((dy_da > 0) || ((dy_da == 0) && (dx_da < 0)));
+
+function automatic edge_inside;
+    input signed [63:0] edge_val;
+    input include_edge;
+    input positive_winding;
+    begin
+        edge_inside = positive_winding ? (include_edge ? (edge_val >= 0) : (edge_val > 0)) :
+                                         (include_edge ? (edge_val <= 0) : (edge_val < 0));
+    end
+endfunction
+
 wire [31:0] inTri_internal;
 
 assign inTri = (tri_area2==0) ? 32'b0 : inTri_internal;
@@ -85,16 +106,16 @@ generate
 
         // Triangle test
         wire inside_pixel_tri =
-            (edge_ab[i] >= 0) == sign_ref &&
-            (edge_bc[i] >= 0) == sign_ref &&
-            (edge_ca[i] >= 0) == sign_ref;
+            edge_inside(edge_ab[i], include_ab, sign_ref) &&
+            edge_inside(edge_bc[i], include_bc, sign_ref) &&
+            edge_inside(edge_ca[i], include_ca, sign_ref);
 
         // Quad test (do NOT simplify; quads are tricky)
         wire inside_pixel_quad =
-            (edge_ab[i] >= 0) == sign_ref &&
-            (edge_bc[i] >= 0) == sign_ref &&
-            (edge_cd[i] >= 0) == sign_ref &&
-            (edge_da[i] >= 0) == sign_ref;
+            edge_inside(edge_ab[i], include_ab, sign_ref) &&
+            edge_inside(edge_bc[i], include_bc, sign_ref) &&
+            edge_inside(edge_cd[i], include_cd, sign_ref) &&
+            edge_inside(edge_da[i], include_da, sign_ref);
 
         assign inTri_internal[i] = is_quad ? inside_pixel_quad : inside_pixel_tri;
     end

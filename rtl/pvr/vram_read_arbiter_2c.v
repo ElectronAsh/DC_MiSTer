@@ -262,6 +262,7 @@ module vram_read_arbiter_2c #(
                     write_cmd_pending <= 1'b1;
                     write_count <= 8'd0;
                 end else begin
+                    DDRAM_WE <= 1'b1;
                     if (write_count == (write_len - 8'd1)) begin
                         write_active <= 1'b0;
                         write_cmd_pending <= 1'b0;

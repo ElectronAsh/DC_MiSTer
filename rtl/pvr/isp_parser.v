@@ -2675,3 +2675,5 @@ function automatic signed [FIXED_W-1:0] max4;
         max4 = (m1 > m2) ? m1 : m2;
     end
 endfunction
+
+

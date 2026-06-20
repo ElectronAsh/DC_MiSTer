@@ -68,13 +68,13 @@ reg signed [47:0] FZ3_sub_FZ1;
 reg signed [55:0] Aa_mult_1;	// Needs to be wider than 48-bit.
 reg signed [55:0] Aa_mult_2;	// Needs to be wider than 48-bit.
 reg signed [47:0] Aa;			// This might need to be > 48-bit, to get the Daytona logos to render correctly.
-										// But will then use a LOT of logic, for the divide.
+								// But will then use a LOT of logic, for the divide.
 
 // Ba = (FX3 - FX1) * (FZ2 - FZ1) - (FX2 - FX1) * (FZ3 - FZ1);
 reg signed [55:0] Ba_mult_1;	// Needs to be wider than 48-bit.
 reg signed [55:0] Ba_mult_2;	// Needs to be wider than 48-bit.
 reg signed [47:0] Ba;			// This might need to be > 48-bit, to get the Daytona logos to render correctly.
-										// But will then use a LOT of logic, for the divide.
+								// But will then use a LOT of logic, for the divide.
 
 // C = (FX2 - FX1) * (FY3 - FY1) - (FX3 - FX1) * (FY2 - FY1);
 wire signed [47:0] FY2_sub_FY1_z = FY2_sub_FY1 <<<FRAC_DIFF;
@@ -94,6 +94,7 @@ wire signed [47:0] FY1_z = FY1 <<<FRAC_DIFF;
 reg signed [47:0] FDDX_mult_FX1;	// Can work as 48-bit?
 reg signed [47:0] FDDY_mult_FY1;
 
+`ifndef PVR_LITE_INTERP
 // Choose a dynamic shift that preserves precision but avoids overflow on (Aa << num_shift) / BIG_C.
 function automatic [5:0] msb_index64;
     input [63:0] v;
@@ -121,6 +122,9 @@ wire [7:0] shift_allow = (abs_max == 64'd0) ? Z_FRAC_BITS :
                          (abs_msb >= 6'd62) ? 8'd0 : (8'd62 - {2'b00, abs_msb});
 
 wire [7:0] num_shift = (Z_FRAC_BITS < shift_allow) ? Z_FRAC_BITS : shift_allow;
+`else
+wire [7:0] num_shift = Z_FRAC_BITS;
+`endif
 
 // Adjust back to original scale
 wire signed [47:0] FDDX_adj = FDDX <<<(Z_FRAC_BITS - num_shift);
@@ -137,7 +141,17 @@ wire signed [47:0] z_dx0  = (x0_fp  * FDDX_adj) >>>FRAC_BITS;
 wire signed [47:0] z_dx16 = (x16_fp * FDDX_adj) >>>FRAC_BITS;
 
 wire signed [47:0] interp0_wide  = FZ1 + z_dx0  + z_dy;
+`ifdef PVR_LITE_INTERP
+wire signed [47:0] interp16_wide = interp0_wide + (FDDX_adj <<< 4);
+`else
 wire signed [47:0] interp16_wide = FZ1 + z_dx16 + z_dy;
+`endif
+
+`ifdef PVR_LITE_INTERP
+`define PVR_INTERP_ADD(A, B) ((A) + (B))
+`else
+`define PVR_INTERP_ADD(A, B) sat_add48((A), (B))
+`endif
 
 // Compute Aa/Ba without referencing num_shift to avoid combinational loops.
 always @(*) begin
@@ -171,59 +185,69 @@ always @(*) begin
     FDDX_mult_FX1 = (FDDX_adj * FX1_z) >>>Z_FRAC_BITS;
     FDDY_mult_FY1 = (FDDY_adj * FY1_z) >>>Z_FRAC_BITS;
 	//small_c = FZ1 - FDDX_mult_FX1 - FDDY_mult_FY1;
-	small_c = sat_add48( sat_add48(FZ1, -FDDX_mult_FX1), -FDDY_mult_FY1 );
+	small_c = `PVR_INTERP_ADD( `PVR_INTERP_ADD(FZ1, -FDDX_mult_FX1), -FDDY_mult_FY1 );
 	
 	// Interp ("IP" in C-code PlaneStepper3)...
 	// (x * ddx) + (y * ddy) + c;
 	//
 	// No need to shift the result right, as x_ps and y_ps are not fixed-point...
-	//interp = sat_add48( sat_add48((x_ps_signed<<<FRAC_BITS) * FDDX_adj, (y_ps_signed<<<FRAC_BITS) * FDDY_adj), small_c);
-	interp = sat_add48( sat_add48((x_ps_fixed * FDDX_adj) >>>FRAC_BITS, (y_ps_fixed * FDDY_adj) >>>FRAC_BITS), small_c);
+	//interp = `PVR_INTERP_ADD( `PVR_INTERP_ADD((x_ps_signed<<<FRAC_BITS) * FDDX_adj, (y_ps_signed<<<FRAC_BITS) * FDDY_adj), small_c);
+	interp = `PVR_INTERP_ADD( `PVR_INTERP_ADD((x_ps_fixed * FDDX_adj) >>>FRAC_BITS, (y_ps_fixed * FDDY_adj) >>>FRAC_BITS), small_c);
 
 	// Clamp interp0
+`ifdef PVR_LITE_INTERP
+	interp_cols[0] = interp0_wide;
+`else
 	if (interp0_wide > 48'sh7FFF_FFFF_FFFF) interp_cols[0] = 48'sh7FFF_FFFF_FFFF;
 	else if (interp0_wide < 48'sh8000_0000_0000) interp_cols[0] = 48'sh8000_0000_0000;
 	else interp_cols[0] = interp0_wide[47:0];
+`endif
 
     //interp_cols[0] = ({x_ps_signed[11:5],5'd0} * FDDX_adj) + (y_ps_signed * FDDY_adj) + small_c;	// Calc for first COLUMN (pixel) only.
-    interp_cols[1]  = sat_add48(interp_cols[0],  FDDX_adj);											// Add X Delta for the rest of the Columns.
-    interp_cols[2]  = sat_add48(interp_cols[1] , FDDX_adj);
-    interp_cols[3]  = sat_add48(interp_cols[2] , FDDX_adj);
-    interp_cols[4]  = sat_add48(interp_cols[3] , FDDX_adj);
-    interp_cols[5]  = sat_add48(interp_cols[4] , FDDX_adj);
-    interp_cols[6]  = sat_add48(interp_cols[5] , FDDX_adj);
-    interp_cols[7]  = sat_add48(interp_cols[6] , FDDX_adj);
-    interp_cols[8]  = sat_add48(interp_cols[7] , FDDX_adj);
-    interp_cols[9]  = sat_add48(interp_cols[8] , FDDX_adj);
-    interp_cols[10] = sat_add48(interp_cols[9] , FDDX_adj);
-    interp_cols[11] = sat_add48(interp_cols[10], FDDX_adj);
-    interp_cols[12] = sat_add48(interp_cols[11], FDDX_adj);
-    interp_cols[13] = sat_add48(interp_cols[12], FDDX_adj);
-    interp_cols[14] = sat_add48(interp_cols[13], FDDX_adj);
-    interp_cols[15] = sat_add48(interp_cols[14], FDDX_adj);
+    interp_cols[1]  = `PVR_INTERP_ADD(interp_cols[0],  FDDX_adj);											// Add X Delta for the rest of the Columns.
+    interp_cols[2]  = `PVR_INTERP_ADD(interp_cols[1] , FDDX_adj);
+    interp_cols[3]  = `PVR_INTERP_ADD(interp_cols[2] , FDDX_adj);
+    interp_cols[4]  = `PVR_INTERP_ADD(interp_cols[3] , FDDX_adj);
+    interp_cols[5]  = `PVR_INTERP_ADD(interp_cols[4] , FDDX_adj);
+    interp_cols[6]  = `PVR_INTERP_ADD(interp_cols[5] , FDDX_adj);
+    interp_cols[7]  = `PVR_INTERP_ADD(interp_cols[6] , FDDX_adj);
+    interp_cols[8]  = `PVR_INTERP_ADD(interp_cols[7] , FDDX_adj);
+    interp_cols[9]  = `PVR_INTERP_ADD(interp_cols[8] , FDDX_adj);
+    interp_cols[10] = `PVR_INTERP_ADD(interp_cols[9] , FDDX_adj);
+    interp_cols[11] = `PVR_INTERP_ADD(interp_cols[10], FDDX_adj);
+    interp_cols[12] = `PVR_INTERP_ADD(interp_cols[11], FDDX_adj);
+    interp_cols[13] = `PVR_INTERP_ADD(interp_cols[12], FDDX_adj);
+    interp_cols[14] = `PVR_INTERP_ADD(interp_cols[13], FDDX_adj);
+	interp_cols[15] = `PVR_INTERP_ADD(interp_cols[14], FDDX_adj);
 
 	// Clamp interp16
+`ifdef PVR_LITE_INTERP
+	interp_cols[16] = interp16_wide;
+`else
 	if (interp16_wide > 48'sh7FFF_FFFF_FFFF) interp_cols[16] = 48'sh7FFF_FFFF_FFFF;
 	else if (interp16_wide < 48'sh8000_0000_0000) interp_cols[16] = 48'sh8000_0000_0000;
 	else interp_cols[16] = interp16_wide[47:0];
+`endif
 	
     //interp_cols[16] = ({x_ps_signed[11:5],5'd16} * FDDX_adj) + (y_ps_signed * FDDY_adj) + small_c;
-    interp_cols[17] = sat_add48(interp_cols[16], FDDX_adj);
-    interp_cols[18] = sat_add48(interp_cols[17], FDDX_adj);
-    interp_cols[19] = sat_add48(interp_cols[18], FDDX_adj);
-    interp_cols[20] = sat_add48(interp_cols[19], FDDX_adj);
-    interp_cols[21] = sat_add48(interp_cols[20], FDDX_adj);
-    interp_cols[22] = sat_add48(interp_cols[21], FDDX_adj);
-    interp_cols[23] = sat_add48(interp_cols[22], FDDX_adj);
-    interp_cols[24] = sat_add48(interp_cols[23], FDDX_adj);
-    interp_cols[25] = sat_add48(interp_cols[24], FDDX_adj);
-    interp_cols[26] = sat_add48(interp_cols[25], FDDX_adj);
-    interp_cols[27] = sat_add48(interp_cols[26], FDDX_adj);
-    interp_cols[28] = sat_add48(interp_cols[27], FDDX_adj);
-    interp_cols[29] = sat_add48(interp_cols[28], FDDX_adj);
-    interp_cols[30] = sat_add48(interp_cols[29], FDDX_adj);
-    interp_cols[31] = sat_add48(interp_cols[30], FDDX_adj);
+    interp_cols[17] = `PVR_INTERP_ADD(interp_cols[16], FDDX_adj);
+    interp_cols[18] = `PVR_INTERP_ADD(interp_cols[17], FDDX_adj);
+    interp_cols[19] = `PVR_INTERP_ADD(interp_cols[18], FDDX_adj);
+    interp_cols[20] = `PVR_INTERP_ADD(interp_cols[19], FDDX_adj);
+    interp_cols[21] = `PVR_INTERP_ADD(interp_cols[20], FDDX_adj);
+    interp_cols[22] = `PVR_INTERP_ADD(interp_cols[21], FDDX_adj);
+    interp_cols[23] = `PVR_INTERP_ADD(interp_cols[22], FDDX_adj);
+    interp_cols[24] = `PVR_INTERP_ADD(interp_cols[23], FDDX_adj);
+    interp_cols[25] = `PVR_INTERP_ADD(interp_cols[24], FDDX_adj);
+    interp_cols[26] = `PVR_INTERP_ADD(interp_cols[25], FDDX_adj);
+    interp_cols[27] = `PVR_INTERP_ADD(interp_cols[26], FDDX_adj);
+    interp_cols[28] = `PVR_INTERP_ADD(interp_cols[27], FDDX_adj);
+    interp_cols[29] = `PVR_INTERP_ADD(interp_cols[28], FDDX_adj);
+    interp_cols[30] = `PVR_INTERP_ADD(interp_cols[29], FDDX_adj);
+	interp_cols[31] = `PVR_INTERP_ADD(interp_cols[30], FDDX_adj);
 end
+
+`undef PVR_INTERP_ADD
 
 endmodule
 

@@ -6,6 +6,10 @@
 // Enable one-line per-tile render stats with +define+PVR_TILE_STATS_PRINTS.
 // `define PVR_TILE_STATS_PRINTS
 
+`define PVR_LITE_INTERP 0
+`define PVR_LITE_INTRI_SIMPLE_EDGE 0
+`define PVR_LITE_INTRI_TRI_ONLY 0
+
 module pvr #(
 	parameter PIXEL_CENTER_SAMPLE = 1'b1,
 	parameter FRAC_BITS   = 8'd12,	// 12 is about the max atm.
@@ -15,20 +19,20 @@ module pvr #(
 
 `ifndef VERILATOR
 	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b0,
-	parameter PVR_ENABLE_TEXTURE_PARAMS   = 1'b0,
 	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b0,
-	parameter PVR_ENABLE_GOURAUD_PARAMS   = 1'b0,
 	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b0,
-	parameter PVR_ENABLE_OFFSET_PARAMS    = 1'b0,
-	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b0
+	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b0,
+`ifdef PVR_ENABLE_TILE_ARGB_BUFFER
+	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1
+`else
+	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b0
+`endif
 `else
 	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b1,
-	parameter PVR_ENABLE_TEXTURE_PARAMS   = 1'b1,
 	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b1,
-	parameter PVR_ENABLE_GOURAUD_PARAMS   = 1'b1,
 	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b1,
-	parameter PVR_ENABLE_OFFSET_PARAMS    = 1'b1,
-	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1
+	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1,
+	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1
 `endif
 ) (
 	input clock,
@@ -104,6 +108,7 @@ module pvr #(
 	input fb_wait,
 	output fb_pending,
 	output wire tile_accum_done,
+	output wire [31:0] FB_W_SOF1_out,
 
 	input debug_ena_texel_reads,
 	
@@ -135,6 +140,8 @@ parameter FB_R_SIZE_addr          = 16'h005C; reg [31:0] FB_R_SIZE;			// RW  Fra
 
 parameter FB_W_SOF1_addr          = 16'h0060; reg [31:0] FB_W_SOF1;			// RW  Write start address for field - 1/strip - 1
 parameter FB_W_SOF2_addr          = 16'h0064; reg [31:0] FB_W_SOF2;			// RW  Write start address for field - 2/strip - 2
+
+assign FB_W_SOF1_out = FB_W_SOF1;
 
 parameter FB_X_CLIP_addr          = 16'h0068; reg [31:0] FB_X_CLIP;			// RW  Pixel clip X coordinate
 parameter FB_Y_CLIP_addr          = 16'h006C; reg [31:0] FB_Y_CLIP;			// RW  Pixel clip Y coordinate
@@ -588,9 +595,9 @@ isp_parser #(
 	.Z_FRAC_BITS     ( Z_FRAC_BITS ),
 	.FRAC_DIFF       ( FRAC_DIFF ),
 	.ENABLE_TEXTURE_PIPELINE ( PVR_ENABLE_TEXTURE_PIPELINE ),
-	.ENABLE_TEXTURE_PARAMS ( PVR_ENABLE_TEXTURE_PARAMS ),
-	.ENABLE_GOURAUD_PARAMS ( PVR_ENABLE_GOURAUD_PARAMS ),
-	.ENABLE_OFFSET_PARAMS  ( PVR_ENABLE_OFFSET_PARAMS ),
+	.ENABLE_TEXTURE_PARAMS ( PVR_ENABLE_TEXTURE_PIPELINE ),
+	.ENABLE_GOURAUD_PARAMS ( PVR_ENABLE_GOURAUD_SHADE ),
+	.ENABLE_OFFSET_PARAMS  ( PVR_ENABLE_OFFSET_SHADE ),
 	.ENABLE_DEPTH_COMPARE  ( PVR_ENABLE_DEPTH_COMPARE )
 ) isp_parser_inst (
 	.clock( clock ),					// input  clock
@@ -706,7 +713,8 @@ tsp #(
 	.FRAC_DIFF       ( FRAC_DIFF ),
 	.ENABLE_TEXTURE_PIPELINE ( PVR_ENABLE_TEXTURE_PIPELINE ),
 	.ENABLE_GOURAUD_SHADE    ( PVR_ENABLE_GOURAUD_SHADE ),
-	.ENABLE_OFFSET_SHADE     ( PVR_ENABLE_OFFSET_SHADE )
+	.ENABLE_OFFSET_SHADE     ( PVR_ENABLE_OFFSET_SHADE ),
+	.ENABLE_TILE_ARGB_BUFFER ( PVR_ENABLE_TILE_ARGB_BUFFER )
 )
 tsp_top (
 	.clock           ( clock ),
@@ -803,6 +811,34 @@ assign fb_addr = tsp_tile_fb_addr;
 assign fb_writedata = tsp_tile_fb_writedata;
 assign fb_we = tsp_tile_fb_we;
 assign fb_pending = tile_wb_busy;
+
+(* keep *) reg [31:0] dbg_tsp_pix_valid_count;
+(* keep *) reg [31:0] dbg_fb_we_count;
+(* keep *) reg [31:0] dbg_tile_wb_req_count;
+(* keep *) reg [31:0] dbg_tile_wb_done_count;
+(* keep *) reg [22:0] dbg_last_fb_addr;
+(* keep *) reg [63:0] dbg_last_fb_writedata;
+
+always @(posedge clock or negedge reset_n) begin
+	if (!reset_n) begin
+		dbg_tsp_pix_valid_count <= 32'd0;
+		dbg_fb_we_count <= 32'd0;
+		dbg_tile_wb_req_count <= 32'd0;
+		dbg_tile_wb_done_count <= 32'd0;
+		dbg_last_fb_addr <= 23'd0;
+		dbg_last_fb_writedata <= 64'd0;
+	end
+	else begin
+		if (tsp_pix_valid) dbg_tsp_pix_valid_count <= dbg_tsp_pix_valid_count + 32'd1;
+		if (fb_we && !fb_wait) begin
+			dbg_fb_we_count <= dbg_fb_we_count + 32'd1;
+			dbg_last_fb_addr <= fb_addr;
+			dbg_last_fb_writedata <= fb_writedata;
+		end
+		if (tile_wb_req) dbg_tile_wb_req_count <= dbg_tile_wb_req_count + 32'd1;
+		if (tile_wb_done) dbg_tile_wb_done_count <= dbg_tile_wb_done_count + 32'd1;
+	end
+end
 
 `ifdef VERILATOR
 `ifdef PVR_TILE_STATS_PRINTS

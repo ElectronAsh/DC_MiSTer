@@ -7,7 +7,12 @@ module tsp #(
 	parameter [7:0] FRAC_DIFF = Z_FRAC_BITS - FRAC_BITS,
 	parameter ENABLE_TEXTURE_PIPELINE = 1'b1,
 	parameter ENABLE_GOURAUD_SHADE = 1'b1,
-	parameter ENABLE_OFFSET_SHADE = 1'b1
+	parameter ENABLE_OFFSET_SHADE = 1'b1,
+`ifdef PVR_ENABLE_TILE_ARGB_BUFFER
+	parameter ENABLE_TILE_ARGB_BUFFER = 1'b1
+`else
+	parameter ENABLE_TILE_ARGB_BUFFER = 1'b0
+`endif
 ) (
     input  wire clock,
     input  wire reset_n,
@@ -316,8 +321,8 @@ texture_address  texture_address_inst (
 
 wire stall_tex_fetch;
 wire stall_codebook;
-wire direct_fb_wait_hold;
-assign pipeline_stall = stall_tex_fetch || stall_codebook || (ENABLE_TEXTURE_PIPELINE && vram_wait) || direct_fb_wait_hold;
+wire fb_writeback_stall;
+assign pipeline_stall = stall_tex_fetch || stall_codebook || (ENABLE_TEXTURE_PIPELINE && vram_wait) || fb_writeback_stall;
 
 wire trace_a;
 wire trace_b;
@@ -484,6 +489,46 @@ assign pix_565 = /*(!debug_ena_texel_reads) ? {debug_red[7:3],debug_grn[7:2],deb
 											{final_argb[23:19],final_argb[15:10],final_argb[7:3]};
 
 
+generate
+if (ENABLE_TILE_ARGB_BUFFER) begin : g_tile_argb_writeback
+	wire tile_wb_we;
+	wire [19:0] wb_word_addr;
+	wire [63:0] fourpix_out;
+	wire [31:0] tile_buf_argb_in = final_argb;
+	wire [31:0] argb_buf_out;
+
+	assign fb_we = tile_wb_we;
+	assign fb_addr = {3'd0, wb_word_addr};
+	assign fb_writedata = fourpix_out;
+	assign fb_byteena = 8'h0f;
+	assign fb_writeback_stall = tile_wb_busy;
+
+	tile_argb_buffer tile_argb_buffer_inst (
+		.clock( clock ),
+		.reset_n( reset_n ),
+
+		.x_ps( {1'b0, x_ps_out} ),
+		.y_ps( {1'b0, y_ps_out} ),
+		.wb_tilex( tilex[5:0] ),
+		.wb_tiley( tiley[5:0] ),
+
+		.wr_pix( pix_valid ),
+		.argb_in( tile_buf_argb_in ),
+
+		.argb_buf_out( argb_buf_out ),
+
+		.tile_wb( tile_wb ),
+		.wb_done( wb_done ),
+		.wb_busy( tile_wb_busy ),
+
+		.wb_word_addr( wb_word_addr ),
+		.fourpix_out( fourpix_out ),
+
+		.vram_wr( tile_wb_we ),
+		.vram_wait( fb_wait )
+	);
+end
+else begin : g_direct_fb_writeback
 reg direct_fb_pending;
 reg [22:0] direct_fb_addr;
 reg [63:0] direct_fb_writedata;
@@ -520,12 +565,14 @@ assign fb_we = direct_fb_pending;
 assign fb_addr = direct_fb_addr;
 assign fb_writedata = direct_fb_writedata;
 assign fb_byteena = direct_fb_byteena;
-assign direct_fb_wait_hold = direct_fb_pending && fb_wait;
+assign fb_writeback_stall = direct_fb_pending && fb_wait;
 
 // tile_argb_buffer is bypassed for FPGA bring-up. Direct pixel writes above
 // drive the fb_* interface, and tile_wb just releases the RA tile handshake.
 assign wb_done = tile_wb;
 assign tile_wb_busy = direct_fb_pending;
+end
+endgenerate
 
 endmodule
 

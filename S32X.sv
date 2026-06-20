@@ -205,15 +205,19 @@ module emu
 
 	input         OSD_STATUS,
 	
-	output wire [23:0] FB_R_SOF1
+	output wire [23:0] FB_R_SOF1,
+	output wire [23:0] FB_R_SOF2,
+	
+	output wire [23:0] FB_W_SOF1,
+	output wire [23:0] FB_W_SOF2
 );
 
 
 (*keep*)assign FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
-(*keep*)wire [23:0] FB_R_SOF2 = pvr_ptr['h54>>2][23:0];
+(*keep*)assign FB_R_SOF2 = pvr_ptr['h54>>2][23:0];
 
-(*keep*)wire [23:0] FB_W_SOF1 = pvr_ptr['h60>>2][23:0];
-(*keep*)wire [23:0] FB_W_SOF2 = pvr_ptr['h64>>2][23:0];
+(*keep*)assign FB_W_SOF1 = pvr_ptr['h60>>2][23:0];
+(*keep*)assign FB_W_SOF2 = pvr_ptr['h64>>2][23:0];
 
 wire bgr       = status[6];
 wire [2:0] bpp = !status[7] ? 3'b100 : 3'b110;
@@ -222,8 +226,8 @@ wire [3:0] fb_scan_sel = status[21:18];
 wire fb_scan_en = fb_scan_sel != 4'd0;
 
 wire [23:0] fb_disp_sof = !status[15] ? FB_R_SOF1 : FB_W_SOF1;
-wire [31:0] fb_disp_base_side   = {9'd0, fb_disp_sof[21:2], 3'b000};
-wire [31:0] fb_disp_base_linear = {10'd0, fb_disp_sof[21:2], 2'b00};
+wire [31:0] fb_disp_base_side   = {9'd0, fb_disp_sof[21:2], 3'b000} + {29'd0, fb_disp_sof[22], 2'b00};
+wire [31:0] fb_disp_base_linear = {9'd0, fb_disp_sof[22:2], 2'b00};
 wire [31:0] fb_disp_base_scan   = {9'd0, fb_scan_sel, 19'd0};
 wire [31:0] fb_disp_base = fb_scan_en ? fb_disp_base_scan :
                            fb_linear_debug ? fb_disp_base_linear : fb_disp_base_side;
@@ -1028,7 +1032,7 @@ else begin
 			pvr_ptr[ pvr_read_offs[15:2]+1 ] <= vram_din[63:32];	// Each 32-bit Word is NON-byteswapped, so the same order we use in the core.
 			pvr_read_offs <= pvr_read_offs + 16'd8;					// Increment the BYTE counter by 8 (to the next 64-bit WORD).
 		end
-		if (pvr_read_offs[15:3]>=40) pvr_reg_update <= 1'b0;	// 41 64-bit words covers 0x000-0x140.
+		if (pvr_read_offs[15:3]>=79) pvr_reg_update <= 1'b0;	// 80 64-bit words covers 0x000-0x140.
 	end
 	
 	if (tile_accum_done) pvr_ptr['h18>>2] <= 32'h0;
@@ -1114,7 +1118,7 @@ wire [7:0] geo_ddram_burstcnt;
 wire geo_ddram_pause = ioctl_download | pvr_reg_update | ddr_wr;
 
 assign DDRAM_CLK      = clk_sys;
-assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : pvr_reg_update ? 8'd41 : geo_ddram_burstcnt;
+assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : pvr_reg_update ? 8'd80 : geo_ddram_burstcnt;
 assign DDRAM_RD       = ioctl_download ? 1'b0 : pvr_reg_update ? pvr_reg_rd : geo_ddram_rd;
 assign DDRAM_ADDR     = ioctl_download ? dl_word_addr : pvr_reg_update ? pvr_reg_word_addr : (DDRAM_BASE + geo_ddram_addr_raw);
 assign DDRAM_DIN      = ioctl_download ? dl_writedata : geo_ddram_din;		// We are loading the 8MB VRAM dumps into each 32-bit half of DDR3 now.
@@ -1285,17 +1289,14 @@ pvr pvr (
 );
 
 wire ra_vram_wr_selected = ra_vram_wr_core && !fb_pending;
-wire [20:0] fb_wr_word_addr = {1'b0, FB_W_SOF1[21:2]} + {1'b0, fb_addr[19:0]};
+wire [20:0] fb_wr_word_addr = FB_W_SOF1[22:2] + {1'b0, fb_addr[19:0]};
 wire [28:0] fb_wr_addr_side = {9'd0, fb_wr_word_addr[19:0]};
-wire [28:0] fb_wr_addr_linear = {9'd0, fb_wr_word_addr[20:1]};
-wire [7:0]  fb_wr_be_side = FB_W_SOF1[22] ? {fb_byteena[3:0], 4'b0000} : {4'b0000, fb_byteena[3:0]};
-wire [7:0]  fb_wr_be_linear = fb_wr_word_addr[0] ? {fb_byteena[3:0], 4'b0000} : {4'b0000, fb_byteena[3:0]};
+wire [7:0]  fb_wr_be_side = fb_wr_word_addr[20] ? {fb_byteena[3:0], 4'b0000} : {4'b0000, fb_byteena[3:0]};
 wire [28:0] geo_wr_addr = ra_vram_wr_selected ? {9'd0, ra_vram_addr_core[21:2]} :
-                                               (fb_linear_debug ? fb_wr_addr_linear : fb_wr_addr_side);
+                                               fb_wr_addr_side;
 wire [63:0] geo_wr_dout = ra_vram_wr_selected ? {ra_vram_dout_core, ra_vram_dout_core} : fb_writedata;
 wire [7:0]  geo_wr_be   = ra_vram_wr_selected ? (ra_vram_addr_core[22] ? 8'b11110000 : 8'b00001111) :
-                                               (fb_linear_debug ? fb_wr_be_linear : fb_wr_be_side);
-// Use single-word writes for bring-up; this avoids relying on DDR burst-write data phasing.
+                                               fb_wr_be_side;
 wire [7:0]  geo_wr_burstcnt = 8'd1;
 wire        geo_wr_pending = fb_pending || ra_vram_wr_core;
 wire        geo_wr_we = ra_vram_wr_selected ? ra_vram_wr_core : fb_we;

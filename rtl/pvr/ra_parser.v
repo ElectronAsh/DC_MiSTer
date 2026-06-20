@@ -121,12 +121,13 @@ else begin
 	render_to_tile <= 1'b0;
 	tile_prims_done <= 1'b0;
 	
+//	if (ra_vram_rd && !ra_vram_wait) ra_vram_rd <= 1'b0;
+//	if (ra_vram_wr && !ra_vram_wait) ra_vram_wr <= 1'b0;
 	ra_vram_rd <= 1'b0;
 	ra_vram_wr <= 1'b0;
 
 	if (ra_vram_rd) ra_vram_rd_count <= ra_vram_rd_count + 1'b1;
-	
-	if (ra_trig) ra_trig_reg <= 1'b1;	// ra_trig is the MANUAL render trigger, from the MiSter core menu.
+	if (ra_trig) ra_trig_reg <= 1'b1;
 
 	case (ra_state)
 	0: begin

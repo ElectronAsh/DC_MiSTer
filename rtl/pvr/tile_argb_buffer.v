@@ -62,6 +62,7 @@ reg wb_read_valid;
 reg wb_active;
 reg wb_half_sel;
 reg wb_emit_valid;
+reg wb_advance_after_write;
 reg [127:0] wb_quad_hold;
 assign wb_busy = wb_active;
 
@@ -84,6 +85,7 @@ if (!reset_n) begin
 	wb_active <= 1'b0;
 	wb_half_sel <= 1'b0;
 	wb_emit_valid <= 1'b0;
+	wb_advance_after_write <= 1'b0;
 	wb_quad_hold <= 128'd0;
 	//wb_burst_cnt <= 8'd16;
 	//burst_begin <= 1'b0;
@@ -113,6 +115,7 @@ else begin
 		wb_active <= 1'b1;
 		wb_half_sel <= 1'b0;
 		wb_emit_valid <= 1'b0;
+		wb_advance_after_write <= 1'b0;
 		wb_quad_hold <= 128'd0;
 		dbg_tile_wb_count <= dbg_tile_wb_count + 32'd1;
 		//burst_begin <= 1'b1;
@@ -128,22 +131,28 @@ else begin
 				dbg_vram_wr_count <= dbg_vram_wr_count + 32'd1;
 			end
 			if (!vram_wait) begin
-				if (!wb_half_sel) begin
-					fourpix_out <= {two_pix_to_565(wb_quad_hold, 1'b1), two_pix_to_565(wb_quad_hold, 1'b1)};
-					wb_word_addr <= ({tiley, wb_read_addr_d[7:3]} * 320) + {tilex, wb_read_addr_d[2:0], 1'b0} + 20'd1;
-					wb_half_sel <= 1'b1;
-				end
-				else if (wb_read_addr_d==8'd255) begin
+				wb_emit_valid <= 1'b0;
+				if (wb_half_sel && wb_read_addr_d==8'd255) begin
 					wb_active <= 1'b0;
 					wb_read_valid <= 1'b0;
-					wb_emit_valid <= 1'b0;
 					wb_done <= 1'b1;
 				end
 				else begin
-					wb_half_sel <= 1'b0;
 					wb_read_valid <= 1'b0;
-					wb_emit_valid <= 1'b0;
+					wb_advance_after_write <= 1'b1;
 				end
+			end
+		end
+		else if (wb_advance_after_write) begin
+			wb_advance_after_write <= 1'b0;
+			if (!wb_half_sel) begin
+				fourpix_out <= {two_pix_to_565(wb_quad_hold, 1'b1), two_pix_to_565(wb_quad_hold, 1'b1)};
+				wb_word_addr <= wb_word_addr + 20'd1;
+				wb_half_sel <= 1'b1;
+				wb_emit_valid <= 1'b1;
+			end
+			else begin
+				wb_half_sel <= 1'b0;
 			end
 		end
 		else if (wb_read_valid) begin
@@ -174,7 +183,7 @@ begin
 	pix1 = {argb_quad[55:51],   argb_quad[47:42],   argb_quad[39:35]};
 	pix2 = {argb_quad[87:83],   argb_quad[79:74],   argb_quad[71:67]};
 	pix3 = {argb_quad[119:115], argb_quad[111:106], argb_quad[103:99]};
-	two_pix_to_565 = half_sel ? {pix2, pix3} : {pix0, pix1};
+	two_pix_to_565 = half_sel ? {pix3, pix2} : {pix1, pix0};
 end
 endfunction
 
