@@ -1,9 +1,15 @@
 `timescale 1ns / 1ps
 `default_nettype none
 
-localparam ENTRIES = 512;
+// Tags are 12-bit in the Z/tag buffer. 512 entries aliases tags 512+ back
+// onto earlier params, which shows up as wrong textures/shading on busy tiles.
+localparam ENTRIES = 256;
 
-module param_buffer (
+module param_buffer #(
+	parameter ENABLE_TEXTURE_PARAMS = 1'b1,
+	parameter ENABLE_GOURAUD_PARAMS = 1'b1,
+	parameter ENABLE_OFFSET_PARAMS = 1'b1
+) (
 	input clock,
 	input reset_n,
 	
@@ -15,179 +21,100 @@ module param_buffer (
 	input [31:0] tsp_inst_in,
 	input [31:0] tcw_word_in,
 
-	input [47:0] vert_a_x_in,
-	input [47:0] vert_a_y_in,
-	input [47:0] vert_a_z_in,
-	input [47:0] vert_a_u0_in,
-	input [47:0] vert_a_v0_in,
-	input [31:0] vert_a_base_col_0_in,
-	input [31:0] vert_a_off_col_in,
+	input signed [31:0] FDDX_BASE_A, FDDY_BASE_A, c_BASE_A,
+	input signed [31:0] FDDX_BASE_R, FDDY_BASE_R, c_BASE_R,
+	input signed [31:0] FDDX_BASE_G, FDDY_BASE_G, c_BASE_G,
+	input signed [31:0] FDDX_BASE_B, FDDY_BASE_B, c_BASE_B,
 
-	input [47:0] vert_b_x_in,
-	input [47:0] vert_b_y_in,
-	input [47:0] vert_b_z_in,
-	input [47:0] vert_b_u0_in,
-	input [47:0] vert_b_v0_in,
-	input [31:0] vert_b_base_col_0_in,
-	input [31:0] vert_b_off_col_in,
-
-	input [47:0] vert_c_x_in,
-	input [47:0] vert_c_y_in,
-	input [47:0] vert_c_z_in,
-	input [47:0] vert_c_u0_in,
-	input [47:0] vert_c_v0_in,
-	input [31:0] vert_c_base_col_0_in,
-	input [31:0] vert_c_off_col_in,
+	input signed [47:0] FDDX_U, FDDY_U, small_c_u,
+	input signed [47:0] FDDX_V, FDDY_V, small_c_v,
 	
-	output reg [31:0] isp_inst_out,
-	output reg [31:0] tsp_inst_out,
-	output reg [31:0] tcw_word_out,
+	input signed [31:0] FDDX_OFFS_A, FDDY_OFFS_A, c_OFFS_A,
+	input signed [31:0] FDDX_OFFS_R, FDDY_OFFS_R, c_OFFS_R,
+	input signed [31:0] FDDX_OFFS_G, FDDY_OFFS_G, c_OFFS_G,
+	input signed [31:0] FDDX_OFFS_B, FDDY_OFFS_B, c_OFFS_B,
 
-	output reg [47:0] vert_a_x_out,
-	output reg [47:0] vert_a_y_out,
-	output reg [47:0] vert_a_z_out,
-	output reg [47:0] vert_a_u0_out,
-	output reg [47:0] vert_a_v0_out,
-	output reg [31:0] vert_a_base_col_0_out,
-	output reg [31:0] vert_a_off_col_out,
+	output wire [31:0] isp_inst_out,
+	output wire [31:0] tsp_inst_out,
+	output wire [31:0] tcw_word_out,
 
-	output reg [47:0] vert_b_x_out,
-	output reg [47:0] vert_b_y_out,
-	output reg [47:0] vert_b_z_out,
-	output reg [47:0] vert_b_u0_out,
-	output reg [47:0] vert_b_v0_out,
-	output reg [31:0] vert_b_base_col_0_out,
-	output reg [31:0] vert_b_off_col_out,
+	output wire [31:0] FDDX_BASE_A_out, FDDY_BASE_A_out, c_BASE_A_out,
+	output wire [31:0] FDDX_BASE_R_out, FDDY_BASE_R_out, c_BASE_R_out,
+	output wire [31:0] FDDX_BASE_G_out, FDDY_BASE_G_out, c_BASE_G_out,
+	output wire [31:0] FDDX_BASE_B_out, FDDY_BASE_B_out, c_BASE_B_out,
 
-	output reg [47:0] vert_c_x_out,
-	output reg [47:0] vert_c_y_out,
-	output reg [47:0] vert_c_z_out,
-	output reg [47:0] vert_c_u0_out,
-	output reg [47:0] vert_c_v0_out,
-	output reg [31:0] vert_c_base_col_0_out,
-	output reg [31:0] vert_c_off_col_out	
+	output wire [47:0] FDDX_U_out, FDDY_U_out, small_c_u_out,
+	output wire [47:0] FDDX_V_out, FDDY_V_out, small_c_v_out,
+	
+	output wire [31:0] FDDX_OFFS_A_out, FDDY_OFFS_A_out, c_OFFS_A_out,
+	output wire [31:0] FDDX_OFFS_R_out, FDDY_OFFS_R_out, c_OFFS_R_out,
+	output wire [31:0] FDDX_OFFS_G_out, FDDY_OFFS_G_out, c_OFFS_G_out,
+	output wire [31:0] FDDX_OFFS_B_out, FDDY_OFFS_B_out, c_OFFS_B_out
 );
 
-// Quartus version, using BRAMs...
-`ifndef VERILATOR
-pcache_mem	pcache_mem_isp               (prim_tag, clock, isp_inst_in,          pcache_write, isp_inst_out);
-pcache_mem	pcache_mem_tsp               (prim_tag, clock, tsp_inst_in,          pcache_write, tsp_inst_out);
-pcache_mem	pcache_mem_tcw               (prim_tag, clock, tcw_word_in,          pcache_write, tcw_word_out);
 
-pcache_mem	pcache_mem_vert_a_x          (prim_tag, clock, vert_a_x_in,          pcache_write, vert_a_x_out);
-pcache_mem	pcache_mem_vert_a_y          (prim_tag, clock, vert_a_y_in,          pcache_write, vert_a_y_out);
-pcache_mem	pcache_mem_vert_a_z          (prim_tag, clock, vert_a_z_in,          pcache_write, vert_a_z_out);
-pcache_mem	pcache_mem_vert_a_u0         (prim_tag, clock, vert_a_u0_in,         pcache_write, vert_a_u0_out);
-pcache_mem	pcache_mem_vert_a_v0         (prim_tag, clock, vert_a_v0_in,         pcache_write, vert_a_v0_out);
-pcache_mem	pcache_mem_vert_a_base_col_0 (prim_tag, clock, vert_a_base_col_0_in, pcache_write, vert_a_base_col_0_out);
-pcache_mem	pcache_mem_vert_a_off_col    (prim_tag, clock, vert_a_off_col_in,    pcache_write, vert_a_off_col_out);
+// ---------------- Instruction words ----------------
+pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_isp (.addr(prim_tag), .clk(clock), .din(isp_inst_in), .we(pcache_write), .dout(isp_inst_out));
+pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_tsp (.addr(prim_tag), .clk(clock), .din(tsp_inst_in), .we(pcache_write), .dout(tsp_inst_out));
+pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_tcw (.addr(prim_tag), .clk(clock), .din(tcw_word_in), .we(pcache_write), .dout(tcw_word_out));
 
-pcache_mem	pcache_mem_vert_b_x          (prim_tag, clock, vert_b_x_in,          pcache_write, vert_b_x_out);
-pcache_mem	pcache_mem_vert_b_y          (prim_tag, clock, vert_b_y_in,          pcache_write, vert_b_y_out);
-pcache_mem	pcache_mem_vert_b_z          (prim_tag, clock, vert_b_z_in,          pcache_write, vert_b_z_out);
-pcache_mem	pcache_mem_vert_b_u0         (prim_tag, clock, vert_b_u0_in,         pcache_write, vert_b_u0_out);
-pcache_mem	pcache_mem_vert_b_v0         (prim_tag, clock, vert_b_v0_in,         pcache_write, vert_b_v0_out);
-pcache_mem	pcache_mem_vert_b_base_col_0 (prim_tag, clock, vert_b_base_col_0_in, pcache_write, vert_b_base_col_0_out);
-pcache_mem	pcache_mem_vert_b_off_col    (prim_tag, clock, vert_b_off_col_in,    pcache_write, vert_b_off_col_out);
+pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_BASE_A (.addr(prim_tag), .clk(clock), .din(c_BASE_A), .we(pcache_write), .dout(c_BASE_A_out));
+pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_BASE_R (.addr(prim_tag), .clk(clock), .din(c_BASE_R), .we(pcache_write), .dout(c_BASE_R_out));
+pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_BASE_G (.addr(prim_tag), .clk(clock), .din(c_BASE_G), .we(pcache_write), .dout(c_BASE_G_out));
+pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_BASE_B (.addr(prim_tag), .clk(clock), .din(c_BASE_B), .we(pcache_write), .dout(c_BASE_B_out));
 
-pcache_mem	pcache_mem_vert_c_x          (prim_tag, clock, vert_c_x_in,          pcache_write, vert_c_x_out);
-pcache_mem	pcache_mem_vert_c_y          (prim_tag, clock, vert_c_y_in,          pcache_write, vert_c_y_out);
-pcache_mem	pcache_mem_vert_c_z          (prim_tag, clock, vert_c_z_in,          pcache_write, vert_c_z_out);
-pcache_mem	pcache_mem_vert_c_u0         (prim_tag, clock, vert_c_u0_in,         pcache_write, vert_c_u0_out);
-pcache_mem	pcache_mem_vert_c_v0         (prim_tag, clock, vert_c_v0_in,         pcache_write, vert_c_v0_out);
-pcache_mem	pcache_mem_vert_c_base_col_0 (prim_tag, clock, vert_c_base_col_0_in, pcache_write, vert_c_base_col_0_out);
-pcache_mem	pcache_mem_vert_c_off_col    (prim_tag, clock, vert_c_off_col_in,    pcache_write, vert_c_off_col_out);
-`else
-// Sim version, using registers...
-reg [31:0] pcache_isp_inst [0:ENTRIES-1];
-reg [31:0] pcache_tsp_inst [0:ENTRIES-1];
-reg [31:0] pcache_tcw_word [0:ENTRIES-1];
-
-reg [47:0] pcache_vert_a_x [0:ENTRIES-1];
-reg [47:0] pcache_vert_a_y [0:ENTRIES-1];
-reg [47:0] pcache_vert_a_z [0:ENTRIES-1];
-reg [47:0] pcache_vert_a_u0 [0:ENTRIES-1];
-reg [47:0] pcache_vert_a_v0 [0:ENTRIES-1];
-reg [31:0] pcache_vert_a_base_col_0 [0:ENTRIES-1];
-reg [31:0] pcache_vert_a_off_col [0:ENTRIES-1];
-
-reg [47:0] pcache_vert_b_x [0:ENTRIES-1];
-reg [47:0] pcache_vert_b_y [0:ENTRIES-1];
-reg [47:0] pcache_vert_b_z [0:ENTRIES-1];
-reg [47:0] pcache_vert_b_u0 [0:ENTRIES-1];
-reg [47:0] pcache_vert_b_v0 [0:ENTRIES-1];
-reg [31:0] pcache_vert_b_base_col_0 [0:ENTRIES-1];
-reg [31:0] pcache_vert_b_off_col [0:ENTRIES-1];
-
-reg [47:0] pcache_vert_c_x [0:ENTRIES-1];
-reg [47:0] pcache_vert_c_y [0:ENTRIES-1];
-reg [47:0] pcache_vert_c_z [0:ENTRIES-1];
-reg [47:0] pcache_vert_c_u0 [0:ENTRIES-1];
-reg [47:0] pcache_vert_c_v0 [0:ENTRIES-1];
-reg [31:0] pcache_vert_c_base_col_0 [0:ENTRIES-1];
-reg [31:0] pcache_vert_c_off_col [0:ENTRIES-1];
-
-always @(posedge clock) begin
-	if (pcache_write) begin
-		pcache_isp_inst[prim_tag]				<= isp_inst_in;
-		pcache_tsp_inst[prim_tag]				<= tsp_inst_in;
-		pcache_tcw_word[prim_tag]				<= tcw_word_in;
-	
-		pcache_vert_a_x[prim_tag]				<= vert_a_x_in;
-		pcache_vert_a_y[prim_tag]				<= vert_a_y_in;
-		pcache_vert_a_z[prim_tag]				<= vert_a_z_in;
-		pcache_vert_a_u0[prim_tag]				<= vert_a_u0_in;
-		pcache_vert_a_v0[prim_tag]				<= vert_a_v0_in;
-		pcache_vert_a_base_col_0[prim_tag]	<= vert_a_base_col_0_in;
-		pcache_vert_a_off_col[prim_tag]		<= vert_a_off_col_in;
-		
-		pcache_vert_b_x[prim_tag]				<= vert_b_x_in;
-		pcache_vert_b_y[prim_tag]				<= vert_b_y_in;
-		pcache_vert_b_z[prim_tag]				<= vert_b_z_in;
-		pcache_vert_b_u0[prim_tag]				<= vert_b_u0_in;
-		pcache_vert_b_v0[prim_tag]				<= vert_b_v0_in;
-		pcache_vert_b_base_col_0[prim_tag]	<= vert_b_base_col_0_in;
-		pcache_vert_b_off_col[prim_tag]		<= vert_b_off_col_in;
-
-		pcache_vert_c_x[prim_tag] 				<= vert_c_x_in;
-		pcache_vert_c_y[prim_tag] 				<= vert_c_y_in;
-		pcache_vert_c_z[prim_tag] 				<= vert_c_z_in;
-		pcache_vert_c_u0[prim_tag] 			<= vert_c_u0_in;
-		pcache_vert_c_v0[prim_tag] 			<= vert_c_v0_in;
-		pcache_vert_c_base_col_0[prim_tag]	<= vert_c_base_col_0_in;
-		pcache_vert_c_off_col[prim_tag] 		<= vert_c_off_col_in;
+generate
+	if (ENABLE_GOURAUD_PARAMS) begin : g_gouraud_params
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_BASE_A (.addr(prim_tag), .clk(clock), .din(FDDX_BASE_A), .we(pcache_write), .dout(FDDX_BASE_A_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_BASE_A (.addr(prim_tag), .clk(clock), .din(FDDY_BASE_A), .we(pcache_write), .dout(FDDY_BASE_A_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_BASE_R (.addr(prim_tag), .clk(clock), .din(FDDX_BASE_R), .we(pcache_write), .dout(FDDX_BASE_R_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_BASE_R (.addr(prim_tag), .clk(clock), .din(FDDY_BASE_R), .we(pcache_write), .dout(FDDY_BASE_R_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_BASE_G (.addr(prim_tag), .clk(clock), .din(FDDX_BASE_G), .we(pcache_write), .dout(FDDX_BASE_G_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_BASE_G (.addr(prim_tag), .clk(clock), .din(FDDY_BASE_G), .we(pcache_write), .dout(FDDY_BASE_G_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_BASE_B (.addr(prim_tag), .clk(clock), .din(FDDX_BASE_B), .we(pcache_write), .dout(FDDX_BASE_B_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_BASE_B (.addr(prim_tag), .clk(clock), .din(FDDY_BASE_B), .we(pcache_write), .dout(FDDY_BASE_B_out));
 	end
-	
-	isp_inst_out				<= pcache_isp_inst[prim_tag];
-	tsp_inst_out				<= pcache_tsp_inst[prim_tag];
-	tcw_word_out				<= pcache_tcw_word[prim_tag];
-	
-	vert_a_x_out				<= pcache_vert_a_x[prim_tag];
-	vert_a_y_out				<= pcache_vert_a_y[prim_tag];
-	vert_a_z_out				<= pcache_vert_a_z[prim_tag];
-	vert_a_u0_out				<= pcache_vert_a_u0[prim_tag];
-	vert_a_v0_out				<= pcache_vert_a_v0[prim_tag];
-	vert_a_base_col_0_out	<= pcache_vert_a_base_col_0[prim_tag];
-	vert_a_off_col_out		<= pcache_vert_a_off_col[prim_tag];
-	
-	vert_b_x_out				<= pcache_vert_b_x[prim_tag];
-	vert_b_y_out				<= pcache_vert_b_y[prim_tag];
-	vert_b_z_out				<= pcache_vert_b_z[prim_tag];
-	vert_b_u0_out				<= pcache_vert_b_u0[prim_tag];
-	vert_b_v0_out				<= pcache_vert_b_v0[prim_tag];
-	vert_b_base_col_0_out	<= pcache_vert_b_base_col_0[prim_tag];
-	vert_b_off_col_out		<= pcache_vert_b_off_col[prim_tag];
-	
-	vert_c_x_out				<= pcache_vert_c_x[prim_tag];
-	vert_c_y_out				<= pcache_vert_c_y[prim_tag];
-	vert_c_z_out				<= pcache_vert_c_z[prim_tag];
-	vert_c_u0_out				<= pcache_vert_c_u0[prim_tag];
-	vert_c_v0_out				<= pcache_vert_c_v0[prim_tag];
-	vert_c_base_col_0_out	<= pcache_vert_c_base_col_0[prim_tag];
-	vert_c_off_col_out		<= pcache_vert_c_off_col[prim_tag];
-end
+	else begin : g_no_gouraud_params
+		assign FDDX_BASE_A_out = 32'd0; assign FDDY_BASE_A_out = 32'd0;
+		assign FDDX_BASE_R_out = 32'd0; assign FDDY_BASE_R_out = 32'd0;
+		assign FDDX_BASE_G_out = 32'd0; assign FDDY_BASE_G_out = 32'd0;
+		assign FDDX_BASE_B_out = 32'd0; assign FDDY_BASE_B_out = 32'd0;
+	end
 
-`endif
+	if (ENABLE_TEXTURE_PARAMS) begin : g_texture_params
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDX_U (.addr(prim_tag), .clk(clock), .din(FDDX_U), .we(pcache_write), .dout(FDDX_U_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDY_U (.addr(prim_tag), .clk(clock), .din(FDDY_U), .we(pcache_write), .dout(FDDY_U_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_small_c_u (.addr(prim_tag), .clk(clock), .din(small_c_u), .we(pcache_write), .dout(small_c_u_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDX_V (.addr(prim_tag), .clk(clock), .din(FDDX_V), .we(pcache_write), .dout(FDDX_V_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDY_V (.addr(prim_tag), .clk(clock), .din(FDDY_V), .we(pcache_write), .dout(FDDY_V_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_small_c_v (.addr(prim_tag), .clk(clock), .din(small_c_v), .we(pcache_write), .dout(small_c_v_out));
+	end
+	else begin : g_no_texture_params
+		assign FDDX_U_out = 48'd0; assign FDDY_U_out = 48'd0; assign small_c_u_out = 48'd0;
+		assign FDDX_V_out = 48'd0; assign FDDY_V_out = 48'd0; assign small_c_v_out = 48'd0;
+	end
+
+	if (ENABLE_OFFSET_PARAMS) begin : g_offset_params
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_OFFS_A (.addr(prim_tag), .clk(clock), .din(FDDX_OFFS_A), .we(pcache_write), .dout(FDDX_OFFS_A_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_OFFS_A (.addr(prim_tag), .clk(clock), .din(FDDY_OFFS_A), .we(pcache_write), .dout(FDDY_OFFS_A_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_A (.addr(prim_tag), .clk(clock), .din(c_OFFS_A), .we(pcache_write), .dout(c_OFFS_A_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_OFFS_R (.addr(prim_tag), .clk(clock), .din(FDDX_OFFS_R), .we(pcache_write), .dout(FDDX_OFFS_R_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_OFFS_R (.addr(prim_tag), .clk(clock), .din(FDDY_OFFS_R), .we(pcache_write), .dout(FDDY_OFFS_R_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_R (.addr(prim_tag), .clk(clock), .din(c_OFFS_R), .we(pcache_write), .dout(c_OFFS_R_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_OFFS_G (.addr(prim_tag), .clk(clock), .din(FDDX_OFFS_G), .we(pcache_write), .dout(FDDX_OFFS_G_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_OFFS_G (.addr(prim_tag), .clk(clock), .din(FDDY_OFFS_G), .we(pcache_write), .dout(FDDY_OFFS_G_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_G (.addr(prim_tag), .clk(clock), .din(c_OFFS_G), .we(pcache_write), .dout(c_OFFS_G_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_OFFS_B (.addr(prim_tag), .clk(clock), .din(FDDX_OFFS_B), .we(pcache_write), .dout(FDDX_OFFS_B_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_OFFS_B (.addr(prim_tag), .clk(clock), .din(FDDY_OFFS_B), .we(pcache_write), .dout(FDDY_OFFS_B_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_B (.addr(prim_tag), .clk(clock), .din(c_OFFS_B), .we(pcache_write), .dout(c_OFFS_B_out));
+	end
+	else begin : g_no_offset_params
+		assign FDDX_OFFS_A_out = 32'd0; assign FDDY_OFFS_A_out = 32'd0; assign c_OFFS_A_out = 32'd0;
+		assign FDDX_OFFS_R_out = 32'd0; assign FDDY_OFFS_R_out = 32'd0; assign c_OFFS_R_out = 32'd0;
+		assign FDDX_OFFS_G_out = 32'd0; assign FDDY_OFFS_G_out = 32'd0; assign c_OFFS_G_out = 32'd0;
+		assign FDDX_OFFS_B_out = 32'd0; assign FDDY_OFFS_B_out = 32'd0; assign c_OFFS_B_out = 32'd0;
+	end
+endgenerate
 
 
 endmodule

@@ -4,8 +4,8 @@
 module depth_compare (
 	input [2:0] depth_comp,
 	
-	input signed [31:0] old_z,
-	input signed [31:0] IP_Z,
+	input signed [47:0] old_z,
+	input signed [47:0] IP_Z,
 	
 	output reg depth_allow
 );

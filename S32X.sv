@@ -104,6 +104,17 @@ module emu
 	output  [7:0] DDRAM_BE,
 	output        DDRAM_WE,
 	
+	output        DDRAM2_CLK,
+	input         DDRAM2_BUSY,
+	output  [7:0] DDRAM2_BURSTCNT,
+	output [28:0] DDRAM2_ADDR,
+	input  [63:0] DDRAM2_DOUT,
+	input         DDRAM2_DOUT_READY,
+	output        DDRAM2_RD,
+	output [63:0] DDRAM2_DIN,
+	output  [7:0] DDRAM2_BE,
+	output        DDRAM2_WE,
+	
 	// This still gets routed to Ascal, for HDMI output...
 	output  [7:0] VGA_R,
 	output  [7:0] VGA_G,
@@ -198,19 +209,29 @@ module emu
 );
 
 
-//wire [23:0] FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
-assign FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
-wire [23:0] FB_R_SOF2 = pvr_ptr['h54>>2][23:0];
+(*keep*)assign FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
+(*keep*)wire [23:0] FB_R_SOF2 = pvr_ptr['h54>>2][23:0];
 
-wire [23:0] FB_W_SOF1 = pvr_ptr['h60>>2][23:0];
-wire [23:0] FB_W_SOF2 = pvr_ptr['h64>>2][23:0];
-
+(*keep*)wire [23:0] FB_W_SOF1 = pvr_ptr['h60>>2][23:0];
+(*keep*)wire [23:0] FB_W_SOF2 = pvr_ptr['h64>>2][23:0];
 
 wire bgr       = status[6];
 wire [2:0] bpp = !status[7] ? 3'b100 : 3'b110;
+wire fb_linear_debug = status[16];
+wire [3:0] fb_scan_sel = status[21:18];
+wire fb_scan_en = fb_scan_sel != 4'd0;
+
+wire [23:0] fb_disp_sof = !status[15] ? FB_R_SOF1 : FB_W_SOF1;
+wire [31:0] fb_disp_base_side   = {9'd0, fb_disp_sof[21:2], 3'b000} /*+ (fb_disp_sof[22] ? 32'd4 : 32'd0) + {30'd0, fb_disp_sof[1:0]}*/;
+wire [31:0] fb_disp_base_linear = {10'd0, fb_disp_sof[21:2], 2'b00};
+wire [31:0] fb_disp_base_scan   = {9'd0, fb_scan_sel, 19'd0};
+wire [31:0] fb_disp_base = fb_scan_en ? fb_disp_base_scan :
+                           fb_linear_debug ? fb_disp_base_linear : fb_disp_base_side;
 
 assign FB_EN     = 1'b1;
-assign FB_BASE   = (DDRAM_BASE<<3) + (FB_R_SOF1[21:0] << 1);	// Limit FB_R_SOF1 to 4MB, as we have BOTH halves of VRAM in each 64-bit word.
+// For FPGA bring-up, display the buffer the tile writeback path is filling.
+// The 16bpp tile writer stores one Dreamcast word address as two DDR bytes.
+assign FB_BASE   = (DDRAM_BASE<<3) + fb_disp_base;
 assign FB_WIDTH  = 12'd640;
 assign FB_HEIGHT = 12'd480;
 assign FB_FORMAT = {bgr,1'b0,bpp};			// [4] 0=RGB 1=BGR. [3] 0=16bit 565, 1=16bit 1555. [2:0] 011=8bpp(palette) 100=16bpp 101=24bpp 110=32bpp.
@@ -306,14 +327,15 @@ localparam CONF_STR = {
 	"FC2,BIN,Load PVR Regs;",
 	"FC3,BIN,Load VRAM Dump;",
 	"-;",
+	"O[12],Texel Reads,Off,On;",
 	"T[13],Trigger Render;",
 	"O[14],BG Poly,Off,On;",
+	"O[15],FB Display,FB_R_SOF1,FB_W_SOF1;",
 	"O[6],FB Format,RGB,BGR;",
 	"O[7],FB BPP,16bpp,32bpp;",
 	"O[9:8],FB Stride,640,1280,2560,5120;",
-	"O[12],Texel Reads,Off,On;",
-	"O[15],Final Blend,Off,On;",
-	"O[16],FB to display,Single,Both;",
+	"O[16],FB Layout,VRAM,Linear;",
+	"O[21:18],FB Scan,SOF,080000,100000,180000,200000,280000,300000,380000,400000,480000,500000,580000,600000,680000,700000,780000;",
 	"-;",
 	"P1,Audio & Video;", 
  	"-;",
@@ -936,13 +958,12 @@ end
 wire reset = /*RESET |*/ status[0] | boot1_loading | vram_dump_loading;
 
 
-
 (*keep*)wire boot0_loading = ioctl_index=={2'd0, 6'd0} && ioctl_download;	// PVR regs loaded at core-load.
 (*keep*)wire pvr_dump_loading = ioctl_index[5:0]==2 && ioctl_download;		// File index 2 "Load PVR Regs".
 (*noprune*)reg [31:00] rom_word32;
 reg pvr_wr = 1'b0;
 
-reg [31:0] pvr_ptr [0:80];	// 80 WORDS +1.
+reg [31:0] pvr_ptr [0:81];	// PVR register mirror through 0x140, read back as 64-bit pairs.
 
 
 (*keep*)wire boot1_loading = ioctl_index=={2'd1, 6'd0} && ioctl_download;	// VRAM dump loaded at core-load.
@@ -977,7 +998,7 @@ else begin
 		end
 	end
 	
-	download_be <= (!ioctl_addr[22]) ? 8'b00001111 : 8'b11110000;
+		download_be <= ioctl_addr[22] ? 8'b11110000 : 8'b00001111;
 
 	// Handle PVR reg writes for PVR Dump file loading...
 	if (pvr_wr) begin
@@ -1002,13 +1023,15 @@ else begin
 	end
 	
 	if (pvr_reg_update) begin
-		if (vram_valid) begin												// Write two 32-bit words to the PVR regs at once.
+		if (vram_valid) begin										// Write two 32-bit words to the PVR regs at once.
 			pvr_ptr[ pvr_read_offs[15:2]+0 ] <= vram_din[31:00];	// Words are read from each 64-bit DDR3 Word in this order.
 			pvr_ptr[ pvr_read_offs[15:2]+1 ] <= vram_din[63:32];	// Each 32-bit Word is NON-byteswapped, so the same order we use in the core.
 			pvr_read_offs <= pvr_read_offs + 16'd8;					// Increment the BYTE counter by 8 (to the next 64-bit WORD).
 		end
-		if (pvr_read_offs[15:3]>=79) pvr_reg_update <= 1'b0;	// Have we read in 80 WORDS (64-bit) yet?
+		if (pvr_read_offs[15:3]>=40) pvr_reg_update <= 1'b0;	// 41 64-bit words covers 0x000-0x140.
 	end
+	
+	if (tile_accum_done) pvr_ptr['h18>>2] <= 32'h0;
 end
 
 
@@ -1066,49 +1089,53 @@ assign DDRAM_RD       = ioctl_download ? 1'b0 : read;
 wire pvr_reg_cs = (boot0_loading || pvr_dump_loading);
 wire [15:0] pvr_addr = ioctl_addr[21:0];	// BYTE Address!
 wire [31:0] pvr_din = rom_word32;
-//wire pvr_wr = pvr_wr_rising;
 wire pvr_rd = 1'b0;
 wire [31:0] pvr_dout;
 
 wire vram_wait = DDRAM_BUSY;
-wire [7:0] vram_burst_cnt;
-wire [23:0] vram_addr;
-wire vram_rd;
-wire vram_wr;
-
-wire [63:0] vram_dout;
 wire [63:0] vram_din = DDRAM_DOUT;
 wire vram_valid = DDRAM_DOUT_READY;
-//wire [63:0] vram_din = CACHE_DOUT;
-//wire vram_valid = CACHE_VALID;
 
 wire [28:0] DDRAM_BASE = (32'h32000000 >>3);	// 800MB. (DDRAM_BASE is the 64-bit WORD address!)
 wire [28:0] VRAM_8MB   = (24'h800000>>3);		// 8MB.
 
 // Limit the write/read addresses to 4MB!
 wire [28:0] dl_word_addr   = DDRAM_BASE + ioctl_addr[21:2];
-wire [28:0] vram_word_addr = (pvr_reg_update) ? (DDRAM_BASE+VRAM_8MB+pvr_read_offs[15:3]) : (DDRAM_BASE + vram_addr[21:2]);
-
-wire [28:0] fb_word_addr   = DDRAM_BASE + FB_W_SOF1[21:2] + fb_addr[21:0];
+wire [28:0] pvr_reg_word_addr = DDRAM_BASE+VRAM_8MB+pvr_read_offs[15:3];
 
 wire [63:0] dl_writedata   = {rom_word32,rom_word32};
 
+wire [28:0] geo_ddram_addr_raw;
+wire geo_ddram_rd;
+wire geo_ddram_we;
+wire [63:0] geo_ddram_din;
+wire [7:0] geo_ddram_be;
+wire [7:0] geo_ddram_burstcnt;
+wire geo_ddram_pause = ioctl_download | pvr_reg_update | ddr_wr;
+
 assign DDRAM_CLK      = clk_sys;
-//assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : CACHE_BURSTCNT;
-assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : pvr_reg_update ? 8'd80 : vram_burst_cnt;
-assign DDRAM_ADDR     = ioctl_download ? dl_word_addr : fb_we ? fb_word_addr : vram_word_addr;
-assign DDRAM_DIN      = ioctl_download ? dl_writedata : fb_we ? fb_writedata : vram_dout;			// We are loading the 8MB VRAM dumps into each 32-bit half of DDR3 now.
-assign DDRAM_WE       = ioctl_download ? ddr_wr       : fb_we ? 1'b1         : vram_wr;			// This is so we can do texture reads of the full 64-bit word.
-assign DDRAM_BE       = ioctl_download ? download_be  : fb_we ? fb_byteena   : 8'b11111111;
-assign DDRAM_RD       = ioctl_download ? 1'b0 : pvr_reg_update ? pvr_reg_rd : vram_rd;
-//assign DDRAM_RD     = ioctl_download ? 1'b0 : CACHE_RD;
+assign DDRAM_BURSTCNT = ioctl_download ? 8'd1 : pvr_reg_update ? 8'd41 : geo_ddram_burstcnt;
+assign DDRAM_RD       = ioctl_download ? 1'b0 : pvr_reg_update ? pvr_reg_rd : geo_ddram_rd;
+assign DDRAM_ADDR     = ioctl_download ? dl_word_addr : pvr_reg_update ? pvr_reg_word_addr : (DDRAM_BASE + geo_ddram_addr_raw);
+assign DDRAM_DIN      = ioctl_download ? dl_writedata : geo_ddram_din;		// We are loading the 8MB VRAM dumps into each 32-bit half of DDR3 now.
+assign DDRAM_BE       = ioctl_download ? download_be  : geo_ddram_be;
+assign DDRAM_WE       = ioctl_download ? ddr_wr       : geo_ddram_we;		// This is so we can do texture reads of the full 64-bit word.
 
 wire [22:0] fb_addr;
 wire [63:0] fb_writedata;
 wire [7:0] fb_byteena;
 wire fb_we;
+wire fb_wait;
+wire fb_pending;
 
 /*
+wire [28:0] CACHE_WORD_ADDR;
+wire [7:0] CACHE_BURSTCNT;
+wire CACHE_RD;
+
+wire [63:0] CACHE_DOUT;
+wire CACHE_VALID;
+
 simple_cache simple_cache_inst
 (
 	.clock( clk_sys ) ,								// input  clock
@@ -1116,7 +1143,7 @@ simple_cache simple_cache_inst
 	
 	// Request from core...
 	.ddram_addr_in( vram_addr[21:2] ) ,			// input [28:0] ddram_addr_in
-	.ddram_rd_in( vram_rd ) ,						// input  ddram_rd_in
+	.ddram_rd_in( tex_vram_rd ) ,					// input  ddram_rd_in
 	
 	// To the DDR controller...
 	.ddram_addr_out( CACHE_WORD_ADDR ) ,		// output [28:0] ddram_addr_out
@@ -1131,13 +1158,6 @@ simple_cache simple_cache_inst
 	.ddram_readdata_out( CACHE_DOUT ) ,			// output [63:0] ddram_readdata_out
 	.ddram_valid_out( CACHE_VALID ) 				// output  ddram_valid_out
 );
-
-wire [28:0] CACHE_WORD_ADDR;
-wire [7:0] CACHE_BURSTCNT;
-wire CACHE_RD;
-
-wire [63:0] CACHE_DOUT;
-wire CACHE_VALID;
 */
 
 wire debug_ena_texel_reads = status[12];
@@ -1152,24 +1172,50 @@ wire [31:0] TEXT_CONTROL  = pvr_ptr['hE4>>2];
 wire [31:0] PAL_RAM_CTRL  = pvr_ptr['h108>>2];
 wire [31:0] TA_ALLOC_CTRL = pvr_ptr['h140>>2];
 
+wire [23:0] ra_vram_addr_core;
+wire ra_vram_rd_core;
+wire ra_vram_wr_core;
+wire [63:0] ra_vram_din_core;
+wire ra_vram_rd_wait_core;
+wire ra_vram_wr_wait_core;
+wire ra_vram_wait_core;
+wire ra_vram_valid_core;
+wire ra_vram_req_ack_core;
+wire [31:0] ra_vram_dout_core;
+
+wire [23:0] isp_vram_addr_core;
+wire isp_vram_rd_core;
+wire isp_vram_wr_core;
+wire [63:0] isp_vram_din_core;
+wire isp_vram_wait_core;
+wire isp_vram_valid_core;
+wire isp_vram_req_ack_core;
+wire [31:0] isp_vram_dout_core;
+
+wire codebook_wait;
+
+wire tex_cache_hit;
+wire [23:0] tex_vram_addr_core;
+wire tex_vram_wait_core;
+wire tex_vram_rd_core;
+wire tex_vram_valid_core;
+wire [63:0] tex_vram_din_core;
+wire tex_vram_req_ack_core;
+
+wire tile_accum_done;
 
 pvr pvr (
 	.clock( clk_sys ),			// input  clock
 	.reset_n( !reset ),			// input  reset_n
 	
-	.disable_alpha( !status[15] ),
-	.both_buff( status[16] ),
-	
-	//.ta_fifo_cs( ta_fifo_cs ),	// input  ta_fifo_cs
-	//.ta_yuv_cs( ta_yuv_cs ),		// input  ta_yuv_cs
-	//.ta_tex_cs( ta_tex_cs ),		// input  ta_tex_cs
-	
 	.ra_trig( status[13] ),
-	
-	.bg_poly_en( status[14] ),		// input  bg_poly_en
-	
-	.trig_pvr_update( trig_pvr_update ),	// output  trig_pvr_update
-	.pvr_reg_update(  pvr_reg_update ),		// input  pvr_reg_update
+	.bg_poly_en( status[14] ),
+	.trig_pvr_update( trig_pvr_update ),
+	.pvr_reg_update( pvr_reg_update ),
+
+	.ta_fifo_cs( 1'b0 ),	// input  ta_fifo_cs
+	.ta_yuv_cs( 1'b0 ),		// input  ta_yuv_cs
+	.ta_tex_cs( 1'b0 ),		// input  ta_tex_cs
 	
 	// CPU<->PVR interface...
 	.pvr_reg_cs( pvr_reg_cs ),	// input  pvr_reg_cs
@@ -1179,41 +1225,171 @@ pvr pvr (
 	.pvr_rd( pvr_rd ),			// input  pvr_rd
 	.pvr_dout( pvr_dout ),		// output [31:0]  pvr_dout
 	
-	.TEST_SELECT( TEST_SELECT ),
+	.sim_ui( 11'd0 ),
+	.sim_vi( 11'd0 ),
 	
+	.TEST_SELECT( TEST_SELECT ),
 	.PARAM_BASE(  PARAM_BASE ),
 	.REGION_BASE( REGION_BASE ),
 	
 	.FB_R_SOF1( FB_R_SOF1 ),
 	.FB_R_SOF2( FB_R_SOF2 ),
 	
-	.FB_W_SOF1( FB_W_SOF1 ),
-	.FB_W_SOF2( FB_W_SOF2 ),
-	
 	.FPU_PARAM_CFG( FPU_PARAM_CFG ),
 	.TEXT_CONTROL(  TEXT_CONTROL ),
 	.PAL_RAM_CTRL(  PAL_RAM_CTRL ),
 	.TA_ALLOC_CTRL( TA_ALLOC_CTRL ),
 	
-	// VRAM (vertex/texture access) interface...
-	
-	.vram_wait( vram_wait ),	// input  vram_wait
-	.vram_burst_cnt( vram_burst_cnt ),	// output [7:0]  vram_burst_cnt
-	.vram_rd( vram_rd ),			// output  vram_rd
-	.vram_wr( vram_wr ),			// output  vram_wr
-	.vram_addr( vram_addr ),	// output [23:0]  vram_addr
-	.vram_din( vram_din ),		// input [63:0]  vram_din
-	.vram_valid( vram_valid ),	// input  vram_valid
-	.vram_dout( vram_dout ),	// output [63:0]  vram_dout,
+	.ta_fifo_wr( 1'b0 ),
+
+	// RA / ISP VRAM reads (separate busses)...
+	.ra_vram_wait( ra_vram_wait_core ),
+	.ra_vram_valid( ra_vram_valid_core ),
+	.ra_vram_req_ack( ra_vram_req_ack_core ),
+	.ra_vram_rd( ra_vram_rd_core ),
+	.ra_vram_wr( ra_vram_wr_core ),
+	.ra_vram_addr( ra_vram_addr_core ),
+	.ra_vram_din64( ra_vram_din_core ),
+	.ra_vram_dout( ra_vram_dout_core ),
+
+	.isp_vram_wait( isp_vram_wait_core ),
+	.isp_vram_valid( isp_vram_valid_core ),
+	.isp_vram_req_ack( isp_vram_req_ack_core ),
+	.isp_vram_rd( isp_vram_rd_core ),
+	.isp_vram_wr( isp_vram_wr_core ),
+	.isp_vram_addr( isp_vram_addr_core ),
+	.isp_vram_din64( isp_vram_din_core ),
+	.isp_vram_dout( isp_vram_dout_core ),
+
+	// Texture VRAM reads...
+	.codebook_wait( codebook_wait ),
+	.tex_cache_hit( tex_cache_hit ),
+	.tex_vram_addr( tex_vram_addr_core ),
+	.tex_vram_wait( tex_vram_wait_core ),
+	.tex_vram_rd( tex_vram_rd_core ),
+	.tex_vram_valid( tex_vram_valid_core ),
+	.tex_vram_din( tex_vram_din_core ),
+	.tex_vram_req_ack( tex_vram_req_ack_core ),
 	
 	// Framebuffer (Display) output...
 	.fb_addr( fb_addr ),					// output [22:0]  fb_addr
 	.fb_writedata( fb_writedata ),	// output [63:0]  fb_writedata
 	.fb_byteena( fb_byteena ),			// output [7:0] fb_byteena
 	.fb_we( fb_we ),						// output  fb_we
+	.fb_wait( fb_wait ),					// input  fb_wait
+	.fb_pending( fb_pending ),				// output fb_pending
+	.tile_accum_done( tile_accum_done ),
 	
-	.debug_ena_texel_reads( debug_ena_texel_reads )
+	.debug_ena_texel_reads( debug_ena_texel_reads ),
+	.state_skip( 3'd0 )
 );
+
+wire ra_vram_wr_selected = ra_vram_wr_core && !fb_pending;
+wire [20:0] fb_wr_word_addr = {1'b0, FB_W_SOF1[21:2]} + {1'b0, fb_addr[19:0]};
+wire [28:0] fb_wr_addr_side = {9'd0, fb_wr_word_addr[19:0]};
+wire [28:0] fb_wr_addr_linear = {9'd0, fb_wr_word_addr[20:1]};
+wire [7:0]  fb_wr_be_side = FB_W_SOF1[22] ? 8'b11110000 : 8'b00001111;
+wire [7:0]  fb_wr_be_linear = fb_wr_word_addr[0] ? 8'b11110000 : 8'b00001111;
+wire [28:0] geo_wr_addr = ra_vram_wr_selected ? {9'd0, ra_vram_addr_core[21:2]} :
+                                               (fb_linear_debug ? fb_wr_addr_linear : fb_wr_addr_side);
+wire [63:0] geo_wr_dout = ra_vram_wr_selected ? {ra_vram_dout_core, ra_vram_dout_core} : fb_writedata;
+wire [7:0]  geo_wr_be   = ra_vram_wr_selected ? (ra_vram_addr_core[22] ? 8'b11110000 : 8'b00001111) :
+                                               (fb_linear_debug ? fb_wr_be_linear : fb_wr_be_side);
+// Use single-word writes for bring-up; this avoids relying on DDR burst-write data phasing.
+wire [7:0]  geo_wr_burstcnt = 8'd1;
+wire        geo_wr_pending = fb_pending || ra_vram_wr_core;
+wire        geo_wr_we = ra_vram_wr_selected ? ra_vram_wr_core : fb_we;
+wire        geo_wr_wait;
+assign fb_wait = geo_wr_wait | ra_vram_wr_selected;
+assign ra_vram_wr_wait_core = geo_wr_wait | fb_pending;
+assign ra_vram_wait_core = ra_vram_wr_core ? ra_vram_wr_wait_core : ra_vram_rd_wait_core;
+
+vram_read_arbiter_2c vram_read_arbiter_geo (
+	.clock( clk_sys ),
+	.reset_n( !reset ),
+
+	.a_rd( ra_vram_rd_core ),
+	.a_addr( ra_vram_addr_core[21:0] ),
+	.a_din( ra_vram_din_core ),
+	.a_wait( ra_vram_rd_wait_core ),
+	.a_valid( ra_vram_valid_core ),
+	.a_req_ack( ra_vram_req_ack_core ),
+
+	.b_rd( isp_vram_rd_core ),
+	.b_addr( isp_vram_addr_core[21:0] ),
+	.b_din( isp_vram_din_core ),
+	.b_wait( isp_vram_wait_core ),
+	.b_valid( isp_vram_valid_core ),
+	.b_req_ack( isp_vram_req_ack_core ),
+
+	.c_pending( geo_wr_pending ),
+	.c_wr( geo_wr_we ),
+	
+	// Raw 64-bit DDR word offset. DDRAM_BASE is added in the top-level DDRAM_ADDR mux below.
+	.c_addr( geo_wr_addr ),
+	
+	.c_dout( geo_wr_dout ),
+	.c_be( geo_wr_be ),
+	.c_burstcnt( geo_wr_burstcnt ),
+	.c_wait( geo_wr_wait ),
+
+	.DDRAM_ADDR( geo_ddram_addr_raw ),
+	.DDRAM_RD( geo_ddram_rd ),
+	.DDRAM_DIN( geo_ddram_din ),
+	.DDRAM_BE( geo_ddram_be ),
+	.DDRAM_WE( geo_ddram_we ),
+	.DDRAM_BURSTCNT( geo_ddram_burstcnt ),
+	.DDRAM_DOUT( DDRAM_DOUT ),
+	.DDRAM_DOUT_READY( DDRAM_DOUT_READY & !pvr_reg_update ),
+	.DDRAM_BUSY( DDRAM_BUSY ),
+	.DDRAM_PAUSE( geo_ddram_pause )
+);
+
+wire [28:0] tex_ddram_addr_raw;
+
+`ifdef VERILATOR
+vram_read_cache #(
+	.TEX_COMBO_HIT(0),
+	.CACHE_LINES(2),
+	.CRITICAL_WORD_FIRST(1),
+	.NEXT_LINE_PREFETCH(1),
+	.HIT_UNDER_MISS(1)
+) vram_read_cache_tex (
+	.clock( clk_sys ),
+	.reset_n( !reset ),
+
+	.vram_addr( tex_vram_addr_core[21:0] ),
+	.vram_rd( tex_vram_rd_core ),
+	.vram_din( tex_vram_din_core ),
+	.vram_wait( tex_vram_wait_core ),
+	.vram_valid( tex_vram_valid_core ),
+	.vram_req_ack( tex_vram_req_ack_core ),
+
+	.cache_hit( tex_cache_hit ),
+
+	.DDRAM_ADDR( tex_ddram_addr_raw ),
+	.DDRAM_RD( DDRAM2_RD ),
+	.DDRAM_BURSTCNT( DDRAM2_BURSTCNT ),
+	.DDRAM_DOUT( DDRAM2_DOUT ),
+	.DDRAM_DOUT_READY( DDRAM2_DOUT_READY ),
+	.DDRAM_BUSY( DDRAM2_BUSY )
+);
+`else
+assign tex_vram_din_core = 64'd0;
+assign tex_vram_wait_core = 1'b0;
+assign tex_vram_valid_core = 1'b0;
+assign tex_vram_req_ack_core = 1'b0;
+assign tex_cache_hit = 1'b0;
+assign tex_ddram_addr_raw = 29'd0;
+assign DDRAM2_RD = 1'b0;
+assign DDRAM2_BURSTCNT = 8'd0;
+`endif
+
+assign DDRAM2_CLK  = clk_sys;
+assign DDRAM2_ADDR = DDRAM_BASE + tex_ddram_addr_raw;
+assign DDRAM2_DIN  = 64'd0;
+assign DDRAM2_BE   = 8'b11111111;
+assign DDRAM2_WE   = 1'b0;
 
 wire [15:0] fb_dout;
 /*
@@ -1480,7 +1656,7 @@ lightgun lightgun
 wire downloading = rom_download;
 wire bk_change  = CART_SRAM_WR;
 wire autosave   = status[13];
-wire bk_load    = status[16];
+wire bk_load    = 1'b0;
 wire bk_save    = status[17];
 
 reg bk_ena = 0;

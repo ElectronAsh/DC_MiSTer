@@ -622,7 +622,8 @@ sysmem_lite sysmem
 	.ram1_write(ram_write),
 
 	//64-bit DDR3 RAM access
-	.ram2_clk(clk_audio),
+	//.ram2_clk(clk_audio),
+	.ram2_clk(ram2_clk),
 	.ram2_address(ram2_address),
 	.ram2_burstcount(ram2_burstcount),
 	.ram2_waitrequest(ram2_waitrequest),
@@ -648,6 +649,7 @@ sysmem_lite sysmem
 );
 
 
+wire        ram2_clk;
 wire [28:0] ram2_address;
 wire  [7:0] ram2_burstcount;
 wire  [7:0] ram2_byteenable;
@@ -673,6 +675,7 @@ ddr_svc ddr_svc
 	.ram_writedata(ram2_writedata),
 	.ram_byteenable(ram2_byteenable),
 	.ram_write(ram2_write),
+	
 	.ram_bcnt(ram2_bcnt),
 
 	.ch0_addr(alsa_address),
@@ -700,8 +703,14 @@ wire [127:0] vbuf_readdata;
 /*
 wire [63:0] pix01 = (!FB_R_SOF1[22]) ? {vbuf_readdata[127:95],vbuf_readdata[127:95]} : {vbuf_readdata[94:63],vbuf_readdata[94:63]};
 wire [63:0] pix23 = (!FB_R_SOF1[22]) ? {vbuf_readdata[63:32 ],vbuf_readdata[ 63:32]} : {vbuf_readdata[31:00],vbuf_readdata[31:00]};
+
+
 wire [127:0] ascal_readdata = {pix01, pix23};
 */
+
+//wire [127:0] ascal_readdata = (FB_R_SOF1[22]) ? {vbuf_readdata[95:64], vbuf_readdata[127:96], vbuf_readdata[31:00], vbuf_readdata[63:32]} : vbuf_readdata;
+wire [127:0] ascal_readdata = vbuf_readdata;
+
 wire         vbuf_readdatavalid;
 wire         vbuf_read;
 wire [127:0] vbuf_writedata;
@@ -820,8 +829,8 @@ ascal
 	.avl_clk          (clk_100m),
 	.avl_waitrequest  (vbuf_waitrequest),
 	
-	.avl_readdata     (vbuf_readdata),
-	//.avl_readdata     (ascal_readdata),	
+	//.avl_readdata     (vbuf_readdata),
+	.avl_readdata     (ascal_readdata),	
 	
 	.avl_readdatavalid(vbuf_readdatavalid),
 	.avl_burstcount   (vbuf_burstcount),
@@ -831,11 +840,10 @@ ascal
 	.avl_read         (vbuf_read),
 	.avl_byteenable   (vbuf_byteenable),
 	
-	.fb_sel_upper( fb_sel_upper )
+	.fb_sel_upper( FB_R_SOF1[22] )
 );
 `endif
 
-wire fb_sel_upper = FB_R_SOF1[22];
 
 reg        LFB_EN     = 0;
 reg        LFB_FLT    = 0;
@@ -1794,6 +1802,17 @@ emu emu
 	.DDRAM_DIN(ram_writedata),
 	.DDRAM_BE(ram_byteenable),
 	.DDRAM_WE(ram_write),
+	
+	.DDRAM2_CLK(ram2_clk),
+	.DDRAM2_ADDR(ram2_address),
+	.DDRAM2_BURSTCNT(ram2_burstcount),
+	.DDRAM2_BUSY(ram2_waitrequest),
+	.DDRAM2_DOUT(ram2_readdata),
+	.DDRAM2_DOUT_READY(ram2_readdatavalid),
+	.DDRAM2_RD(ram2_read),
+	.DDRAM2_DIN(ram2_writedata),
+	.DDRAM2_BE(ram2_byteenable),
+	.DDRAM2_WE(ram2_write),
 
 	// This routes the core video to Ascal, via Shadomwask then OSD, for HDMI.
 	.VGA_R(r_out),
