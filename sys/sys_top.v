@@ -702,7 +702,6 @@ wire         vbuf_waitrequest;
 wire [127:0] vbuf_readdata;
 wire         vbuf_readdatavalid;
 wire         vbuf_read;
-wire [127:0] ascal_readdata = vbuf_readdata;
 
 wire [127:0] vbuf_writedata;
 wire  [15:0] vbuf_byteenable;
@@ -820,8 +819,7 @@ ascal
 	.avl_clk          (clk_100m),
 	.avl_waitrequest  (vbuf_waitrequest),
 	
-	//.avl_readdata     (vbuf_readdata),
-	.avl_readdata     (ascal_readdata),	
+	.avl_readdata     (vbuf_readdata),
 	
 	.avl_readdatavalid(vbuf_readdatavalid),
 	.avl_burstcount   (vbuf_burstcount),
@@ -855,6 +853,7 @@ reg [11:0] FB_WIDTH  = 0;
 reg [11:0] FB_HEIGHT = 0;
 reg [31:0] FB_BASE   = 0;
 reg [13:0] FB_STRIDE = 0;
+reg        FB_DISP_HALF = 0;
 
 `ifndef SH4_HAT
 always @(posedge clk_sys) begin
@@ -865,6 +864,7 @@ always @(posedge clk_sys) begin
 		FB_HEIGHT <= LFB_HEIGHT;
 		FB_BASE   <= LFB_BASE;
 		FB_STRIDE <= LFB_STRIDE;
+		FB_DISP_HALF <= 1'b0;
 	end
 	else begin
 		FB_FMT    <= fb_fmt;
@@ -872,6 +872,7 @@ always @(posedge clk_sys) begin
 		FB_HEIGHT <= fb_height;
 		FB_BASE   <= fb_base;
 		FB_STRIDE <= fb_stride;
+		FB_DISP_HALF <= fb_disp_half;
 	end
 end
 `endif
@@ -1704,8 +1705,7 @@ wire [1:0] sl = sl_r;
 always @(posedge clk_sys) sl_r <= FB_EN ? 2'b00 : scanlines;
 
 wire [23:0] FB_R_SOF1;
-
-wire        FB_DISP_HALF;
+wire        fb_disp_half;
 emu emu
 (
 	.CLK_50M(FPGA_CLK2_50),
@@ -1727,7 +1727,7 @@ emu emu
 	
 	.FB_R_SOF1(FB_R_SOF1),
 
-	.FB_DISP_HALF(FB_DISP_HALF),
+	.FB_DISP_HALF(fb_disp_half),
 `ifdef MISTER_FB
 	.FB_EN(fb_en),
 	.FB_FORMAT(fb_fmt),

@@ -416,6 +416,7 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL o_freeze : std_logic;
 	SIGNAL o_mode,o_hmode,o_vmode : unsigned(4 DOWNTO 0);
 	SIGNAL o_format : unsigned(5 DOWNTO 0);
+	SIGNAL o_fb_sel_upper : std_logic;
 	SIGNAL o_fb_pal_dr : unsigned(23 DOWNTO 0);
 	SIGNAL o_fb_pal_dr2 : unsigned(23 DOWNTO 0);
 	SIGNAL o_fb_pal_dr_x2 : unsigned(47 DOWNTO 0);
@@ -1965,6 +1966,9 @@ BEGIN
 
 			-- Framebuffer mode.
 			IF o_fb_ena='1' THEN
+				IF o_vsv(1)='1' AND o_vsv(0)='0' THEN
+					o_fb_sel_upper<=fb_sel_upper; -- keep split FB half stable for this displayed frame
+				END IF;
 				o_ihsize<=o_fb_hsize;
 				o_ivsize<=o_fb_vsize;
 				o_format<=o_fb_format;
@@ -2258,9 +2262,9 @@ BEGIN
 
 			------------------------------------------------------
 			IF o_sh3='1' THEN
-				shift_v:=shift_opack(o_acpt4,o_shift,o_dr,o_format,fb_sel_upper,fb_split_en);
+				shift_v:=shift_opack(o_acpt4,o_shift,o_dr,o_format,o_fb_sel_upper,fb_split_en);
 				o_shift<=shift_v;
-				o_hpixs<=shift_opix(shift_v,o_format,fb_sel_upper,o_fb_ena);
+				o_hpixs<=shift_opix(shift_v,o_format,o_fb_sel_upper,o_fb_ena);
 			END IF;
 
 			IF o_sh4='1' THEN
@@ -2430,7 +2434,7 @@ BEGIN
 			END IF;
 		END PROCESS;
 
-		pal_idx <= shift_opack(o_acpt4,o_shift,o_dr,o_format,fb_sel_upper,fb_split_en)(0 TO 7);
+		pal_idx <= shift_opack(o_acpt4,o_shift,o_dr,o_format,o_fb_sel_upper,fb_split_en)(0 TO 7);
 		pal_idx_lsb <= pal_idx(0) WHEN rising_edge(o_clk);
 		o_fb_pal_dr_x2 <= pal1_mem(to_integer(pal_idx(7 DOWNTO 1))) WHEN rising_edge(o_clk);
 	END GENERATE GenPal1;
