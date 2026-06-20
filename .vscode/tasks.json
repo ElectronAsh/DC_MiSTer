@@ -1,0 +1,49 @@
+﻿{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "label": "verilate",
+      "command": "wsl",
+      "args": [
+        "-d",
+        "Ubuntu",
+        "bash",
+        "-lc",
+        "set -e; ./verilate.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}\\sim_fpgadc"
+      },
+      "problemMatcher": [],
+      "detail": "Runs Verilator generation script."
+    },
+    {
+      "type": "shell",
+      "label": "MSBuild: build ConsoleApplication1 (Release x64)",
+      "command": "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\MSBuild\\Current\\Bin\\amd64\\MSBuild.exe",
+      "args": [
+        "ConsoleApplication1\\ConsoleApplication1.vcxproj",
+        "/t:Build",
+        "/p:Configuration=Release",
+        "/p:Platform=x64",
+        "/m"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}\\sim_fpgadc"
+      },
+      "problemMatcher": [
+        "$msCompile"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "detail": "Builds ConsoleApplication1 via MSBuild (Release x64).",
+      "dependsOn": [
+        "verilate"
+      ],
+      "dependsOrder": "sequence"
+    }
+  ]
+}

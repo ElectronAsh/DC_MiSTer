@@ -1,0 +1,20 @@
+﻿{
+  "terminal.integrated.showReuseMessage": false,
+  "task.showOutput": "silent",
+  "task.showNotifications": "off",
+  "debug.showInStatusBar": "never",
+  "debug.showStartViewOnDebugging": false,
+  "editor.quickSuggestions": {
+    "comments": "off",
+    "strings": "off",
+    "other": "off"
+  },
+  "editor.suggestOnTriggerCharacters": false,
+  "editor.inlineSuggest.enabled": false,
+  "files.associations": {
+    "*.sv": "systemverilog",
+    "*.svh": "systemverilog",
+    "*.v": "verilog",
+    "*.vh": "verilog"
+  }
+}

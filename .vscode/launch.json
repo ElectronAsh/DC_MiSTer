@@ -1,0 +1,17 @@
+﻿{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug sim_main.exe",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}\\sim_fpgadc\\ConsoleApplication1\\x64\\Release\\ConsoleApplication1.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}\\sim_fpgadc\\out",
+      "environment": [],
+      "console": "integratedTerminal",
+      "preLaunchTask": "MSBuild: build ConsoleApplication1 (Release x64)"
+    }
+  ]
+}
