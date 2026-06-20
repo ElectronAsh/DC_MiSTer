@@ -1,0 +1,252 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>15.0</VCProjectVersion>
+    <ProjectGuid>{1545F258-EA97-4037-AAAC-6432EC956241}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>ConsoleApplication1</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+    <IncludePath>C:\linux_temp\imgui\examples;C:\linux_temp\imgui\misc;C:\linux_temp\imgui;C:\linux_temp\sega_x_board\out;C:\linux_temp\sega_x_board;C:\linux_temp\verilator\include\gtkwave;C:\linux_temp\verilator\include\vltstd;C:\linux_temp\verilator\src;C:\linux_temp\verilator\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <IncludePath>C:\DC_MiSTer\sim_fpgadc;C:\DC_MiSTer\sim_fpgadc\out;C:\DC_MiSTer\sim_fpgadc\out_cache;C:\DC_MiSTer\sim_fpgadc\ConsoleApplication1;C:\linux_temp\reicast-hacked-fpgadc\libswirl\license;C:\linux_temp\reicast-hacked-fpgadc\libswirl;C:\linux_temp\imgui\backends;C:\linux_temp\imgui\examples;C:\linux_temp\imgui\misc;C:\linux_temp\imgui;C:\linux_temp\verilator-4.224\include\gtkwave;C:\linux_temp\verilator-4.224\include\vltstd;C:\linux_temp\verilator-4.224\src;C:\linux_temp\verilator-4.224\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+    <IncludePath>C:\linux_temp\imgui\backends;C:\linux_temp\imgui\examples;C:\linux_temp\imgui\misc;C:\linux_temp\imgui;C:\linux_temp\sega_x_board\out;C:\linux_temp\sega_x_board;C:\linux_temp\verilator-4.224\include\gtkwave;C:\linux_temp\verilator-4.224\include;C:\linux_temp\verilator-4.224\include\vltstd;C:\linux_temp\verilator\src;C:\linux_temp\verilator\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <IncludePath>C:\DC_MiSTer\sim_fpgadc;C:\DC_MiSTer\sim_fpgadc\out;C:\DC_MiSTer\sim_fpgadc\out_cache;C:\DC_MiSTer\sim_fpgadc\ConsoleApplication1;C:\linux_temp\EasyBMP;C:\linux_temp\imgui\backends;C:\linux_temp\imgui\examples;C:\linux_temp\imgui\misc;C:\linux_temp\imgui;C:\linux_temp\verilator\include\gtkwave;C:\linux_temp\verilator\include\vltstd;C:\linux_temp\verilator\src;C:\linux_temp\verilator\include;$(IncludePath)</IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions);x86_64;__x86_64__</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)d3d11.lib;d3dcompiler.lib;dxgi.lib;</AdditionalDependencies>
+      <AdditionalOptions>/ENTRY:"mainCRTStartup" %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalIncludeDirectories>
+      </AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <PreBuildEvent>
+      <Command>powershell -ExecutionPolicy Bypass -File "$(ProjectDir)..\tools\update_vsimtop_cache.ps1" -SourceDir "$(ProjectDir)..\out" -DestDir "$(ProjectDir)..\out_cache"</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions);x86_64;__x86_64__</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
+      <LanguageStandard>stdcpp14</LanguageStandard>
+      <AdditionalOptions>-Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)d3d11.lib;d3dcompiler.lib;dxgi.lib;</AdditionalDependencies>
+      <AdditionalOptions>/ENTRY:"mainCRTStartup" %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)d3d11.lib;d3dcompiler.lib;dxgi.lib;</AdditionalDependencies>
+    </Link>
+    <PreBuildEvent>
+      <Command>powershell -ExecutionPolicy Bypass -File "$(ProjectDir)..\tools\update_vsimtop_cache.ps1" -SourceDir "$(ProjectDir)..\out" -DestDir "$(ProjectDir)..\out_cache"</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\linux_temp\imgui\imgui.cpp" />
+    <ClCompile Include="..\..\..\linux_temp\imgui\imgui_demo.cpp" />
+    <ClCompile Include="..\..\..\linux_temp\imgui\imgui_draw.cpp" />
+    <ClCompile Include="..\..\..\linux_temp\imgui\imgui_tables.cpp" />
+    <ClCompile Include="..\..\..\linux_temp\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="..\..\..\linux_temp\verilator\include\verilated.cpp" />
+    <ClCompile Include="..\..\..\linux_temp\verilator\include\verilated_threads.cpp" />
+    <ClCompile Include="..\..\..\linux_temp\verilator\include\verilated_timing.cpp" />
+    <ClCompile Include="..\..\..\linux_temp\imgui\backends\imgui_impl_dx11.cpp" />
+    <ClCompile Include="..\..\..\linux_temp\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="..\EasyBMP.cpp" />
+    <ClCompile Include="..\out\Vsimtop.cpp" />
+    <ClCompile Include="..\out\Vsimtop_param_buffer__Ez1_EBz1_ECz1__DepSet_h33a7dd7b__0__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop_param_buffer__Ez1_EBz1_ECz1__DepSet_h37324824__0.cpp" />
+    <ClCompile Include="..\out\Vsimtop_param_buffer__Ez1_EBz1_ECz1__DepSet_h37324824__0__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop_param_buffer__Ez1_EBz1_ECz1__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop_z_buff__Ez1__DepSet_h0058d5db__0.cpp" />
+    <ClCompile Include="..\out\Vsimtop_z_buff__Ez1__DepSet_h0058d5db__0__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop_z_buff__Ez1__DepSet_hea814184__0.cpp" />
+    <ClCompile Include="..\out\Vsimtop_z_buff__Ez1__DepSet_hea814184__0__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop_z_buff__Ez1__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop__ConstPool_0.cpp" />
+    <ClCompile Include="..\out\Vsimtop__Syms.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024root__DepSet_h305f3046__0.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024root__DepSet_h305f3046__0__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__0.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__0__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__1.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__1__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__2.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024root__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024unit__DepSet_h7e859b80__0__Slow.cpp" />
+    <ClCompile Include="..\out\Vsimtop___024unit__Slow.cpp" />
+    <ClCompile Include="..\sim_main.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\linux_temp\imgui\imconfig.h" />
+    <ClInclude Include="..\..\..\linux_temp\imgui\imgui.h" />
+    <ClInclude Include="..\..\..\linux_temp\imgui\imgui_internal.h" />
+    <ClInclude Include="..\..\..\linux_temp\imgui\imgui_memory_editor.h" />
+    <ClInclude Include="..\..\..\linux_temp\imgui\imstb_rectpack.h" />
+    <ClInclude Include="..\..\..\linux_temp\imgui\imstb_textedit.h" />
+    <ClInclude Include="..\..\..\linux_temp\imgui\imstb_truetype.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilatedos.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_config.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_fst_sc.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_funcs.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_imp.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_intrinsics.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_sc.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_syms.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_sym_props.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_threads.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_timing.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_trace.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_trace_imp.h" />
+    <ClInclude Include="..\..\..\linux_temp\verilator\include\verilated_types.h" />
+    <ClInclude Include="..\..\..\linux_temp\imgui\backends\imgui_impl_dx11.h" />
+    <ClInclude Include="..\..\..\linux_temp\imgui\backends\imgui_impl_win32.h" />
+    <ClInclude Include="..\EasyBMP.h" />
+    <ClInclude Include="..\EasyBMP_BMP.h" />
+    <ClInclude Include="..\EasyBMP_DataStructures.h" />
+    <ClInclude Include="..\EasyBMP_VariousBMPutilities.h" />
+    <ClInclude Include="..\out\Vsimtop.h" />
+    <ClInclude Include="..\out\Vsimtop_param_buffer__Ez1_EBz1_ECz1.h" />
+    <ClInclude Include="..\out\Vsimtop_z_buff__Ez1.h" />
+    <ClInclude Include="..\out\Vsimtop__pch.h" />
+    <ClInclude Include="..\out\Vsimtop__Syms.h" />
+    <ClInclude Include="..\out\Vsimtop___024root.h" />
+    <ClInclude Include="..\out\Vsimtop___024unit.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
+
+

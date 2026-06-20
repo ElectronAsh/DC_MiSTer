@@ -1,0 +1,17 @@
+.vs/
+*.obj
+*.pdb
+*.ipdb
+*.iobj
+*.ilk
+*.tlog
+*.recipe
+
+# Verilator output
+out/
+out_cache/
+
+# Build outputs
+x64/
+Release/
+Debug/

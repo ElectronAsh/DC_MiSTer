@@ -1,0 +1,21 @@
+﻿{
+    "version":  "0.2.0",
+    "configurations":  [
+                           {
+                               "name":  "Debug sim_main.exe",
+                               "type":  "cppvsdbg",
+                               "request":  "launch",
+                               "program":  "${workspaceFolder}\\ConsoleApplication1\\x64\\Release\\ConsoleApplication1.exe",
+                               "args":  [
+
+                                        ],
+                               "stopAtEntry":  false,
+                               "cwd":  "${workspaceFolder}\\out",
+                               "environment":  [
+
+                                               ],
+                               "console":  "integratedTerminal",
+                               "preLaunchTask":  "MSBuild: build ConsoleApplication1 (Release x64)"
+                           }
+                       ]
+}
