@@ -17,7 +17,8 @@ module isp_parser #(
 	parameter ENABLE_TEXTURE_PARAMS = 1'b1,
 	parameter ENABLE_GOURAUD_PARAMS = 1'b1,
 	parameter ENABLE_OFFSET_PARAMS = 1'b1,
-	parameter ENABLE_DEPTH_COMPARE = 1'b1
+	parameter ENABLE_DEPTH_COMPARE = 1'b1,
+	parameter INTRI_PIXELS_PER_CYCLE = 32
 ) (
 	input clock,
 	input reset_n,
@@ -156,12 +157,12 @@ wire is_quad_array = opb_word_strip[31:29]==3'b101;
 reg quad_second_half;
 
 // Object List read state machine...
-(*noprune*)reg [2:0] strip_cnt;
-(*noprune*)reg [3:0] array_cnt;
+reg [2:0] strip_cnt;
+reg [3:0] array_cnt;
 
 
 // ISP/TSP Instruction Word. Bit decode, for Opaque or Translucent prims...
-(*noprune*)reg [31:0] isp_inst;
+reg [31:0] isp_inst;
 wire [2:0] depth_comp   = isp_inst[31:29];	// 0=Never, 1=Less, 2=Equal, 3=Less Or Equal, 4=Greater, 5=Not Equal, 6=Greater Or Equal, 7=Always.
 wire [1:0] culling_mode = isp_inst[28:27];	// 0=No culling, 1=Cull if Small, 2= Cull if Neg, 3=Cull if Pos.
 wire z_write_disable    = isp_inst[26];
@@ -179,7 +180,7 @@ wire [2:0] volume_inst = isp_inst[31:29];
 // Bits [26:0] are reserved.
 
 // TSP Instruction Word...
-(*noprune*)reg [31:0] tsp_inst;
+reg [31:0] tsp_inst;
 wire [2:0] tex_src_alpha = tsp_inst_out[31:29];
 wire [2:0] tex_dst_alpha = tsp_inst_out[28:26];
 wire tex_src_select = tsp_inst_out[25];
@@ -200,7 +201,7 @@ wire [2:0] tex_u_size = tsp_inst_out[5:3];
 wire [2:0] tex_v_size = tsp_inst_out[2:0];
 
 // Texture Control Word...
-(*noprune*)reg [31:0] tcw_word;
+reg [31:0] tcw_word;
 wire mip_map = tcw_word_out[31];
 wire vq_comp = tcw_word_out[30];
 wire [2:0] pix_fmt = tcw_word_out[29:27];
@@ -214,49 +215,49 @@ reg [20:0] tex_base_word_addr_old;
 //
 // XY verts are declared as signed here, but it doesn't seem to help with rendering, when neg_xy culling is disabled.
 //
-(*noprune*)reg signed [31:0] vert_a_x;
-(*noprune*)reg signed [31:0] vert_a_y;
-(*noprune*)reg signed [31:0] vert_a_z;	// Keep as signed !!
-(*noprune*)reg [31:0] vert_a_u0;
-(*noprune*)reg [31:0] vert_a_v0;
-(*noprune*)reg [31:0] vert_a_u1;
-(*noprune*)reg [31:0] vert_a_v1;
-(*noprune*)reg [31:0] vert_a_base_col_0;
-(*noprune*)reg [31:0] vert_a_base_col_1;
-(*noprune*)reg [31:0] vert_a_off_col;
+reg signed [31:0] vert_a_x;
+reg signed [31:0] vert_a_y;
+reg signed [31:0] vert_a_z;	// Keep as signed !!
+reg [31:0] vert_a_u0;
+reg [31:0] vert_a_v0;
+reg [31:0] vert_a_u1;
+reg [31:0] vert_a_v1;
+reg [31:0] vert_a_base_col_0;
+reg [31:0] vert_a_base_col_1;
+reg [31:0] vert_a_off_col;
 
-(*noprune*)reg signed [31:0] vert_b_x;
-(*noprune*)reg signed [31:0] vert_b_y;
-(*noprune*)reg signed [31:0] vert_b_z;	// Keep as signed !!
-(*noprune*)reg [31:0] vert_b_u0;
-(*noprune*)reg [31:0] vert_b_v0;
-(*noprune*)reg [31:0] vert_b_u1;
-(*noprune*)reg [31:0] vert_b_v1;
-(*noprune*)reg [31:0] vert_b_base_col_0;
-(*noprune*)reg [31:0] vert_b_base_col_1;
-(*noprune*)reg [31:0] vert_b_off_col;
+reg signed [31:0] vert_b_x;
+reg signed [31:0] vert_b_y;
+reg signed [31:0] vert_b_z;	// Keep as signed !!
+reg [31:0] vert_b_u0;
+reg [31:0] vert_b_v0;
+reg [31:0] vert_b_u1;
+reg [31:0] vert_b_v1;
+reg [31:0] vert_b_base_col_0;
+reg [31:0] vert_b_base_col_1;
+reg [31:0] vert_b_off_col;
 
-(*noprune*)reg signed [31:0] vert_c_x;
-(*noprune*)reg signed [31:0] vert_c_y;
-(*noprune*)reg signed [31:0] vert_c_z;	// Keep as signed !!
-(*noprune*)reg [31:0] vert_c_u0;
-(*noprune*)reg [31:0] vert_c_v0;
-(*noprune*)reg [31:0] vert_c_u1;
-(*noprune*)reg [31:0] vert_c_v1;
-(*noprune*)reg [31:0] vert_c_base_col_0;
-(*noprune*)reg [31:0] vert_c_base_col_1;
-(*noprune*)reg [31:0] vert_c_off_col;
+reg signed [31:0] vert_c_x;
+reg signed [31:0] vert_c_y;
+reg signed [31:0] vert_c_z;	// Keep as signed !!
+reg [31:0] vert_c_u0;
+reg [31:0] vert_c_v0;
+reg [31:0] vert_c_u1;
+reg [31:0] vert_c_v1;
+reg [31:0] vert_c_base_col_0;
+reg [31:0] vert_c_base_col_1;
+reg [31:0] vert_c_off_col;
 
-(*noprune*)reg signed [31:0] vert_d_x;
-(*noprune*)reg signed [31:0] vert_d_y;
-(*noprune*)reg signed [31:0] vert_d_z;	// Meh
-(*noprune*)reg [31:0] vert_d_u0;
-(*noprune*)reg [31:0] vert_d_v0;
-(*noprune*)reg [31:0] vert_d_u1;
-(*noprune*)reg [31:0] vert_d_v1;
-(*noprune*)reg [31:0] vert_d_base_col_0;
-(*noprune*)reg [31:0] vert_d_base_col_1;
-(*noprune*)reg [31:0] vert_d_off_col;
+reg signed [31:0] vert_d_x;
+reg signed [31:0] vert_d_y;
+reg signed [31:0] vert_d_z;	// Meh
+reg [31:0] vert_d_u0;
+reg [31:0] vert_d_v0;
+reg [31:0] vert_d_u1;
+reg [31:0] vert_d_v1;
+reg [31:0] vert_d_base_col_0;
+reg [31:0] vert_d_base_col_1;
+reg [31:0] vert_d_off_col;
 
 wire two_volume = 1'b0;	// TODO.
 
@@ -271,6 +272,8 @@ reg clear_z_next_seen_busy;
 reg clear_z_target_bank;
 
 reg pcache_write;
+reg pcache_write_0;
+reg pcache_write_1;
 reg pcache_write_pending;
 
 // Debug counter
@@ -312,8 +315,8 @@ reg [21:0] tag_run_tcw_base;
 reg tag_run_textured;
 reg tag_run_vq;
 
-(*noprune*)reg isp_vram_rd_pend;
-(*noprune*)reg tex_vram_rd_pend;
+reg isp_vram_rd_pend;
+reg tex_vram_rd_pend;
 
 reg [11:0] prim_tag;
 reg [11:0] max_tags;
@@ -374,6 +377,7 @@ reg signed [47:0] tile_z_max;
 integer z_i;
 reg zpipe_valid;
 reg zpipe_flush;
+reg [1:0] inTri_pixel_group;
 
 localparam signed [47:0] Z_MAX_INIT = 48'sh7fffffffffff;
 localparam signed [47:0] Z_MIN_INIT = -48'sh800000000000;
@@ -390,6 +394,8 @@ reg [PARAM_WINDOW_WORDS-1:0] param_window_valid;
 reg [23:0] param_window_base;
 reg param_window_active;
 reg [23:0] param_ext_req_addr;
+reg param_ext_req_window_hit;
+reg [PARAM_WINDOW_BITS-1:0] param_ext_req_window_index;
 reg [23:0] param_prefetch_addr;
 reg param_prefetch_active;
 reg [PARAM_WINDOW_BITS:0] param_window_fill_words;
@@ -398,13 +404,13 @@ reg [31:0] param_din;
 
 wire param_word_valid = param_valid || isp_vram_valid;
 wire [31:0] param_word_din = param_valid ? param_din : isp_vram_din;
-wire interp_params_ready = (!isp_inst[24] && (interp_sel > 4'd5)) ||
-						   ( isp_inst[24] && (interp_sel > 4'd10));
+reg interp_params_ready;
 wire can_overlap_param_prefetch = ((isp_state == 9'd56) || (isp_state == 9'd57)) &&
 								  !prefetched_poly_pending && !param_prefetch_active &&
 								  !render_bg;
 assign isp_prefetch_ready = can_overlap_param_prefetch;
 
+`ifdef VERILATOR
 function param_window_contains;
 	input [23:0] addr;
 	begin
@@ -420,15 +426,32 @@ function [PARAM_WINDOW_BITS-1:0] param_window_index;
 		param_window_index = (addr - param_window_base) >> 2;
 	end
 endfunction
+`else
+function param_window_contains;
+	input [23:0] addr;
+	begin
+		param_window_contains = param_window_active && (addr[23:2] == param_window_base[23:2]);
+	end
+endfunction
+
+function [PARAM_WINDOW_BITS-1:0] param_window_index;
+	input [23:0] addr;
+	begin
+		param_window_index = {PARAM_WINDOW_BITS{1'b0}};
+	end
+endfunction
+`endif
 
 task param_issue_addr;
 	input [23:0] addr;
 	input [8:0] next_state;
 	reg [PARAM_WINDOW_BITS-1:0] idx;
+	reg hit;
 	begin
+		idx = param_window_index(addr);
+		hit = param_window_contains(addr);
 		isp_vram_addr <= addr;
-		if (param_window_contains(addr) && param_window_valid[param_window_index(addr)]) begin
-			idx = param_window_index(addr);
+		if (hit && param_window_valid[idx]) begin
 			param_din <= param_window[idx];
 			param_valid <= 1'b1;
 			param_window_hit_count <= param_window_hit_count + 1'b1;
@@ -437,6 +460,8 @@ task param_issue_addr;
 		else begin
 			isp_vram_rd <= 1'b1;
 			param_ext_req_addr <= addr;
+			param_ext_req_window_hit <= hit;
+			param_ext_req_window_index <= idx;
 			param_window_miss_count <= param_window_miss_count + 1'b1;
 			isp_state <= next_state;
 		end
@@ -476,6 +501,8 @@ if (!reset_n) begin
 	param_window_base <= 24'd0;
 	param_window_active <= 1'b0;
 	param_ext_req_addr <= 24'd0;
+	param_ext_req_window_hit <= 1'b0;
+	param_ext_req_window_index <= {PARAM_WINDOW_BITS{1'b0}};
 	param_prefetch_addr <= 24'd0;
 	param_prefetch_active <= 1'b0;
 	param_window_fill_words <= 7'd0;
@@ -547,10 +574,13 @@ if (!reset_n) begin
 	tsp_drain_count <= 5'd0;
 	deferred_tile_started <= 1'b0;
 	pcache_write <= 1'b0;
+	pcache_write_0 <= 1'b0;
+	pcache_write_1 <= 1'b0;
 	pcache_write_pending <= 1'b0;
 	//trig_z_row_write <= 1'b0;
 	tile_accum_done <= 1'b0;
 	interp_sel <= 4'd11;
+	interp_params_ready <= 1'b0;
 	any_tags_written <= 1'b0;
 	tsp_pix_wr <= 1'b0;
 	tsp_pix_adv <= 1'b0;
@@ -565,6 +595,7 @@ if (!reset_n) begin
 	total_vis_count <= 32'd0;
 	zpipe_valid <= 1'b0;
 	zpipe_flush <= 1'b0;
+	 inTri_pixel_group <= 2'd0;
 end
 else begin
 	cb_cache_clear <= 1'b0;
@@ -592,12 +623,18 @@ else begin
 	if (tex_vram_rd) tex_vram_rd_count <= tex_vram_rd_count + 1'd1;
 
 	pcache_write <= 1'b0;
+	pcache_write_0 <= 1'b0;
+	pcache_write_1 <= 1'b0;
 	rle_start <= 1'b0;
 	tsp_pix_wr <= 1'b0;
 	tsp_pix_adv <= 1'b0;
 	tsp_issue_accept = 1'b0;
 
 	if (interp_sel < 4'd11) begin
+		if ((!isp_inst[24] && (interp_sel == 4'd5)) ||
+			( isp_inst[24] && (interp_sel == 4'd10))) begin
+			interp_params_ready <= 1'b1;
+		end
 		interp_sel <= interp_sel + 1;
 		//$display("interp_sel: %d", interp_sel);
 		//$display("FDDX_BASE_R: %08X  FDDY_BASE_R: %08X", FDDX_BASE_R, FDDY_BASE_R);
@@ -617,9 +654,9 @@ else begin
 			tag_row_occupied_0 <= 32'd0;
 	end
 
-	if (isp_vram_valid && param_window_contains(param_ext_req_addr)) begin
-		param_window[param_window_index(param_ext_req_addr)] <= isp_vram_din;
-		param_window_valid[param_window_index(param_ext_req_addr)] <= 1'b1;
+	if (isp_vram_valid && param_ext_req_window_hit) begin
+		param_window[param_ext_req_window_index] <= isp_vram_din;
+		param_window_valid[param_ext_req_window_index] <= 1'b1;
 		param_window_fill_count <= param_window_fill_count + 1'b1;
 		if (param_prefetch_active) param_window_fill_words <= param_window_fill_words + 1'b1;
 	end
@@ -649,6 +686,8 @@ else begin
 		isp_vram_addr <= param_prefetch_addr;
 		isp_vram_rd <= 1'b1;
 		param_ext_req_addr <= param_prefetch_addr;
+		param_ext_req_window_hit <= param_window_contains(param_prefetch_addr);
+		param_ext_req_window_index <= param_window_index(param_prefetch_addr);
 		param_prefetch_addr <= param_prefetch_addr + 24'd4;
 		param_window_prefetch_count <= param_window_prefetch_count + 1'b1;
 	end
@@ -732,6 +771,8 @@ else begin
 				isp_vram_addr <= param_prefetch_addr;
 				isp_vram_rd <= 1'b1;
 				param_ext_req_addr <= param_prefetch_addr;
+				param_ext_req_window_hit <= param_window_contains(param_prefetch_addr);
+				param_ext_req_window_index <= param_window_index(param_prefetch_addr);
 				param_prefetch_addr <= param_prefetch_addr + 24'd4;
 				param_window_prefetch_count <= param_window_prefetch_count + 1'b1;
 			end
@@ -1078,6 +1119,7 @@ else begin
 				any_tags_written <= 1'b0;
 				//prim_tag <= prim_tag + 1;	// We post-increment this now, in isp_state 90.
 				interp_sel <= 4'd0;
+				interp_params_ready <= 1'b0;
 				pcache_write_pending <= 1'b1;
 				// Start HSR immediately; state 49 used to spend a whole cycle
 				// doing only this setup before entering the row pipeline.
@@ -1089,8 +1131,9 @@ else begin
 				end
 				x_ps <= tilex_start;	// No speed-up possible with x_ps for Tag buffer writes, since a full ROW (span) gets written at every cycle.
 				y_ps <= tiley_start + {6'd0, hsr_start_row};
-				zpipe_valid <= 1'b0;
-				zpipe_flush <= 1'b0;
+				 inTri_pixel_group <= 2'd0;
+				 zpipe_valid <= 1'b0;
+				 zpipe_flush <= 1'b0;
 				isp_state <= 9'd50;			// "Draw" the triangle! (register spans to the TAG buffer).
 			//end
 			//else begin
@@ -1181,10 +1224,13 @@ else begin
 		50: if (!z_clear_busy) begin
 			if (pcache_write_pending && interp_params_ready) begin
 				pcache_write <= 1'b1;
+				pcache_write_0 <= !isp_z_bank;
+				pcache_write_1 <=  isp_z_bank;
+				interp_params_ready <= 1'b0;
 				pcache_write_pending <= 1'b0;
 			end
 
-			if (zpipe_valid) begin
+			if (zpipe_valid || (INTRI_PIXELS_PER_CYCLE <= 8)) begin
 				if (inTri) any_tags_written <= 1'b1;
 				if (((render_bg ? 32'hffffffff : inTri) & (depth_allow | {32{render_bg}})) != 32'd0) begin
 					// z_buff writes the previous pipelined row. Mark this row
@@ -1215,11 +1261,17 @@ else begin
 			end
 
 			if (!zpipe_flush) begin
-				if (y_ps[4:0] >= hsr_end_row) begin
-					zpipe_flush <= 1'b1;
+				if (INTRI_PIXELS_PER_CYCLE <= 8 && inTri_pixel_group != 2'd3) begin
+					inTri_pixel_group <= inTri_pixel_group + 2'd1;
 				end
 				else begin
-					y_ps[4:0] <= y_ps[4:0] + 5'd1;
+					inTri_pixel_group <= 2'd0;
+					if (y_ps[4:0] >= hsr_end_row) begin
+						zpipe_flush <= 1'b1;
+					end
+					else begin
+						y_ps[4:0] <= y_ps[4:0] + 5'd1;
+					end
 				end
 			end
 
@@ -1928,7 +1980,7 @@ interp_argb (
 
 	// Integer...
 	.x_ps( x_ps ),			// input [10:0] x_ps
-	.y_ps( y_ps ),			// input [10:0] y_ps
+	.y_ps( y_ps ),	// input [10:0]
 	
 	// Output Delta X, Delta Y, and small_c (starting value).
 	.FDDX( FDDX_COL ),			// output signed [47:0] FDDX
@@ -2181,7 +2233,7 @@ param_buffer #(
 	.reset_n(reset_n) ,				// input  reset_n
 	
 	.prim_tag(prim_tag_mux_0) ,		// input [11:0] prim_tag
-	.pcache_write(pcache_write & !isp_z_bank) ,	// input  pcache_write
+	.pcache_write(pcache_write_0) ,	// input  pcache_write
 	
 	// input [31:0]
 	.isp_inst_in(isp_inst), .tsp_inst_in(tsp_inst), .tcw_word_in(tcw_word),
@@ -2226,7 +2278,7 @@ param_buffer #(
 	.reset_n(reset_n) ,				// input  reset_n
 	
 	.prim_tag(prim_tag_mux_1) ,		// input [11:0] prim_tag
-	.pcache_write(pcache_write & isp_z_bank) ,	// input  pcache_write
+	.pcache_write(pcache_write_1) ,	// input  pcache_write
 	
 	// input [31:0]
 	.isp_inst_in(isp_inst), .tsp_inst_in(tsp_inst), .tcw_word_in(tcw_word),
@@ -2271,7 +2323,8 @@ wire sgn = f_area[63];
 inTri_calc #(
 	.PIXEL_CENTER_SAMPLE(PIXEL_CENTER_SAMPLE),
 	.FRAC_BITS   (FRAC_BITS),
-	.Z_FRAC_BITS (Z_FRAC_BITS)
+	.Z_FRAC_BITS (Z_FRAC_BITS),
+	.INTRI_PIXELS_PER_CYCLE(INTRI_PIXELS_PER_CYCLE)
 )
 inTri_calc_inst (
 	.FX1_FIXED( FX1_FIXED ), .FX2_FIXED( FX2_FIXED ), .FX3_FIXED( FX3_FIXED ), .FX4_FIXED( FX4_FIXED ),	// input signed [47:0]
@@ -2279,6 +2332,7 @@ inTri_calc_inst (
 		
 	.x_ps( x_ps ),	// input [10:0]
 	.y_ps( y_ps ),	// input [10:0]
+	.pixel_group( inTri_pixel_group ),
 	
 	.is_quad( is_quad_array ),
 	
@@ -2315,7 +2369,7 @@ interp_inst_z (
 	
 	// Integer...
 	.x_ps( x_ps ),			// input [10:0] x_ps
-	.y_ps( y_ps ),			// input [10:0] y_ps
+	.y_ps( y_ps ),	// input [10:0]
 	
 	.interp( IP_Z_INTERP ),	// output signed [47:0]  interp
 	.interp_cols( IP_Z )	// output signed [47:0]  interp_cols [0:31]

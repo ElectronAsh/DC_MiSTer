@@ -224,7 +224,22 @@ wire fb_linear_debug = status[16];
 wire [3:0] fb_scan_sel = status[21:18];
 wire fb_scan_en = fb_scan_sel != 4'd0;
 
-wire [23:0] fb_disp_sof = !status[15] ? FB_R_SOF1 : FB_W_SOF1;
+reg [23:0] fb_latched_sof;
+always @(posedge clk_sys) begin
+	if (reset) begin
+		fb_latched_sof <= 24'd0;
+	end
+	else if (pvr_frame_done) begin
+		// The just-rendered target is the completed buffer the display should hold.
+		fb_latched_sof <= FB_W_SOF1;
+	end
+end
+
+wire [1:0] fb_display_sel = status[23:22];
+wire [23:0] fb_disp_sof = (fb_display_sel == 2'd0) ? fb_latched_sof :
+                          (fb_display_sel == 2'd1) ? FB_R_SOF1 :
+                          (fb_display_sel == 2'd2) ? FB_W_SOF1 :
+                                                     fb_latched_sof;
 assign FB_DISP_HALF = fb_disp_sof[22];
 wire [31:0] fb_disp_base_side   = {9'd0, fb_disp_sof[21:2], 3'b000};
 wire [31:0] fb_disp_base_linear = {9'd0, fb_disp_sof[22:2], 2'b00};
@@ -334,7 +349,7 @@ localparam CONF_STR = {
 	"O[12],Texel Reads,Off,On;",
 	"T[13],Trigger Render;",
 	"O[14],BG Poly,Off,On;",
-	"O[15],FB Display,FB_R_SOF1,FB_W_SOF1;",
+	"O[23:22],FB Display,Latched,FB_R_SOF1,FB_W_SOF1,Latched;",
 	"O[6],FB Format,RGB,BGR;",
 	"O[7],FB BPP,16bpp,32bpp;",
 	"O[9:8],FB Stride,640,1280,2560,5120;",
@@ -1207,6 +1222,7 @@ wire [63:0] tex_vram_din_core;
 wire tex_vram_req_ack_core;
 
 wire tile_accum_done;
+wire pvr_frame_done;
 
 pvr pvr (
 	.clock( clk_sys ),			// input  clock
@@ -1283,6 +1299,7 @@ pvr pvr (
 	.fb_wait( fb_wait ),					// input  fb_wait
 	.fb_pending( fb_pending ),				// output fb_pending
 	.tile_accum_done( tile_accum_done ),
+	.frame_done( pvr_frame_done ),
 	
 	.debug_ena_texel_reads( debug_ena_texel_reads ),
 	.state_skip( 3'd0 )

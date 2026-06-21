@@ -53,11 +53,11 @@
     <ClCompile Include="..\..\..\linux_temp\imgui\imgui_widgets.cpp">
       <Filter>Source Files\imgui</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\imgui\backends\imgui_impl_dx11.cpp">
-      <Filter>Source Files\imgui</Filter>
+    <ClCompile Include="..\..\..\linux_temp\imgui\backends\imgui_impl_dx11.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\imgui\backends\imgui_impl_win32.cpp">
-      <Filter>Source Files\imgui</Filter>
+    <ClCompile Include="..\..\..\linux_temp\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\out\Vsimtop.cpp">
       <Filter>Source Files\Vsimtop</Filter>
@@ -199,12 +199,8 @@
     <ClInclude Include="..\..\..\linux_temp\imgui\imstb_truetype.h">
       <Filter>Source Files\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\imgui\backends\imgui_impl_dx11.h">
-      <Filter>Source Files\imgui</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\imgui\backends\imgui_impl_win32.h">
-      <Filter>Source Files\imgui</Filter>
-    </ClInclude>
+    <ClInclude Include="..\..\..\linux_temp\imgui\backends\imgui_impl_dx11.h" />
+    <ClInclude Include="..\..\..\linux_temp\imgui\backends\imgui_impl_win32.h" />
     <ClInclude Include="..\out\Vsimtop.h">
       <Filter>Source Files\Vsimtop</Filter>
     </ClInclude>

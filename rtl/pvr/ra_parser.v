@@ -60,8 +60,9 @@ output reg render_to_tile,
 	
 	input poly_drawn,
 	output reg tile_prims_done,
-	
-input tile_accum_done
+
+	input tile_accum_done,
+	output reg frame_done
 );
 
 // Debug counter
@@ -110,9 +111,11 @@ if (!reset_n) begin
 	tile_prims_done <= 1'b0;
 	ra_trig_reg <= 1'b0;
 	trig_pvr_update <= 1'b0;
+	frame_done <= 1'b0;
 end
 else begin
 	trig_pvr_update <= 1'b0;
+	frame_done <= 1'b0;
 	ra_new_tile_start <= 1'b0;
 
 	ra_entry_valid <= 1'b0;
@@ -353,7 +356,10 @@ else begin
 	14: if (isp_idle) begin			// All primitive TYPES within this Tile have been accepted by the ISP/TSP banks.
 		tile_prims_done <= 1'b1;
 
-		if (ra_cont_last) ra_state <= 8'd15;	// TESTING. Don't repeat rendering the same frame, just stop.
+		if (ra_cont_last) begin
+			frame_done <= 1'b1;
+			ra_state <= 8'd15;	// TESTING. Don't repeat rendering the same frame, just stop.
+		end
 		else begin
 			ra_vram_addr <= next_region;	// Check the next Region Array entry.
 			render_bg <= bg_poly_en;

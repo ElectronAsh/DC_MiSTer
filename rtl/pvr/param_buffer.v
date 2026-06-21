@@ -82,11 +82,11 @@ generate
 	end
 
 	if (ENABLE_TEXTURE_PARAMS) begin : g_texture_params
-		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDX_U (.addr(prim_tag), .clk(clock), .din(FDDX_U), .we(pcache_write), .dout(FDDX_U_out));
-		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDY_U (.addr(prim_tag), .clk(clock), .din(FDDY_U), .we(pcache_write), .dout(FDDY_U_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDX_U    (.addr(prim_tag), .clk(clock), .din(FDDX_U),    .we(pcache_write), .dout(FDDX_U_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDY_U    (.addr(prim_tag), .clk(clock), .din(FDDY_U),    .we(pcache_write), .dout(FDDY_U_out));
 		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_small_c_u (.addr(prim_tag), .clk(clock), .din(small_c_u), .we(pcache_write), .dout(small_c_u_out));
-		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDX_V (.addr(prim_tag), .clk(clock), .din(FDDX_V), .we(pcache_write), .dout(FDDX_V_out));
-		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDY_V (.addr(prim_tag), .clk(clock), .din(FDDY_V), .we(pcache_write), .dout(FDDY_V_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDX_V    (.addr(prim_tag), .clk(clock), .din(FDDX_V),    .we(pcache_write), .dout(FDDX_V_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDY_V    (.addr(prim_tag), .clk(clock), .din(FDDY_V),    .we(pcache_write), .dout(FDDY_V_out));
 		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_small_c_v (.addr(prim_tag), .clk(clock), .din(small_c_v), .we(pcache_write), .dout(small_c_v_out));
 	end
 	else begin : g_no_texture_params
@@ -97,16 +97,16 @@ generate
 	if (ENABLE_OFFSET_PARAMS) begin : g_offset_params
 		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_OFFS_A (.addr(prim_tag), .clk(clock), .din(FDDX_OFFS_A), .we(pcache_write), .dout(FDDX_OFFS_A_out));
 		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_OFFS_A (.addr(prim_tag), .clk(clock), .din(FDDY_OFFS_A), .we(pcache_write), .dout(FDDY_OFFS_A_out));
-		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_A (.addr(prim_tag), .clk(clock), .din(c_OFFS_A), .we(pcache_write), .dout(c_OFFS_A_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_A    (.addr(prim_tag), .clk(clock), .din(c_OFFS_A),    .we(pcache_write), .dout(c_OFFS_A_out));
 		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_OFFS_R (.addr(prim_tag), .clk(clock), .din(FDDX_OFFS_R), .we(pcache_write), .dout(FDDX_OFFS_R_out));
 		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_OFFS_R (.addr(prim_tag), .clk(clock), .din(FDDY_OFFS_R), .we(pcache_write), .dout(FDDY_OFFS_R_out));
-		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_R (.addr(prim_tag), .clk(clock), .din(c_OFFS_R), .we(pcache_write), .dout(c_OFFS_R_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_R    (.addr(prim_tag), .clk(clock), .din(c_OFFS_R),    .we(pcache_write), .dout(c_OFFS_R_out));
 		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_OFFS_G (.addr(prim_tag), .clk(clock), .din(FDDX_OFFS_G), .we(pcache_write), .dout(FDDX_OFFS_G_out));
 		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_OFFS_G (.addr(prim_tag), .clk(clock), .din(FDDY_OFFS_G), .we(pcache_write), .dout(FDDY_OFFS_G_out));
-		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_G (.addr(prim_tag), .clk(clock), .din(c_OFFS_G), .we(pcache_write), .dout(c_OFFS_G_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_G    (.addr(prim_tag), .clk(clock), .din(c_OFFS_G),    .we(pcache_write), .dout(c_OFFS_G_out));
 		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDX_OFFS_B (.addr(prim_tag), .clk(clock), .din(FDDX_OFFS_B), .we(pcache_write), .dout(FDDX_OFFS_B_out));
 		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_FDDY_OFFS_B (.addr(prim_tag), .clk(clock), .din(FDDY_OFFS_B), .we(pcache_write), .dout(FDDY_OFFS_B_out));
-		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_B (.addr(prim_tag), .clk(clock), .din(c_OFFS_B), .we(pcache_write), .dout(c_OFFS_B_out));
+		pcache_mem #(.DATA_WIDTH(32), .DEPTH(ENTRIES)) pcache_mem_c_OFFS_B    (.addr(prim_tag), .clk(clock), .din(c_OFFS_B),    .we(pcache_write), .dout(c_OFFS_B_out));
 	end
 	else begin : g_no_offset_params
 		assign FDDX_OFFS_A_out = 32'd0; assign FDDY_OFFS_A_out = 32'd0; assign c_OFFS_A_out = 32'd0;

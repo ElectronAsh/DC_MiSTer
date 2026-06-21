@@ -46,25 +46,6 @@ begin : g_array_z_in
 end
 endgenerate
 
-/*
-wire signed [47:0] BG_D_FIXED;
-float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_x1 (.float_in( ISP_BACKGND_D ), .fixed( BG_D_FIXED ));
-*/
-
-/*
-genvar i;
-generate
-    for (i = 0; i < 32; i = i + 1) begin : depth_compare_32x
-		depth_compare depth_compare_inst0 (
-			.depth_comp( depth_comp_in ),		// input [2:0]  depth_comp
-			.old_z( z_col[i] [ row_sel ] ),		// input [47:0]  old_z
-			.IP_Z( IP_Z[i] ),					// input [47:0]  IP_Z
-			.depth_allow( depth_allow[i] )		// output depth_allow
-		);
-	end
-endgenerate
-*/
-
 generate
 if (ENABLE_DEPTH_COMPARE) begin : g_depth_compare
 depth_compare depth_compare_inst0 (
@@ -302,15 +283,10 @@ always @(posedge clock or negedge reset_n) begin
 	end
 end
 
-wire suppress_tag_only_full_tail =
-	trig_z_row_write_d &&
-	z_write_disable_d &&
-	!z_force_row_write_d &&
-	(inTri_d == 32'hffffffff) &&
-	(inTri == 32'h00000000);
-
-wire [31:0] z_write_allow = (trig_z_row_write_d && !suppress_tag_only_full_tail) ? (inTri_d & (depth_allow | {32{z_force_row_write_d}})) :	// inTri & depth_allow  Bitwise AND.
-											                                      32'h00000000;
+// Keep write-enable generation on registered row data. Using the live current
+// inTri here creates a long inTri_calc/float_to_fixed -> RAM WE timing path.
+wire [31:0] z_write_allow = trig_z_row_write_d ? (inTri_d & (depth_allow | {32{z_force_row_write_d}})) :	// inTri & depth_allow  Bitwise AND.
+										 32'h00000000;
 
 reg [4:0] z_clear_row;
 reg       z_clear_tags_only_active;

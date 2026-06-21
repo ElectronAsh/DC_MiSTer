@@ -313,6 +313,7 @@ wire tex_vram_valid_core;
 wire [63:0] tex_vram_din_core;
 wire tex_vram_req_ack_core;
 wire tile_accum_done_core;
+wire pvr_frame_done_core;
 wire fb_wait;
 wire fb_pending;
 wire pvr_trig_pvr_update_unused;
@@ -389,6 +390,7 @@ pvr pvr (
 	.fb_wait( fb_wait ),			// input  fb_wait
 	.fb_pending( fb_pending ),		// output fb_pending
 	.tile_accum_done( tile_accum_done_core ),
+	.frame_done( pvr_frame_done_core ),
 	
 	.debug_ena_texel_reads( 1'b1 )	// input  debug_ena_texel_reads
 );

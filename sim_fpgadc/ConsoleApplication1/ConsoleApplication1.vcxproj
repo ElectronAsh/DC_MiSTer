@@ -200,8 +200,6 @@
     <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__0.cpp" />
     <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__0__Slow.cpp" />
     <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__1.cpp" />
-    <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__1__Slow.cpp" />
-    <ClCompile Include="..\out\Vsimtop___024root__DepSet_h3a8afb71__2.cpp" />
     <ClCompile Include="..\out\Vsimtop___024root__Slow.cpp" />
     <ClCompile Include="..\out\Vsimtop___024unit__DepSet_h7e859b80__0__Slow.cpp" />
     <ClCompile Include="..\out\Vsimtop___024unit__Slow.cpp" />
@@ -248,5 +246,3 @@
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
-
-

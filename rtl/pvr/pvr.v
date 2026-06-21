@@ -6,8 +6,8 @@
 // Enable one-line per-tile render stats with +define+PVR_TILE_STATS_PRINTS.
 // `define PVR_TILE_STATS_PRINTS
 
-`define PVR_LITE_INTERP 0
-`define PVR_LITE_INTRI_SIMPLE_EDGE 0
+`define PVR_LITE_INTERP 1
+`define PVR_LITE_INTRI_SIMPLE_EDGE 1
 `define PVR_LITE_INTRI_TRI_ONLY 0
 
 module pvr #(
@@ -21,18 +21,16 @@ module pvr #(
 	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b0,
 	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b0,
 	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b0,
-	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b0,
-`ifdef PVR_ENABLE_TILE_ARGB_BUFFER
-	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1
-`else
-	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b0
-`endif
+	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1,
+	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1,
+	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 8
 `else
 	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b1,
 	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b1,
 	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b1,
 	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1,
-	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1
+	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1,
+	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 8
 `endif
 ) (
 	input clock,
@@ -108,6 +106,7 @@ module pvr #(
 	input fb_wait,
 	output fb_pending,
 	output wire tile_accum_done,
+	output wire frame_done,
 
 	input debug_ena_texel_reads,
 	
@@ -514,7 +513,8 @@ ra_parser  ra_parser_inst (
 	.poly_drawn( poly_drawn ),			// input  poly_drawn
 	.tile_prims_done( tile_prims_done ),	// output tile_prims_done
 	
-	.tile_accum_done( tile_accum_done )	// input  tile_accum_done
+	.tile_accum_done( tile_accum_done ),	// input  tile_accum_done
+	.frame_done( frame_done )
 );
 
 
@@ -595,7 +595,8 @@ isp_parser #(
 	.ENABLE_TEXTURE_PARAMS ( PVR_ENABLE_TEXTURE_PIPELINE ),
 	.ENABLE_GOURAUD_PARAMS ( PVR_ENABLE_GOURAUD_SHADE ),
 	.ENABLE_OFFSET_PARAMS  ( PVR_ENABLE_OFFSET_SHADE ),
-	.ENABLE_DEPTH_COMPARE  ( PVR_ENABLE_DEPTH_COMPARE )
+	.ENABLE_DEPTH_COMPARE  ( PVR_ENABLE_DEPTH_COMPARE ),
+	.INTRI_PIXELS_PER_CYCLE( PVR_INTRI_PIXELS_PER_CYCLE )
 ) isp_parser_inst (
 	.clock( clock ),					// input  clock
 	.reset_n( reset_n ),				// input  reset_n
