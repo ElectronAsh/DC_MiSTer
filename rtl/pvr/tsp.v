@@ -115,6 +115,7 @@ module tsp #(
 	output wire [22:0] fb_addr,
 	output wire [63:0] fb_writedata,
 	output wire [7:0] fb_byteena,
+	output wire [7:0] fb_burstcnt,
 	output wire fb_we,
 	input  wire fb_wait,
 	output wire tile_wb_busy
@@ -493,14 +494,17 @@ generate
 if (ENABLE_TILE_ARGB_BUFFER) begin : g_tile_argb_writeback
 	wire tile_wb_we;
 	wire [19:0] wb_word_addr;
-	wire [63:0] fourpix_out;
+	 wire [63:0] fourpix_out;
+	 wire [3:0] wb_byteena;
+	wire [7:0] wb_burstcnt;
 	wire [31:0] tile_buf_argb_in = final_argb;
 	wire [31:0] argb_buf_out;
 
 	assign fb_we = tile_wb_we;
 	assign fb_addr = {3'd0, wb_word_addr};
 	assign fb_writedata = fourpix_out;
-	assign fb_byteena = 8'h0f;
+	assign fb_byteena = {4'd0, wb_byteena};
+	assign fb_burstcnt = wb_burstcnt;
 	assign fb_writeback_stall = tile_wb_busy;
 
 	tile_argb_buffer tile_argb_buffer_inst (
@@ -523,6 +527,9 @@ if (ENABLE_TILE_ARGB_BUFFER) begin : g_tile_argb_writeback
 
 		.wb_word_addr( wb_word_addr ),
 		.fourpix_out( fourpix_out ),
+		.wb_byteena( wb_byteena ),
+
+		.wb_burstcnt( wb_burstcnt ),
 
 		.vram_wr( tile_wb_we ),
 		.vram_wait( fb_wait )
@@ -565,6 +572,7 @@ assign fb_we = direct_fb_pending;
 assign fb_addr = direct_fb_addr;
 assign fb_writedata = direct_fb_writedata;
 assign fb_byteena = direct_fb_byteena;
+assign fb_burstcnt = 8'd1;
 assign fb_writeback_stall = direct_fb_pending && fb_wait;
 
 // tile_argb_buffer is bypassed for FPGA bring-up. Direct pixel writes above

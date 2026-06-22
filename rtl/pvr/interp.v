@@ -5,7 +5,8 @@ module interp #(
 	parameter PIXEL_CENTER_SAMPLE = 1'b1,
 	parameter [7:0] FRAC_BITS = 8'd12,			// Q format for XY coordinates (e.g., Q21.11)
 	parameter [7:0] Z_FRAC_BITS = 8'd17,		// Q format for Z values (e.g., Q20.12)
-	parameter [7:0] FRAC_DIFF = Z_FRAC_BITS - FRAC_BITS
+	parameter [7:0] FRAC_DIFF = Z_FRAC_BITS - FRAC_BITS,
+	parameter COMPUTE_COLS = 1'b1
 ) (
 	input clock,
 
@@ -65,14 +66,19 @@ struct PlaneStepper3
 //  Aa = (FZ3 - FZ1) * (FY2 - FY1) - (FZ2 - FZ1) * (FY3 - FY1);
 reg signed [47:0] FZ2_sub_FZ1;
 reg signed [47:0] FZ3_sub_FZ1;
-reg signed [55:0] Aa_mult_1;	// Needs to be wider than 48-bit.
-reg signed [55:0] Aa_mult_2;	// Needs to be wider than 48-bit.
+`ifdef PVR_LITE_INTERP
+localparam INTERP_MUL_W = 48;
+`else
+localparam INTERP_MUL_W = 56;
+`endif
+reg signed [INTERP_MUL_W-1:0] Aa_mult_1;	// Lite mode deliberately truncates these products to save logic.
+reg signed [INTERP_MUL_W-1:0] Aa_mult_2;
 reg signed [47:0] Aa;			// This might need to be > 48-bit, to get the Daytona logos to render correctly.
 								// But will then use a LOT of logic, for the divide.
 
 // Ba = (FX3 - FX1) * (FZ2 - FZ1) - (FX2 - FX1) * (FZ3 - FZ1);
-reg signed [55:0] Ba_mult_1;	// Needs to be wider than 48-bit.
-reg signed [55:0] Ba_mult_2;	// Needs to be wider than 48-bit.
+reg signed [INTERP_MUL_W-1:0] Ba_mult_1;	// Lite mode deliberately truncates these products to save logic.
+reg signed [INTERP_MUL_W-1:0] Ba_mult_2;
 reg signed [47:0] Ba;			// This might need to be > 48-bit, to get the Daytona logos to render correctly.
 								// But will then use a LOT of logic, for the divide.
 
@@ -91,8 +97,13 @@ wire signed [47:0] FY1_z = FY1 <<<FRAC_DIFF;
 //reg signed [31:0] FDDY;
 
 // c = (FZ1 - ddx * FX1 - ddy * FY1);
-reg signed [47:0] FDDX_mult_FX1;	// Can work as 48-bit?
+reg signed [47:0] FDDX_mult_FX1;
 reg signed [47:0] FDDY_mult_FY1;
+`ifdef PVR_LITE_INTERP
+wire signed [11:0] FX1_lite_int = FX1 >>> FRAC_BITS;
+wire signed [11:0] FY1_lite_int = FY1 >>> FRAC_BITS;
+`endif
+integer interp_i;
 
 `ifndef PVR_LITE_INTERP
 // Choose a dynamic shift that preserves precision but avoids overflow on (Aa << num_shift) / BIG_C.
@@ -182,11 +193,23 @@ always @(*) begin
 	//if (BIG_C != 0 && (FDDX == 0) && (Aa != 0)) $display("Precision loss: Aa=%0d BIG_C=%0d", Aa, BIG_C);
 	
 	// c = (FZ1 - ddx * FX1 - ddy * FY1);
+`ifdef PVR_LITE_INTERP
+    FDDX_mult_FX1 = FDDX_adj * FX1_lite_int;
+    FDDY_mult_FY1 = FDDY_adj * FY1_lite_int;
+`else
     FDDX_mult_FX1 = (FDDX_adj * FX1_z) >>>Z_FRAC_BITS;
     FDDY_mult_FY1 = (FDDY_adj * FY1_z) >>>Z_FRAC_BITS;
+`endif
 	//small_c = FZ1 - FDDX_mult_FX1 - FDDY_mult_FY1;
 	small_c = `PVR_INTERP_ADD( `PVR_INTERP_ADD(FZ1, -FDDX_mult_FX1), -FDDY_mult_FY1 );
 	
+	if (!COMPUTE_COLS) begin
+		interp = 48'd0;
+		for (interp_i = 0; interp_i < 32; interp_i = interp_i + 1) begin
+			interp_cols[interp_i] = 48'd0;
+		end
+	end
+	else begin
 	// Interp ("IP" in C-code PlaneStepper3)...
 	// (x * ddx) + (y * ddy) + c;
 	//
@@ -245,6 +268,7 @@ always @(*) begin
     interp_cols[29] = `PVR_INTERP_ADD(interp_cols[28], FDDX_adj);
     interp_cols[30] = `PVR_INTERP_ADD(interp_cols[29], FDDX_adj);
 	interp_cols[31] = `PVR_INTERP_ADD(interp_cols[30], FDDX_adj);
+end
 end
 
 `undef PVR_INTERP_ADD

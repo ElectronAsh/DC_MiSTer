@@ -1143,6 +1143,7 @@ assign DDRAM_WE       = ioctl_download ? ddr_wr       : geo_ddram_we;		// This i
 wire [22:0] fb_addr;
 wire [63:0] fb_writedata;
 wire [7:0] fb_byteena;
+wire [7:0] fb_burstcnt;
 wire fb_we;
 wire fb_wait;
 wire fb_pending;
@@ -1224,6 +1225,26 @@ wire tex_vram_req_ack_core;
 wire tile_accum_done;
 wire pvr_frame_done;
 
+reg [23:0] fb_write_sof_latched;
+reg fb_write_frame_active;
+wire [23:0] fb_write_sof = fb_write_frame_active ? fb_write_sof_latched : FB_W_SOF1;
+
+always @(posedge clk_sys) begin
+	if (reset) begin
+		fb_write_sof_latched <= 24'd0;
+		fb_write_frame_active <= 1'b0;
+	end
+	else begin
+		if (!fb_write_frame_active && fb_we) begin
+			fb_write_sof_latched <= FB_W_SOF1;
+			fb_write_frame_active <= 1'b1;
+		end
+		if (pvr_frame_done) begin
+			fb_write_frame_active <= 1'b0;
+		end
+	end
+end
+
 pvr pvr (
 	.clock( clk_sys ),			// input  clock
 	.reset_n( !reset ),			// input  reset_n
@@ -1295,6 +1316,7 @@ pvr pvr (
 	.fb_addr( fb_addr ),					// output [22:0]  fb_addr
 	.fb_writedata( fb_writedata ),	// output [63:0]  fb_writedata
 	.fb_byteena( fb_byteena ),			// output [7:0] fb_byteena
+	.fb_burstcnt( fb_burstcnt ),		// output [7:0] fb_burstcnt
 	.fb_we( fb_we ),						// output  fb_we
 	.fb_wait( fb_wait ),					// input  fb_wait
 	.fb_pending( fb_pending ),				// output fb_pending
@@ -1306,7 +1328,7 @@ pvr pvr (
 );
 
 wire ra_vram_wr_selected = ra_vram_wr_core && !fb_pending;
-wire [20:0] fb_wr_word_addr = FB_W_SOF1[22:2] + {1'b0, fb_addr[19:0]};
+wire [20:0] fb_wr_word_addr = fb_write_sof[22:2] + {1'b0, fb_addr[19:0]};
 wire [28:0] fb_wr_addr_side = {9'd0, fb_wr_word_addr[19:0]};
 wire [7:0]  fb_wr_be_side = fb_wr_word_addr[20] ? {fb_byteena[3:0], 4'b0000} : {4'b0000, fb_byteena[3:0]};
 wire [28:0] geo_wr_addr = ra_vram_wr_selected ? {9'd0, ra_vram_addr_core[21:2]} :
@@ -1314,7 +1336,7 @@ wire [28:0] geo_wr_addr = ra_vram_wr_selected ? {9'd0, ra_vram_addr_core[21:2]} 
 wire [63:0] geo_wr_dout = ra_vram_wr_selected ? {ra_vram_dout_core, ra_vram_dout_core} : fb_writedata;
 wire [7:0]  geo_wr_be   = ra_vram_wr_selected ? (ra_vram_addr_core[22] ? 8'b11110000 : 8'b00001111) :
                                                fb_wr_be_side;
-wire [7:0]  geo_wr_burstcnt = 8'd1;
+wire [7:0]  geo_wr_burstcnt = ra_vram_wr_selected ? 8'd1 : fb_burstcnt;
 wire        geo_wr_pending = fb_pending || ra_vram_wr_core;
 wire        geo_wr_we = ra_vram_wr_selected ? ra_vram_wr_core : fb_we;
 wire        geo_wr_wait;

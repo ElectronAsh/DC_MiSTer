@@ -358,7 +358,7 @@ else begin
 
 		if (ra_cont_last) begin
 			frame_done <= 1'b1;
-			ra_state <= 8'd15;	// TESTING. Don't repeat rendering the same frame, just stop.
+			ra_state <= 8'd15;
 		end
 		else begin
 			ra_vram_addr <= next_region;	// Check the next Region Array entry.

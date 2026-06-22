@@ -11,7 +11,7 @@
 `define PVR_LITE_INTRI_TRI_ONLY 0
 
 module pvr #(
-	parameter PIXEL_CENTER_SAMPLE = 1'b1,
+	parameter PIXEL_CENTER_SAMPLE = 1'b0,
 	parameter FRAC_BITS   = 8'd12,	// 12 is about the max atm.
 	parameter Z_FRAC_BITS = 8'd17,	// 17 is about the max atm.
 	// Z_FRAC_BITS needs to be >= FRAC_BITS. (above about 18, and some HUD text on HOTD2 Gargoyle gets mirrored?)
@@ -21,7 +21,7 @@ module pvr #(
 	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b0,
 	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b0,
 	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b0,
-	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1,
+	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b0,
 	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1,
 	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 8
 `else
@@ -30,7 +30,7 @@ module pvr #(
 	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b1,
 	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1,
 	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1,
-	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 8
+	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 32
 `endif
 ) (
 	input clock,
@@ -102,6 +102,7 @@ module pvr #(
 	output [22:0] fb_addr,
 	output [63:0] fb_writedata,
 	output [7:0] fb_byteena,
+	output [7:0] fb_burstcnt,
 	output fb_we,
 	input fb_wait,
 	output fb_pending,
@@ -584,6 +585,7 @@ wire tsp_pix_valid;
 wire [22:0] tsp_tile_fb_addr;
 wire [63:0] tsp_tile_fb_writedata;
 wire [7:0] tsp_tile_fb_byteena;
+wire [7:0] tsp_tile_fb_burstcnt;
 wire tsp_tile_fb_we;
 
 isp_parser #(
@@ -799,6 +801,7 @@ tsp_top (
 	.fb_addr          ( tsp_tile_fb_addr ),
 	.fb_writedata     ( tsp_tile_fb_writedata ),
 	.fb_byteena       ( tsp_tile_fb_byteena ),
+	.fb_burstcnt      ( tsp_tile_fb_burstcnt ),
 	.fb_we            ( tsp_tile_fb_we ),
 	.fb_wait          ( fb_wait ),
 	.tile_wb_busy     ( tile_wb_busy )
@@ -807,6 +810,7 @@ tsp_top (
 assign fb_byteena = tsp_tile_fb_byteena;
 assign fb_addr = tsp_tile_fb_addr;
 assign fb_writedata = tsp_tile_fb_writedata;
+assign fb_burstcnt = tsp_tile_fb_burstcnt;
 assign fb_we = tsp_tile_fb_we;
 assign fb_pending = tile_wb_busy;
 

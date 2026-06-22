@@ -723,21 +723,7 @@ else begin
 				tsp_ready_has_tags <= (prim_tag != 12'd1);
 				//rle_start <= 1'b1;	// rle_by_tag reduces the "Daytona Behind" (theoretical) frame rate from around 32 to 26 FPS. tsp_tag_sorter is FAR slower (like 12 FPS!).
 				//interp_sel <= 4'd0;
-				if (prim_tag == 12'd1) begin
-					clear_z_target_bank <= isp_z_bank;
-					clear_z_next_bank <= 1'b1;
-					clear_z_next_tags_only <= 1'b1;
-					clear_z_next_seen_busy <= 1'b0;
-					if (isp_z_bank)
-						tag_row_occupied_1 <= 32'd0;
-					else
-						tag_row_occupied_0 <= 32'd0;
-					prim_tag <= 12'd1;
-					deferred_tile_started <= 1'b0;
-					tsp_empty_tile_skip_count <= tsp_empty_tile_skip_count + 1'b1;
-					isp_state <= 9'd56;
-				end
-				else if (!tsp_active) begin
+				if (!tsp_active) begin
 					tsp_z_bank <= isp_z_bank;
 					tsp_x_ps <= {tilex, 5'd0};
 					tsp_y_ps <= {tiley, 5'd0};
@@ -751,6 +737,8 @@ else begin
 					tsp_row_settle <= 1'b0;
 					tsp_state <= 9'd51;
 					prim_tag_out_prev <= 12'd4095;		// Force the first TSP tag to fetch its params.
+					if (prim_tag == 12'd1)
+						tsp_empty_tile_skip_count <= tsp_empty_tile_skip_count + 1'b1;
 					tsp_ready_bank <= isp_z_bank;
 					deferred_tile_started <= 1'b1;
 					isp_state <= 9'd57;
@@ -1118,11 +1106,11 @@ else begin
 			//if (tri_vis) begin
 				any_tags_written <= 1'b0;
 				//prim_tag <= prim_tag + 1;	// We post-increment this now, in isp_state 90.
-				interp_sel <= 4'd0;
+				interp_sel <= 4'd11;
 				interp_params_ready <= 1'b0;
-				pcache_write_pending <= 1'b1;
-				// Start HSR immediately; state 49 used to spend a whole cycle
-				// doing only this setup before entering the row pipeline.
+				pcache_write_pending <= 1'b0;
+				// State 49 starts the interp sequence after the fixed-point
+				// vertex registers have captured the current primitive.
 				if (render_bg) begin
 					vert_a_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);	// ISP_BACKGND_D has only 28 bits.
 					vert_b_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);
@@ -1134,7 +1122,7 @@ else begin
 				 inTri_pixel_group <= 2'd0;
 				 zpipe_valid <= 1'b0;
 				 zpipe_flush <= 1'b0;
-				isp_state <= 9'd50;			// "Draw" the triangle! (register spans to the TAG buffer).
+				isp_state <= 9'd49;			// "Draw" the triangle! (register spans to the TAG buffer).
 			//end
 			//else begin
 				//poly_drawn <= 1'b1;			// Skip this Triangle!
@@ -1220,6 +1208,26 @@ else begin
 			end
 		end
 
+		49: begin
+			// First setup cycle: capture the registered float-to-fixed values.
+			interp_sel <= 4'd11;
+			interp_params_ready <= 1'b0;
+			pcache_write_pending <= 1'b0;
+			x_ps <= tilex_start;
+			y_ps <= tiley_start + {6'd0, hsr_start_row};
+			inTri_pixel_group <= 2'd0;
+			zpipe_valid <= 1'b0;
+			zpipe_flush <= 1'b0;
+			isp_state <= 9'd200;
+		end
+
+		200: begin
+			// Second setup cycle: capture delta/BIG_C terms, then start interp.
+			interp_sel <= 4'd0;
+			interp_params_ready <= 1'b0;
+			pcache_write_pending <= 1'b1;
+			isp_state <= 9'd50;
+		end
 		// Pipelined Tag/Z write: read row N, then write row N-1 (dual-port RAMs).
 		50: if (!z_clear_busy) begin
 			if (pcache_write_pending && interp_params_ready) begin
@@ -1414,24 +1422,21 @@ else begin
 		57: begin
 			if (!deferred_tile_started) begin
 				if (!tsp_active) begin
-					if (!tsp_ready_has_tags) begin
+					tsp_z_bank <= tsp_ready_bank;
+					tsp_x_ps <= {tsp_ready_tilex, 5'd0};
+					tsp_y_ps <= {tsp_ready_tiley, 5'd0};
+					tsp_tilex <= tsp_ready_tilex;
+					tsp_tiley <= tsp_ready_tiley;
+					tsp_type_cnt <= tsp_ready_type_cnt;
+					tex_base_word_addr_old <= 21'h1FFFFF;
+					tsp_tex_word_addr_old <= 22'h3fffff;
+					tsp_tex_waiting <= 1'b0;
+					tsp_param_wait <= 2'd2;
+					tsp_row_settle <= 1'b0;
+					tsp_state <= 9'd51;
+					prim_tag_out_prev <= 12'd4095;
+					if (!tsp_ready_has_tags)
 						tsp_empty_tile_skip_count <= tsp_empty_tile_skip_count + 1'b1;
-					end
-					else begin
-						tsp_z_bank <= tsp_ready_bank;
-						tsp_x_ps <= {tsp_ready_tilex, 5'd0};
-						tsp_y_ps <= {tsp_ready_tiley, 5'd0};
-						tsp_tilex <= tsp_ready_tilex;
-						tsp_tiley <= tsp_ready_tiley;
-						tsp_type_cnt <= tsp_ready_type_cnt;
-						tex_base_word_addr_old <= 21'h1FFFFF;
-						tsp_tex_word_addr_old <= 22'h3fffff;
-						tsp_tex_waiting <= 1'b0;
-						tsp_param_wait <= 2'd2;
-						tsp_row_settle <= 1'b0;
-						tsp_state <= 9'd51;
-						prim_tag_out_prev <= 12'd4095;
-					end
 					deferred_tile_started <= 1'b1;
 				end
 			end
@@ -1536,7 +1541,7 @@ else begin
 				// row's prim_tag_out/params.
 				tsp_row_settle <= 1'b0;
 			end
-			else if (!tsp_tag_row_occupied[tsp_y_ps[4:0]]) begin
+			else if (1'b0 && !tsp_tag_row_occupied[tsp_y_ps[4:0]]) begin
 				tsp_empty_row_skip_count <= tsp_empty_row_skip_count + 1'b1;
 				if (tsp_y_ps >= {tsp_tiley, 5'd31}) begin
 					tsp_drain_count <= 5'd16;
@@ -1760,8 +1765,8 @@ wire tri_vis;
 
 vertex_clipper  vertex_clipper_inst (
 	.FRAC_BITS( FRAC_BITS ),	// input [7:0]  FRAC_BITS
-	.FX1( FX1_FIXED ),
-	.FY1( FY1_FIXED ),
+	.FX1( FX1_FIXED_R ),
+	.FY1( FY1_FIXED_R ),
 	.FX2( FX2_FIXED ),
 	.FY2( FY2_FIXED ),
 	.FX3( FX3_FIXED ),
@@ -1856,6 +1861,25 @@ wire signed [47:0] FX4_FIXED;
 wire signed [47:0] FY4_FIXED;
 float_to_fixed #(.FRAC_BITS(FRAC_BITS)) float_x4 (.float_in( vert_d_x ), .fixed( FX4_FIXED ));
 float_to_fixed #(.FRAC_BITS(FRAC_BITS)) float_y4 (.float_in( vert_d_y ), .fixed( FY4_FIXED ));
+reg signed [47:0] FX1_FIXED_R, FY1_FIXED_R, FZ1_FIXED_R, FU1_FIXED_R, FV1_FIXED_R;
+reg signed [47:0] FX2_FIXED_R, FY2_FIXED_R, FZ2_FIXED_R, FU2_FIXED_R, FV2_FIXED_R;
+reg signed [47:0] FX3_FIXED_R, FY3_FIXED_R, FZ3_FIXED_R, FU3_FIXED_R, FV3_FIXED_R;
+reg signed [47:0] FX4_FIXED_R, FY4_FIXED_R;
+
+always @(posedge clock or negedge reset_n) begin
+	if (!reset_n) begin
+		FX1_FIXED_R <= 48'd0; FY1_FIXED_R <= 48'd0; FZ1_FIXED_R <= 48'd0; FU1_FIXED_R <= 48'd0; FV1_FIXED_R <= 48'd0;
+		FX2_FIXED_R <= 48'd0; FY2_FIXED_R <= 48'd0; FZ2_FIXED_R <= 48'd0; FU2_FIXED_R <= 48'd0; FV2_FIXED_R <= 48'd0;
+		FX3_FIXED_R <= 48'd0; FY3_FIXED_R <= 48'd0; FZ3_FIXED_R <= 48'd0; FU3_FIXED_R <= 48'd0; FV3_FIXED_R <= 48'd0;
+		FX4_FIXED_R <= 48'd0; FY4_FIXED_R <= 48'd0;
+	end
+	else begin
+		FX1_FIXED_R <= FX1_FIXED; FY1_FIXED_R <= FY1_FIXED; FZ1_FIXED_R <= FZ1_FIXED; FU1_FIXED_R <= FU1_FIXED; FV1_FIXED_R <= FV1_FIXED;
+		FX2_FIXED_R <= FX2_FIXED; FY2_FIXED_R <= FY2_FIXED; FZ2_FIXED_R <= FZ2_FIXED; FU2_FIXED_R <= FU2_FIXED; FV2_FIXED_R <= FV2_FIXED;
+		FX3_FIXED_R <= FX3_FIXED; FY3_FIXED_R <= FY3_FIXED; FZ3_FIXED_R <= FZ3_FIXED; FU3_FIXED_R <= FU3_FIXED; FV3_FIXED_R <= FV3_FIXED;
+		FX4_FIXED_R <= FX4_FIXED; FY4_FIXED_R <= FY4_FIXED;
+	end
+end
 
 // From the Sega Bible PDF, page 204..
 //
@@ -1916,38 +1940,89 @@ reg signed [63:0] C_mult_1;	// Needs to be wide than 48-bit.
 reg signed [63:0] C_mult_2;	// Needs to be wide than 48-bit.
 reg signed [47:0] BIG_C;	// Might be OK as 48-bit?
 
+reg signed [47:0] FY2_sub_FY1_R;
+reg signed [47:0] FY3_sub_FY1_R;
+reg signed [47:0] FX2_sub_FX1_R;
+reg signed [47:0] FX3_sub_FX1_R;
+reg signed [47:0] BIG_C_R;
+
 always @(*) begin
-	FY2_sub_FY1 = (FY2_FIXED - FY1_FIXED);
-	FY3_sub_FY1 = (FY3_FIXED - FY1_FIXED);
-	FX2_sub_FX1 = (FX2_FIXED - FX1_FIXED);
-	FX3_sub_FX1 = (FX3_FIXED - FX1_FIXED);
+	FY2_sub_FY1 = (FY2_FIXED_R - FY1_FIXED_R);
+	FY3_sub_FY1 = (FY3_FIXED_R - FY1_FIXED_R);
+	FX2_sub_FX1 = (FX2_FIXED_R - FX1_FIXED_R);
+	FX3_sub_FX1 = (FX3_FIXED_R - FX1_FIXED_R);
 
 	C_mult_1 = (FX2_sub_FX1 * FY3_sub_FY1);
 	C_mult_2 = (FX3_sub_FX1 * FY2_sub_FY1);
 	BIG_C    = (C_mult_2 - C_mult_1) >>>(FRAC_BITS-FRAC_DIFF);
 end
 
+always @(posedge clock or negedge reset_n) begin
+	if (!reset_n) begin
+		FY2_sub_FY1_R <= 48'd0;
+		FY3_sub_FY1_R <= 48'd0;
+		FX2_sub_FX1_R <= 48'd0;
+		FX3_sub_FX1_R <= 48'd0;
+		BIG_C_R <= 48'd0;
+	end
+	else begin
+		FY2_sub_FY1_R <= FY2_sub_FY1;
+		FY3_sub_FY1_R <= FY3_sub_FY1;
+		FX2_sub_FX1_R <= FX2_sub_FX1;
+		FX3_sub_FX1_R <= FX3_sub_FX1;
+		BIG_C_R <= BIG_C;
+	end
+end
 
 wire [10:0] tex_u_size_full = (8 << tsp_inst[5:3]);
-wire signed [47:0] u1_mult_width = FU1_FIXED * tex_u_size_full;
-wire signed [47:0] u2_mult_width = FU2_FIXED * tex_u_size_full;
-wire signed [47:0] u3_mult_width = FU3_FIXED * tex_u_size_full;
+wire signed [47:0] u1_mult_width = FU1_FIXED_R * tex_u_size_full;
+wire signed [47:0] u2_mult_width = FU2_FIXED_R * tex_u_size_full;
+wire signed [47:0] u3_mult_width = FU3_FIXED_R * tex_u_size_full;
 
 wire [10:0] tex_v_size_full = (8 << tsp_inst[2:0]);
-wire signed [47:0] v1_mult_height = FV1_FIXED * tex_v_size_full;
-wire signed [47:0] v2_mult_height = FV2_FIXED * tex_v_size_full;
-wire signed [47:0] v3_mult_height = FV3_FIXED * tex_v_size_full;
+wire signed [47:0] v1_mult_height = FV1_FIXED_R * tex_v_size_full;
+wire signed [47:0] v2_mult_height = FV2_FIXED_R * tex_v_size_full;
+wire signed [47:0] v3_mult_height = FV3_FIXED_R * tex_v_size_full;
 
-wire signed [47:0] interp_in_fz1 = (interp_sel==0) ? ((u1_mult_width  * FZ1_FIXED) >>>Z_FRAC_BITS) :
-								   (interp_sel==1) ? ((v1_mult_height * FZ1_FIXED) >>>Z_FRAC_BITS) : 
+wire signed [47:0] interp_u_fz1 = (u1_mult_width  * FZ1_FIXED_R) >>> Z_FRAC_BITS;
+wire signed [47:0] interp_u_fz2 = (u2_mult_width  * FZ2_FIXED_R) >>> Z_FRAC_BITS;
+wire signed [47:0] interp_u_fz3 = (u3_mult_width  * FZ3_FIXED_R) >>> Z_FRAC_BITS;
+wire signed [47:0] interp_v_fz1 = (v1_mult_height * FZ1_FIXED_R) >>> Z_FRAC_BITS;
+wire signed [47:0] interp_v_fz2 = (v2_mult_height * FZ2_FIXED_R) >>> Z_FRAC_BITS;
+wire signed [47:0] interp_v_fz3 = (v3_mult_height * FZ3_FIXED_R) >>> Z_FRAC_BITS;
+
+reg signed [47:0] interp_u_fz1_R, interp_u_fz2_R, interp_u_fz3_R;
+reg signed [47:0] interp_v_fz1_R, interp_v_fz2_R, interp_v_fz3_R;
+
+always @(posedge clock or negedge reset_n) begin
+	if (!reset_n) begin
+		interp_u_fz1_R <= 48'd0;
+		interp_u_fz2_R <= 48'd0;
+		interp_u_fz3_R <= 48'd0;
+		interp_v_fz1_R <= 48'd0;
+		interp_v_fz2_R <= 48'd0;
+		interp_v_fz3_R <= 48'd0;
+	end
+	else begin
+		interp_u_fz1_R <= interp_u_fz1;
+		interp_u_fz2_R <= interp_u_fz2;
+		interp_u_fz3_R <= interp_u_fz3;
+		interp_v_fz1_R <= interp_v_fz1;
+		interp_v_fz2_R <= interp_v_fz2;
+		interp_v_fz3_R <= interp_v_fz3;
+	end
+end
+
+wire signed [47:0] interp_in_fz1 = (interp_sel==0) ? interp_u_fz1_R :
+								   (interp_sel==1) ? interp_v_fz1_R :
 													 ($signed({1'b0, interp_fz1_mux}) <<<Z_FRAC_BITS);
 
-wire signed [47:0] interp_in_fz2 = (interp_sel==0) ? ((u2_mult_width  * FZ2_FIXED) >>>Z_FRAC_BITS) :
-								   (interp_sel==1) ? ((v2_mult_height * FZ2_FIXED) >>>Z_FRAC_BITS) : 
+wire signed [47:0] interp_in_fz2 = (interp_sel==0) ? interp_u_fz2_R :
+								   (interp_sel==1) ? interp_v_fz2_R :
 													 ($signed({1'b0, interp_fz2_mux}) <<<Z_FRAC_BITS);
 
-wire signed [47:0] interp_in_fz3 = (interp_sel==0) ? ((u3_mult_width  * FZ3_FIXED) >>>Z_FRAC_BITS) :
-								   (interp_sel==1) ? ((v3_mult_height * FZ3_FIXED) >>>Z_FRAC_BITS) : 
+wire signed [47:0] interp_in_fz3 = (interp_sel==0) ? interp_u_fz3_R :
+								   (interp_sel==1) ? interp_v_fz3_R :
 													 ($signed({1'b0, interp_fz3_mux}) <<<Z_FRAC_BITS);
 
 wire signed [47:0] FDDX_COL, FDDY_COL, small_c_COL;
@@ -1958,20 +2033,21 @@ interp #(
 	.PIXEL_CENTER_SAMPLE(PIXEL_CENTER_SAMPLE),
 	.FRAC_BITS   (FRAC_BITS),
 	.Z_FRAC_BITS (Z_FRAC_BITS),
-	.FRAC_DIFF   (FRAC_DIFF)
+	.FRAC_DIFF   (FRAC_DIFF),
+	.COMPUTE_COLS(1'b0)
 )
 interp_argb (
 	// FRAC_BITS Format...
 	// All of these, including BIG_C are pre-calculated, per-triangle.
-	.FY2_sub_FY1( FY2_sub_FY1 ),	// input signed [47:0] FY2_sub_FY1
-	.FY3_sub_FY1( FY3_sub_FY1 ),	// input signed [47:0] FY3_sub_FY1
-	.FX2_sub_FX1( FX2_sub_FX1 ),	// input signed [47:0] FX2_sub_FX1
-	.FX3_sub_FX1( FX3_sub_FX1 ),	// input signed [47:0] FX3_sub_FX1
-	.FX1( FX1_FIXED ),						// input signed [47:0] FX1
-	.FY1( FY1_FIXED ),						// input signed [47:0] FY1
+	.FY2_sub_FY1( FY2_sub_FY1_R ),	// input signed [47:0] FY2_sub_FY1
+	.FY3_sub_FY1( FY3_sub_FY1_R ),	// input signed [47:0] FY3_sub_FY1
+	.FX2_sub_FX1( FX2_sub_FX1_R ),	// input signed [47:0] FX2_sub_FX1
+	.FX3_sub_FX1( FX3_sub_FX1_R ),	// input signed [47:0] FX3_sub_FX1
+	.FX1( FX1_FIXED_R ),						// input signed [47:0] FX1
+	.FY1( FY1_FIXED_R ),						// input signed [47:0] FY1
 	
 	// Now in Z_FRAC_BITS format...
-	.BIG_C( BIG_C ),				// input signed [63:0] BIG_C
+	.BIG_C( BIG_C_R ),				// input signed [63:0] BIG_C
 
 	// Input values for tha actual Interp...
 	.FZ1( interp_in_fz1 ),	// input signed [47:0] FZ1
@@ -2327,8 +2403,8 @@ inTri_calc #(
 	.INTRI_PIXELS_PER_CYCLE(INTRI_PIXELS_PER_CYCLE)
 )
 inTri_calc_inst (
-	.FX1_FIXED( FX1_FIXED ), .FX2_FIXED( FX2_FIXED ), .FX3_FIXED( FX3_FIXED ), .FX4_FIXED( FX4_FIXED ),	// input signed [47:0]
-	.FY1_FIXED( FY1_FIXED ), .FY2_FIXED( FY2_FIXED ), .FY3_FIXED( FY3_FIXED ), .FY4_FIXED( FY4_FIXED ),	// input signed [47:0]	
+	.FX1_FIXED( FX1_FIXED_R ), .FX2_FIXED( FX2_FIXED_R ), .FX3_FIXED( FX3_FIXED_R ), .FX4_FIXED( FX4_FIXED_R ),	// input signed [47:0]
+	.FY1_FIXED( FY1_FIXED_R ), .FY2_FIXED( FY2_FIXED_R ), .FY3_FIXED( FY3_FIXED_R ), .FY4_FIXED( FY4_FIXED_R ),	// input signed [47:0]	
 		
 	.x_ps( x_ps ),	// input [10:0]
 	.y_ps( y_ps ),	// input [10:0]
@@ -2347,25 +2423,26 @@ interp #(
 	.PIXEL_CENTER_SAMPLE(PIXEL_CENTER_SAMPLE),
 	.FRAC_BITS   (FRAC_BITS),
 	.Z_FRAC_BITS (Z_FRAC_BITS),
-	.FRAC_DIFF   (FRAC_DIFF)
+	.FRAC_DIFF   (FRAC_DIFF),
+	.COMPUTE_COLS(1'b1)
 )
 interp_inst_z (
 	.clock( clock ),
 
 	// FRAC_BITS format...
-	.FY2_sub_FY1( FY2_sub_FY1 ),	// input signed [47:0] FY2_sub_FY1 
-	.FY3_sub_FY1( FY3_sub_FY1 ),	// input signed [47:0] FY3_sub_FY1
-	.FX2_sub_FX1( FX2_sub_FX1 ),	// input signed [47:0] FX2_sub_FX1
-	.FX3_sub_FX1( FX3_sub_FX1 ),	// input signed [47:0] FX3_sub_FX1
-	.FX1( FX1_FIXED ),				// input signed [47:0] FX1
-	.FY1( FY1_FIXED ),				// input signed [47:0] FY1
+	.FY2_sub_FY1( FY2_sub_FY1_R ),	// input signed [47:0] FY2_sub_FY1 
+	.FY3_sub_FY1( FY3_sub_FY1_R ),	// input signed [47:0] FY3_sub_FY1
+	.FX2_sub_FX1( FX2_sub_FX1_R ),	// input signed [47:0] FX2_sub_FX1
+	.FX3_sub_FX1( FX3_sub_FX1_R ),	// input signed [47:0] FX3_sub_FX1
+	.FX1( FX1_FIXED_R ),				// input signed [47:0] FX1
+	.FY1( FY1_FIXED_R ),				// input signed [47:0] FY1
 	
 	// Now in Z_FRAC_BITS format...
-	.BIG_C( BIG_C ),			// input signed [63:0] BIG_C
+	.BIG_C( BIG_C_R ),			// input signed [63:0] BIG_C
 
-	.FZ1( FZ1_FIXED ),			// input signed [47:0] z1
-	.FZ2( FZ2_FIXED ),			// input signed [47:0] z2
-	.FZ3( FZ3_FIXED ),			// input signed [47:0] z3
+	.FZ1( FZ1_FIXED_R ),			// input signed [47:0] z1
+	.FZ2( FZ2_FIXED_R ),			// input signed [47:0] z2
+	.FZ3( FZ3_FIXED_R ),			// input signed [47:0] z3
 	
 	// Integer...
 	.x_ps( x_ps ),			// input [10:0] x_ps
