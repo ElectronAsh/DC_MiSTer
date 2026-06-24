@@ -494,8 +494,8 @@ generate
 if (ENABLE_TILE_ARGB_BUFFER) begin : g_tile_argb_writeback
 	wire tile_wb_we;
 	wire [19:0] wb_word_addr;
-	 wire [63:0] fourpix_out;
-	 wire [3:0] wb_byteena;
+	wire [63:0] fourpix_out;
+	wire [7:0] wb_byteena;
 	wire [7:0] wb_burstcnt;
 	wire [31:0] tile_buf_argb_in = final_argb;
 	wire [31:0] argb_buf_out;
@@ -503,8 +503,8 @@ if (ENABLE_TILE_ARGB_BUFFER) begin : g_tile_argb_writeback
 	assign fb_we = tile_wb_we;
 	assign fb_addr = {3'd0, wb_word_addr};
 	assign fb_writedata = fourpix_out;
-	assign fb_byteena = {4'd0, wb_byteena};
-	assign fb_burstcnt = wb_burstcnt;
+	assign fb_byteena   = wb_byteena;
+	assign fb_burstcnt  = wb_burstcnt;
 	assign fb_writeback_stall = tile_wb_busy;
 
 	tile_argb_buffer tile_argb_buffer_inst (

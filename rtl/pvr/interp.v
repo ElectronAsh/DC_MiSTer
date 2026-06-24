@@ -26,9 +26,9 @@ module interp #(
 	input signed [10:0] x_ps,
 	input signed [10:0] y_ps,
 
-	output reg signed [47:0] FDDX,		// Works OK as 32-bit?
-	output reg signed [47:0] FDDY,
-	output reg signed [47:0] small_c,
+	output reg signed [39:0] FDDX,		// Works OK as 32-bit?
+	output reg signed [39:0] FDDY,
+	output reg signed [39:0] small_c,
 
 	output reg signed [47:0] interp,	// Single output.
 
@@ -189,9 +189,9 @@ always @(*) begin
 	//FDDY = (BIG_C==0) ? 0 : ((Ba <<<Z_FRAC_BITS) / BIG_C);
 	FDDX = (BIG_C==0) ? 0 : ((Aa <<<num_shift) / BIG_C);
 	FDDY = (BIG_C==0) ? 0 : ((Ba <<<num_shift) / BIG_C);
-	
+
 	//if (BIG_C != 0 && (FDDX == 0) && (Aa != 0)) $display("Precision loss: Aa=%0d BIG_C=%0d", Aa, BIG_C);
-	
+
 	// c = (FZ1 - ddx * FX1 - ddy * FY1);
 `ifdef PVR_LITE_INTERP
     FDDX_mult_FX1 = FDDX_adj * FX1_lite_int;

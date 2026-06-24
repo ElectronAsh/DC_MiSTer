@@ -6,9 +6,9 @@
 // Enable one-line per-tile render stats with +define+PVR_TILE_STATS_PRINTS.
 // `define PVR_TILE_STATS_PRINTS
 
-`define PVR_LITE_INTERP 1
-`define PVR_LITE_INTRI_SIMPLE_EDGE 1
-`define PVR_LITE_INTRI_TRI_ONLY 0
+//`define PVR_LITE_INTERP 1
+//`define PVR_LITE_INTRI_SIMPLE_EDGE 1
+//`define PVR_LITE_INTRI_TRI_ONLY 0
 
 module pvr #(
 	parameter PIXEL_CENTER_SAMPLE = 1'b0,
@@ -21,7 +21,7 @@ module pvr #(
 	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b0,
 	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b0,
 	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b0,
-	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b0,
+	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1,
 	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1,
 	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 8
 `else
@@ -38,6 +38,7 @@ module pvr #(
 	
 	input ra_trig,
 	input bg_poly_en,
+	input tl_poly_en,
 	output trig_pvr_update,
 	input pvr_reg_update,
 
@@ -79,6 +80,8 @@ module pvr #(
 	output wire [23:0] ra_vram_addr,
 	input  wire [63:0] ra_vram_din64,
 	output wire [31:0] ra_vram_dout,
+	
+	input wire         ra_vram_wr_accept,
 
 	input  wire        isp_vram_wait,
 	input  wire        isp_vram_valid,
@@ -457,41 +460,44 @@ wire tsp_busy;
 wire isp_prefetch_ready;
 
 ra_parser  ra_parser_inst (
-	.clock( clock ),		// input  clock
-	.reset_n( reset_n ),	// input  reset_n
+	.clock( clock ),						// input  clock
+	.reset_n( reset_n ),					// input  reset_n
 	
 	.TEST_SELECT( TEST_SELECT ),
-	.ra_trig( ra_trig ),	// input  ra_trig
+	.ra_trig( ra_trig ),					// input  ra_trig
 	.bg_poly_en( bg_poly_en ),
+	.tl_poly_en( tl_poly_en ),
 	.trig_pvr_update( trig_pvr_update ),
 	.pvr_reg_update( pvr_reg_update ),
 	
-	.ISP_BACKGND_D( ISP_BACKGND_D ),	// input [31:0]  ISP_BACKGND_D
-	.ISP_BACKGND_T( ISP_BACKGND_T ),	// input [31:0]  ISP_BACKGND_T
-	.render_bg( render_bg ),			// output  render_bg
+	.ISP_BACKGND_D( ISP_BACKGND_D ),		// input [31:0]  ISP_BACKGND_D
+	.ISP_BACKGND_T( ISP_BACKGND_T ),		// input [31:0]  ISP_BACKGND_T
+	.render_bg( render_bg ),				// output  render_bg
 
-	.PARAM_BASE( PARAM_BASE ),			// input [31:0]  PARAM_BASE  0x20.
-	.REGION_BASE( REGION_BASE ),		// input [31:0]  REGION_BASE 0x2C.
-	.TA_ALLOC_CTRL( TA_ALLOC_CTRL ),	// input [31:0]  TA_ALLOC_CTRL 0x140.
-	.FPU_PARAM_CFG( FPU_PARAM_CFG ),	// input [31:0]  FPU_PARAM_CFG. 0x7C.
+	.PARAM_BASE( PARAM_BASE ),				// input [31:0]  PARAM_BASE  0x20.
+	.REGION_BASE( REGION_BASE ),			// input [31:0]  REGION_BASE 0x2C.
+	.TA_ALLOC_CTRL( TA_ALLOC_CTRL ),		// input [31:0]  TA_ALLOC_CTRL 0x140.
+	.FPU_PARAM_CFG( FPU_PARAM_CFG ),		// input [31:0]  FPU_PARAM_CFG. 0x7C.
 	
 	.ra_vram_wait( ra_vram_wait ),		// input  ra_vram_wait
-	.ra_vram_valid( ra_vram_valid ),	// input  ra_vram_valid
-	.ra_vram_rd( ra_vram_rd ),			// output  ra_vram_rd
-	.ra_vram_wr( ra_vram_wr ),			// output  ra_vram_wr
+	.ra_vram_valid( ra_vram_valid ),		// input  ra_vram_valid
+	.ra_vram_rd( ra_vram_rd ),				// output  ra_vram_rd
+	.ra_vram_wr( ra_vram_wr ),				// output  ra_vram_wr
 	.ra_vram_addr( ra_vram_addr ),		// output [23:0]  ra_vram_addr
-	.ra_vram_din( ra_vram_din ),		// input [31:0]   ra_vram_din
+	.ra_vram_din( ra_vram_din ),			// input [31:0]   ra_vram_din
 	.ra_vram_dout( ra_vram_dout ),		// output [31:0]   ra_vram_dout
 	
-	.ra_control( ra_control ),			// output [31:0]  ra_control
-	.ra_cont_last( ra_cont_last ),		// output ra_cont_last
+	.ra_vram_wr_accept( ra_vram_wr_accept ),	// input  ra_vram_wr_accept
+	
+	.ra_control( ra_control ),					// output [31:0]  ra_control
+	.ra_cont_last( ra_cont_last ),			// output ra_cont_last
 	.ra_cont_zclear_n( ra_cont_zclear_n ),	// output ra_cont_zclear
 	.ra_cont_flush_n( ra_cont_flush_n ),	// output ra_cont_flush_n
-	.ra_cont_tiley( ra_cont_tiley ),	// output [5:0]  ra_cont_tiley
-	.ra_cont_tilex( ra_cont_tilex ),	// output [5:0]  ra_cont_tilex
+	.ra_cont_tiley( ra_cont_tiley ),			// output [5:0]  ra_cont_tiley
+	.ra_cont_tilex( ra_cont_tilex ),			// output [5:0]  ra_cont_tilex
 
 	.ra_new_tile_start( ra_new_tile_start ),	// output  ra_new_tile_start
-	.type_cnt( type_cnt ),				// output [2:0]  type_cnt
+	.type_cnt( type_cnt ),							// output [2:0]  type_cnt
 	
 	.isp_idle( isp_idle ),
 	.isp_prefetch_ready( isp_prefetch_ready ),
@@ -505,13 +511,13 @@ ra_parser  ra_parser_inst (
 	
 	.ra_entry_valid( ra_entry_valid ),	// output  ra_entry_valid
 	
-	.opb_word( opb_word ),				// output [31:0]  opb_word
+	.opb_word( opb_word ),					// output [31:0]  opb_word
 	
-	.poly_addr( poly_addr ),			// output [23:0]  poly_addr
-	.render_poly( render_poly ),		// output  render_poly
+	.poly_addr( poly_addr ),				// output [23:0]  poly_addr
+	.render_poly( render_poly ),			// output  render_poly
 	.render_to_tile( render_to_tile ),	// output  render_to_tile
 	
-	.poly_drawn( poly_drawn ),			// input  poly_drawn
+	.poly_drawn( poly_drawn ),					// input  poly_drawn
 	.tile_prims_done( tile_prims_done ),	// output tile_prims_done
 	
 	.tile_accum_done( tile_accum_done ),	// input  tile_accum_done

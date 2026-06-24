@@ -3,7 +3,7 @@
 
 // Tags are 12-bit in the Z/tag buffer. 512 entries aliases tags 512+ back
 // onto earlier params, which shows up as wrong textures/shading on busy tiles.
-localparam ENTRIES = 256;
+localparam ENTRIES = 1024;
 
 module param_buffer #(
 	parameter ENABLE_TEXTURE_PARAMS = 1'b1,

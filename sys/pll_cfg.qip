@@ -6,7 +6,7 @@ set_global_assignment -entity "pll_cfg" -library "pll_cfg" -name IP_TARGETED_DEV
 set_global_assignment -entity "pll_cfg" -library "pll_cfg" -name IP_GENERATED_DEVICE_FAMILY "{Cyclone V}"
 set_global_assignment -entity "pll_cfg" -library "pll_cfg" -name IP_QSYS_MODE "UNKNOWN"
 set_global_assignment -name SYNTHESIS_ONLY_QIP ON
-set_global_assignment -entity "pll_cfg" -library "pll_cfg" -name IP_COMPONENT_NAME "cGxsX2hkbWlfY2Zn"
+set_global_assignment -entity "pll_cfg" -library "pll_cfg" -name IP_COMPONENT_NAME "cGxsX2NmZw=="
 set_global_assignment -entity "pll_cfg" -library "pll_cfg" -name IP_COMPONENT_DISPLAY_NAME "QWx0ZXJhIFBMTCBSZWNvbmZpZw=="
 set_global_assignment -entity "pll_cfg" -library "pll_cfg" -name IP_COMPONENT_REPORT_HIERARCHY "Off"
 set_global_assignment -entity "pll_cfg" -library "pll_cfg" -name IP_COMPONENT_INTERNAL "Off"
@@ -38,6 +38,7 @@ set_global_assignment -entity "altera_pll_reconfig_top" -library "pll_cfg" -name
 set_global_assignment -library "pll_cfg" -name VERILOG_FILE [file join $::quartus(qip_path) "pll_cfg.v"]
 set_global_assignment -library "pll_cfg" -name VERILOG_FILE [file join $::quartus(qip_path) "pll_cfg/altera_pll_reconfig_top.v"]
 set_global_assignment -library "pll_cfg" -name VERILOG_FILE [file join $::quartus(qip_path) "pll_cfg/altera_pll_reconfig_core.v"]
+set_global_assignment -library "pll_cfg" -name VERILOG_FILE [file join $::quartus(qip_path) "pll_cfg/altera_std_synchronizer.v"]
 
 set_global_assignment -entity "altera_pll_reconfig_top" -library "pll_cfg" -name IP_TOOL_NAME "altera_pll_reconfig"
 set_global_assignment -entity "altera_pll_reconfig_top" -library "pll_cfg" -name IP_TOOL_VERSION "17.0"

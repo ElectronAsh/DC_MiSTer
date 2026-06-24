@@ -19,7 +19,7 @@
 <generic name="gui_frac_multiply_factor" value="2537930535" />
 <generic name="gui_divide_factor_n" value="1" />
 <generic name="gui_cascade_counter0" value="false" />
-<generic name="gui_output_clock_frequency0" value="10.0" />
+<generic name="gui_output_clock_frequency0" value="20.0" />
 <generic name="gui_divide_factor_c0" value="8" />
 <generic name="gui_actual_output_clock_frequency0" value="0 MHz" />
 <generic name="gui_ps_units0" value="ps" />
@@ -182,7 +182,7 @@
 <generic name="gui_duty_cycle17" value="50" />
 <generic name="gui_pll_auto_reset" value="On" />
 <generic name="gui_pll_bandwidth_preset" value="Auto" />
-<generic name="gui_en_reconf" value="false" />
+<generic name="gui_en_reconf" value="true" />
 <generic name="gui_en_dps_ports" value="false" />
 <generic name="gui_en_phout_ports" value="false" />
 <generic name="gui_phout_division" value="1" />

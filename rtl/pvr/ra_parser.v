@@ -1,4 +1,3 @@
-
 `timescale 1ns / 1ps
 `default_nettype none
 
@@ -9,6 +8,7 @@ module ra_parser (
 	input [31:0] TEST_SELECT,
 	input ra_trig,
 	input bg_poly_en,
+	input tl_poly_en,
 	output reg trig_pvr_update,
 	input pvr_reg_update,
 	
@@ -29,6 +29,8 @@ module ra_parser (
 	output reg [23:0] ra_vram_addr,
 	input [31:0] ra_vram_din,
 	output reg [31:0] ra_vram_dout,
+	
+	input ra_vram_wr_accept,
 	
 	output reg [31:0] ra_control,
 	output wire ra_cont_last,
@@ -56,7 +58,7 @@ module ra_parser (
 	
 	output reg [23:0] poly_addr,
 	output reg render_poly,
-output reg render_to_tile,
+	output reg render_to_tile,
 	
 	input poly_drawn,
 	output reg tile_prims_done,
@@ -95,6 +97,7 @@ wire eol = opb_word[28];						// End Of List.
 
 reg [7:0] ol_jump_bytes;
 reg ra_trig_reg;
+//reg ra_mailbox_wr_issued;
 
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
@@ -110,6 +113,7 @@ if (!reset_n) begin
 	ra_new_tile_start <= 1'b0;
 	tile_prims_done <= 1'b0;
 	ra_trig_reg <= 1'b0;
+	//ra_mailbox_wr_issued <= 1'b0;
 	trig_pvr_update <= 1'b0;
 	frame_done <= 1'b0;
 end
@@ -123,9 +127,7 @@ else begin
 
 	render_to_tile <= 1'b0;
 	tile_prims_done <= 1'b0;
-	
-//	if (ra_vram_rd && !ra_vram_wait) ra_vram_rd <= 1'b0;
-//	if (ra_vram_wr && !ra_vram_wait) ra_vram_wr <= 1'b0;
+
 	ra_vram_rd <= 1'b0;
 	ra_vram_wr <= 1'b0;
 
@@ -145,7 +147,8 @@ else begin
 	end
 
 	200: if (!trig_pvr_update && !pvr_reg_update) begin
-		ra_state <= (TEST_SELECT != 32'h00000000) ? 8'd1 : 8'd0;
+		if (TEST_SELECT != 32'h00000000) ra_state <= 8'd1;
+		else ra_state <= 8'd0;
 	end
 	
 	1: begin
@@ -257,7 +260,7 @@ else begin
 			0: if (!ra_opaque[31] &&  o_opb>0) begin ra_vram_addr <= ra_opaque[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<o_opb )*4; ra_state <= 8'd10; end // Alpha = 1.0 only.
 			//1: if (!ra_puncht[31] && pt_opb>0) begin ra_vram_addr <= ra_puncht[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<pt_opb)*4; ra_state <= 8'd10; end // Alpha 0.0 or 1.0 only.
 			//2: if (!ra_op_mod[31] && om_opb>0) begin ra_vram_addr <= ra_op_mod[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<om_opb)*4; ra_state <= 8'd10; end // Modifier Vol, for Opaque/Punch-through
-			3: if (!ra_trans[31]  &&  t_opb>0) begin ra_vram_addr <= ra_trans[23:0];  ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<t_opb )*4; ra_state <= 8'd10; end // Alpha between 0.0 and 1.0.
+			3: if (tl_poly_en && (!ra_trans[31]  &&  t_opb>0)) begin ra_vram_addr <= ra_trans[23:0];  ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<t_opb )*4; ra_state <= 8'd10; end // Alpha between 0.0 and 1.0.
 			//4: if (!ra_tr_mod[31] && tm_opb>0) begin ra_vram_addr <= ra_tr_mod[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<tm_opb)*4; ra_state <= 8'd10; end // Modifier Vol, for Transparent.
 			5: if (isp_idle) begin
 				render_to_tile <= 1'b1;	// Flush a pending background-only tile, or take the cheap empty fast path.
@@ -369,17 +372,21 @@ else begin
 	end
 	
 	15: begin	// All tiles Done. Clear the frame-done mailbox words for reicast on the ARM side.
-		ra_vram_dout <= 32'h00000000;
+		/*
 		ra_vram_addr <= 24'h7FFFF8;		// 8MB, minus 8 bytes.
-		ra_vram_wr   <= 1'b1;
-		if (!ra_vram_wait) ra_state <= 8'd16;
-	end
-
-	16: begin
 		ra_vram_dout <= 32'h00000000;
-		ra_vram_addr <= 24'h7FFFFC;		// 8MB, minus 4 bytes.
-		ra_vram_wr   <= 1'b1;
-		if (!ra_vram_wait) ra_state <= 8'd0;
+		if (!ra_mailbox_wr_issued) begin
+			ra_mailbox_wr_issued <= 1'b1;
+		end
+		else if (!ra_vram_wait) begin
+			ra_mailbox_wr_issued <= 1'b0;
+			ra_state <= 8'd16;
+		end
+		*/
+		 ra_vram_addr <= 24'h800018;
+		 ra_vram_dout <= 32'hDEADDEAD;
+		 ra_vram_wr   <= 1'b1;
+		 if (ra_vram_wr_accept) ra_state <= 8'd0;
 	end
 		
 	default: ;

@@ -333,11 +333,33 @@ video_freak video_freak
 
 
 // Status Bit Map:
-//             Upper                             Lower              
-// 0         1         2         3          4         5         6   
+//
+//              Upper                          Lower
+// 0         1         2         3          4         5         6
 // 01234567890123456789012345678901 23456789012345678901234567890123
 // 0123456789ABCDEFGHIJKLMNOPQRSTUV 0123456789ABCDEFGHIJKLMNOPQRSTUV
-// XXXXXXXXXXXX XXXXXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXXXXXXXXXX
+// X---XXXXXX--XXX X-XXXXXX------XX XX----------------------XX------
+// |   ||||||  ||| | ||||||      || ||                       ||
+// |   ||||||  ||| | ||||||      || ||                       ++- Core Clock [57:56]
+// |   ||||||  ||| | ||||||      || ||
+// |   ||||||  ||| | ||||||      || |+------------------------- TL Polys enable [33]
+// |   ||||||  ||| | ||||||      || |
+// |   ||||||  ||| | ||||||      || +-------------------------- Vertical Crop [32]
+// |   ||||||  ||| | ||||||      ||
+// |   ||||||  ||| | ||||||      ++---------------------------- Scale [31:30]
+// |   ||||||  ||| | ||||||
+// |   ||||||  ||| | ||||++------------------------------------ FB Display [23:22]
+// |   ||||||  ||| | ||||
+// |   ||||||  ||| | ++++-------------------------------------- FB Scan [21:18]
+// |   ||||||  ||| |
+// |   ||||||  ||| +------------------------------------------- FB Layout [16] 
+// |   ||||||  ||| 
+// |   ||||||  +++--------------------------------------------- Texel Reads [12], Trigger [13], BG Poly [14]
+// |   ||||||
+// |   ++++++-------------------------------------------------- Aspect Ratio [5:4], FB Format [6], FB BPP [7], FB Stride [9:8]
+// |
+// +----------------------------------------------------------- Reset [0]
+//
 
 `include "build_id.v"
 localparam CONF_STR = {
@@ -347,6 +369,7 @@ localparam CONF_STR = {
 	"FC3,BIN,Load VRAM Dump;",
 	"-;",
 	"O[12],Texel Reads,Off,On;",
+	"O[33],TL Polys,Off,On;",
 	"T[13],Trigger Render;",
 	"O[14],BG Poly,Off,On;",
 	"O[23:22],FB Display,Latched,FB_R_SOF1,FB_W_SOF1,Latched;",
@@ -355,6 +378,7 @@ localparam CONF_STR = {
 	"O[9:8],FB Stride,640,1280,2560,5120;",
 	"O[16],FB Layout,VRAM,Linear;",
 	"O[21:18],FB Scan,SOF,080000,100000,180000,200000,280000,300000,380000,400000,480000,500000,580000,600000,680000,700000,780000;",
+	"O[57:56],Core Clock,5 MHz,10 MHz,20 MHz,40 MHz;",
 	"-;",
 	"P1,Audio & Video;", 
  	"-;",
@@ -909,19 +933,38 @@ pll pll
 	.rst(0),
 	.outclk_0(clk_sys),
 	//.outclk_1(clk_ram),
-	//.reconfig_to_pll(reconfig_to_pll),
-	//.reconfig_from_pll(reconfig_from_pll),
+	.reconfig_to_pll(reconfig_to_pll),
+	.reconfig_from_pll(reconfig_from_pll),
 	.locked(locked)
 );
 
 
-/*
 wire [63:0] reconfig_to_pll;
 wire [63:0] reconfig_from_pll;
 wire        cfg_waitrequest;
 reg         cfg_write;
 reg   [5:0] cfg_address;
 reg  [31:0] cfg_data;
+reg   [2:0] clk_cfg_state = 3'd0;
+reg   [1:0] clk_cfg_sel = 2'd0;
+reg   [1:0] clk_sel_meta = 2'd0;
+reg   [1:0] clk_sel_sync = 2'd0;
+
+localparam [5:0] PLL_CFG_MODE_REG       = 6'd0;
+localparam [5:0] PLL_CFG_START_REG      = 6'd2;
+localparam [5:0] PLL_CFG_C_COUNTERS_REG = 6'd5;
+
+function [31:0] clk_cfg_c_counter;
+	input [1:0] sel;
+	begin
+		case (sel)
+			2'd0: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd8, 8'd8}; // 5 MHz,  /16
+			2'd1: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd4, 8'd4}; // 10 MHz, /8
+			2'd2: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd2, 8'd2}; // 20 MHz, /4
+			2'd3: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd1, 8'd1}; // 40 MHz, /2
+		endcase
+	end
+endfunction
 
 pll_cfg pll_cfg
 (
@@ -938,43 +981,40 @@ pll_cfg pll_cfg
 );
 
 always @(posedge CLK_50M) begin
-	reg pald = 0, pald2 = 0;
-	reg [2:0] state = 0;
-	reg pal_r;
-
-	pald <= PAL;
-	pald2 <= pald;
+	clk_sel_meta <= status[57:56];
+	clk_sel_sync <= clk_sel_meta;
 
 	cfg_write <= 0;
-	if(pald2 == pald && pald2 != pal_r) begin
-		state <= 1;
-		pal_r <= pald2;
+	if ((clk_sel_sync != clk_cfg_sel) && (clk_cfg_state == 3'd0)) begin
+		clk_cfg_sel <= clk_sel_sync;
+		clk_cfg_state <= 3'd1;
 	end
 
 	if(!cfg_waitrequest) begin
-		if(state) state<=state+1'd1;
-		case(state)
-			1: begin
-					cfg_address <= 0;
-					cfg_data <= 0;
-					cfg_write <= 1;
-				end
-			5: begin
-					cfg_address <= 7;
-					cfg_data <= pal_r ? 2201376125 : 2537930535;
-					cfg_write <= 1;
-				end
-			7: begin
-					cfg_address <= 2;
-					cfg_data <= 0;
-					cfg_write <= 1;
-				end
+		if(clk_cfg_state) clk_cfg_state <= clk_cfg_state + 3'd1;
+		case(clk_cfg_state)
+			3'd1: begin
+				cfg_address <= PLL_CFG_MODE_REG;
+				cfg_data <= 0;
+				cfg_write <= 1;
+			end
+			3'd3: begin
+				cfg_address <= PLL_CFG_C_COUNTERS_REG;
+				cfg_data <= clk_cfg_c_counter(clk_cfg_sel);
+				cfg_write <= 1;
+			end
+			3'd5: begin
+				cfg_address <= PLL_CFG_START_REG;
+				cfg_data <= 0;
+				cfg_write <= 1;
+			end
+			3'd7: clk_cfg_state <= 3'd0;
 		endcase
 	end
 end
-*/
 
-wire reset = /*RESET |*/ status[0] | boot1_loading | vram_dump_loading;
+wire pll_reconfig_reset = !locked | (clk_cfg_state != 3'd0);
+wire reset = /*RESET |*/ status[0] | boot1_loading | vram_dump_loading | pll_reconfig_reset;
 
 
 (*keep*)wire boot0_loading = ioctl_index=={2'd0, 6'd0} && ioctl_download;	// PVR regs loaded at core-load.
@@ -1251,6 +1291,7 @@ pvr pvr (
 	
 	.ra_trig( status[13] ),
 	.bg_poly_en( status[14] ),
+	.tl_poly_en( status[33] ),
 	.trig_pvr_update( trig_pvr_update ),
 	.pvr_reg_update( pvr_reg_update ),
 
@@ -1292,6 +1333,8 @@ pvr pvr (
 	.ra_vram_addr( ra_vram_addr_core ),
 	.ra_vram_din64( ra_vram_din_core ),
 	.ra_vram_dout( ra_vram_dout_core ),
+	
+	.ra_vram_wr_accept( ra_vram_wr_accept ),
 
 	.isp_vram_wait( isp_vram_wait_core ),
 	.isp_vram_valid( isp_vram_valid_core ),
@@ -1328,18 +1371,20 @@ pvr pvr (
 );
 
 wire ra_vram_wr_selected = ra_vram_wr_core && !fb_pending;
+wire ra_vram_wr_accept = ra_vram_wr_selected && !geo_wr_wait;
+
 wire [20:0] fb_wr_word_addr = fb_write_sof[22:2] + {1'b0, fb_addr[19:0]};
 wire [28:0] fb_wr_addr_side = {9'd0, fb_wr_word_addr[19:0]};
 wire [7:0]  fb_wr_be_side = fb_wr_word_addr[20] ? {fb_byteena[3:0], 4'b0000} : {4'b0000, fb_byteena[3:0]};
-wire [28:0] geo_wr_addr = ra_vram_wr_selected ? {9'd0, ra_vram_addr_core[21:2]} :
-                                               fb_wr_addr_side;
+
+wire [28:0] geo_wr_addr = ra_vram_wr_selected ? {9'd0, ra_vram_addr_core[21:2]} : fb_wr_addr_side;
 wire [63:0] geo_wr_dout = ra_vram_wr_selected ? {ra_vram_dout_core, ra_vram_dout_core} : fb_writedata;
-wire [7:0]  geo_wr_be   = ra_vram_wr_selected ? (ra_vram_addr_core[22] ? 8'b11110000 : 8'b00001111) :
-                                               fb_wr_be_side;
+wire [7:0]  geo_wr_be   = ra_vram_wr_selected ? (ra_vram_addr_core[22] ? 8'b11110000 : 8'b00001111) : fb_wr_be_side;
 wire [7:0]  geo_wr_burstcnt = ra_vram_wr_selected ? 8'd1 : fb_burstcnt;
 wire        geo_wr_pending = fb_pending || ra_vram_wr_core;
 wire        geo_wr_we = ra_vram_wr_selected ? ra_vram_wr_core : fb_we;
 wire        geo_wr_wait;
+
 assign fb_wait = geo_wr_wait | ra_vram_wr_selected;
 assign ra_vram_wr_wait_core = geo_wr_wait | fb_pending;
 assign ra_vram_wait_core = ra_vram_wr_core ? ra_vram_wr_wait_core : ra_vram_rd_wait_core;

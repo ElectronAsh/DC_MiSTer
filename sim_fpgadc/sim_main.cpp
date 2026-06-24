@@ -10,7 +10,6 @@
 #include <verilated.h>
 #include "Vsimtop.h"
 #include "Vsimtop___024root.h"
-#include "Vsimtop_z_buff__Ez1.h"
 
 constexpr auto FRAC_BITS   = 12;	// 12 is about the max atm.
 constexpr auto Z_FRAC_BITS = 17;	// 17 is about the max atm.
@@ -45,6 +44,18 @@ float z3_min = 10000.0f, z3_max = 0.0f;
 
 float x4_min = 10000.0f, x4_max = 0.0f;
 float y4_min = 10000.0f, y4_max = 0.0f;
+
+struct RangeTracker {
+	int64_t max_abs = 0;
+	void update(int64_t v) { int64_t a = v < 0 ? -v : v; if (a > max_abs) max_abs = a; }
+	int bits_signed() const {
+		if (max_abs == 0) return 1;
+		int b = 1; while ((int64_t(1) << b) <= max_abs) b++; return b + 1;
+	}
+	void reset() { max_abs = 0; }
+};
+
+RangeTracker rng_FZ, rng_Aa, rng_Ba, rng_BIG_C, rng_FDDX, rng_FDDY, rng_small_c, rng_interp_col;
 
 // DirectX data
 static ID3D11Device*            g_pd3dDevice = NULL;
@@ -204,6 +215,7 @@ static void write_ddr64(uint8_t *vram_ptr, uint32_t addr, uint64_t din, uint8_t 
 //Vsimtop* top = new Vsimtop;	// Verilator 4.224.
 static Vsimtop* top;			// Verilator v5.002-117-g31d8b4cb8
 
+/*
 static uint16_t z_view_tag_snapshot[2][32][32];
 static uint64_t z_view_z_snapshot[2][32][32];
 static bool z_view_snapshot_valid[2] = {false, false};
@@ -254,6 +266,7 @@ static void snapshot_z_bank_row(int bank, Vsimtop_z_buff__Ez1* zbuf, int row)
 }
 
 #undef Z_SNAPSHOT_COL
+*/
 
 char my_string[1024];
 
@@ -1645,10 +1658,10 @@ int verilate() {
 			write_ddr64(vram_ptr, top->DDRAM_ADDR, top->DDRAM_DIN, top->DDRAM_BE);
 		}
 
-		auto zbuf0 = top->__PVT__simtop__DOT__pvr__DOT__isp_parser_inst__DOT__z_buff_inst_0;
-		auto zbuf1 = top->__PVT__simtop__DOT__pvr__DOT__isp_parser_inst__DOT__z_buff_inst_1;
-		if (zbuf0 && (zbuf0->z_write_allow != 0)) snapshot_z_bank_row(0, zbuf0, zbuf0->row_sel_wr);
-		if (zbuf1 && (zbuf1->z_write_allow != 0)) snapshot_z_bank_row(1, zbuf1, zbuf1->row_sel_wr);
+		//auto zbuf0 = top->__PVT__simtop__DOT__pvr__DOT__isp_parser_inst__DOT__z_buff_inst_0;
+		//auto zbuf1 = top->__PVT__simtop__DOT__pvr__DOT__isp_parser_inst__DOT__z_buff_inst_1;
+		//if (zbuf0 && (zbuf0->z_write_allow != 0)) snapshot_z_bank_row(0, zbuf0, zbuf0->row_sel_wr);
+		//if (zbuf1 && (zbuf1->z_write_allow != 0)) snapshot_z_bank_row(1, zbuf1, zbuf1->row_sel_wr);
 
 		if (main_time == 0) {
 			bottleneck_cycles = 0;
@@ -1725,9 +1738,9 @@ int verilate() {
 			if (fabs(y1) < fabs(y1_min)) y1_min = y1; if (fabs(y1) > fabs(y1_max)) y1_max = y1;
 			if (fabs(z1) < fabs(z1_min)) z1_min = z1; if (fabs(z1) > fabs(z1_max)) z1_max = z1;
 
-			if (fabs(x2) < fabs(x2_min)) x2_min = x2; if (fabs(x2) > fabs(x1_max)) x2_max = x2;
-			if (fabs(y2) < fabs(y2_min)) y2_min = y2; if (fabs(y2) > fabs(y1_max)) y2_max = y2;
-			if (fabs(z2) < fabs(z2_min)) z2_min = z2; if (fabs(z2) > fabs(y1_max)) z2_max = y2;
+			if (fabs(x2) < fabs(x2_min)) x2_min = x2; if (fabs(x2) > fabs(x2_max)) x2_max = x2;
+			if (fabs(y2) < fabs(y2_min)) y2_min = y2; if (fabs(y2) > fabs(y2_max)) y2_max = y2;
+			if (fabs(z2) < fabs(z2_min)) z2_min = z2; if (fabs(z2) > fabs(z2_max)) z2_max = z2;
 
 			if (fabs(x3) < fabs(x3_min)) x3_min = x3; if (fabs(x3) > fabs(x3_max)) x3_max = x3;
 			if (fabs(y3) < fabs(y3_min)) y3_min = y3; if (fabs(y3) > fabs(y3_max)) y3_max = y3;
@@ -1735,6 +1748,20 @@ int verilate() {
 
 			if (fabs(x4) < fabs(x4_min)) x4_min = x4; if (fabs(x4) > fabs(x4_max)) x4_max = x4;
 			if (fabs(y4) < fabs(y4_min)) y4_min = y4; if (fabs(y4) > fabs(y4_max)) y4_max = y4;
+
+			// Bit-width tracking for interp internals. All signals are QData (uint64_t).
+			auto& r = *top->rootp;
+			rng_FZ.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FZ1_FIXED));
+			rng_FZ.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FZ2_FIXED));
+			rng_FZ.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FZ3_FIXED));
+			rng_BIG_C.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__BIG_C_R));
+			rng_Aa.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__interp_inst_z__DOT__Aa));
+			rng_Ba.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__interp_inst_z__DOT__Ba));
+			rng_FDDX.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__interp_inst_z__DOT__FDDX));
+			rng_FDDY.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__interp_inst_z__DOT__FDDY));
+			rng_small_c.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__interp_inst_z__DOT__small_c));
+			rng_interp_col.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__IP_Z[0]));
+			rng_interp_col.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__IP_Z[31]));
 		}
 
 		/*
@@ -2133,6 +2160,9 @@ void full_reset() {
 
 	x4_min = 10000.0f, x4_max = 0.0f;
 	y4_min = 10000.0f, y4_max = 0.0f;
+
+	rng_FZ.reset(); rng_Aa.reset(); rng_Ba.reset(); rng_BIG_C.reset();
+	rng_FDDX.reset(); rng_FDDY.reset(); rng_small_c.reset(); rng_interp_col.reset();
 }
 
 
@@ -3062,7 +3092,6 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Text("    vert_d_off_col: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_d_off_col);
 		ImGui::End();
 
-		/*
 		ImGui::Begin("Min/Max values (per frame)");
 		ImGui::Text("   x1_min: %08.6f   x1_max: %08.6f", x1_min, x1_max);
 		ImGui::Text("   y1_min: %08.6f   y1_max: %08.6f", y1_min, y1_max);
@@ -3079,7 +3108,24 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Text("   x4_min: %08.6f   x4_max: %08.6f", x4_min, x4_max);
 		ImGui::Text("   y4_min: %08.6f   y4_max: %08.6f", y4_min, y4_max);
 		ImGui::End();
-		*/
+
+		ImGui::Begin("Bit-Width Analysis (interp Z, run to measure)");
+		ImGui::Text("Signal        max_abs              bits needed (signed)");
+		ImGui::Separator();
+		auto bw = [](const char* name, const RangeTracker& r) {
+			ImGui::Text("%-12s  %20lld   %d", name, (long long)r.max_abs, r.bits_signed());
+		};
+		bw("FZ",         rng_FZ);
+		bw("BIG_C",      rng_BIG_C);
+		bw("Aa",         rng_Aa);
+		bw("Ba",         rng_Ba);
+		bw("FDDX",       rng_FDDX);
+		bw("FDDY",       rng_FDDY);
+		bw("small_c",    rng_small_c);
+		bw("interp_col", rng_interp_col);
+		ImGui::Separator();
+		ImGui::TextDisabled("Resets each frame. Run several frames to accumulate.");
+		ImGui::End();
 
 		ImGui::Begin(" Texture Pipeline");
 		ImGui::Separator();
@@ -3177,6 +3223,7 @@ int main(int argc, char** argv, char** env) {
 #define ZBUF_CASE_TAG(BANK, COL) case COL: return static_cast<uint16_t>(ZBUF_TAG(BANK, COL, row) & 0x0fff)
 #define ZBUF_CASE_Z(BANK, COL) case COL: return static_cast<uint64_t>(ZBUF_Z(BANK, COL, row)) & 0x0000ffffffffffffULL
 
+		/*
 		auto z_tag_live = [&](int bank, int col, int row) -> uint16_t {
 			if (bank == 0) {
 				switch (col) {
@@ -3325,7 +3372,7 @@ int main(int argc, char** argv, char** env) {
 					ZBUF_CASE_Z(1, 31);
 			default: return 0;
 			}
-		};
+		};*/
 
 		static int z_view_mode = 0;
 		ImGui::RadioButton("Tag", &z_view_mode, 0); ImGui::SameLine();
@@ -3338,6 +3385,7 @@ int main(int argc, char** argv, char** env) {
 		static bool z_view_live = false;
 		ImGui::Checkbox("Live RAM", &z_view_live);
 
+		/*
 		auto z_tag = [&](int bank, int col, int row) -> uint16_t {
 			if (!z_view_live && z_view_snapshot_valid[bank]) return z_view_tag_snapshot[bank][row][col];
 			return z_tag_live(bank, col, row);
@@ -3347,7 +3395,9 @@ int main(int argc, char** argv, char** env) {
 			if (!z_view_live && z_view_snapshot_valid[bank]) return z_view_z_snapshot[bank][row][col];
 			return z_value_live(bank, col, row);
 		};
+		*/
 
+		/*
 		int bank_nonzero_tags[2] = {0, 0};
 		int bank_nonzero_z[2] = {0, 0};
 		for (int summary_bank = 0; summary_bank < 2; summary_bank++) {
@@ -3389,6 +3439,7 @@ int main(int argc, char** argv, char** env) {
 #undef ZBUF_Z
 #undef ZBUF_CASE_TAG
 #undef ZBUF_CASE_Z
+*/
 		ImGui::End();
 
 		ImGui::Begin("ISP Cache Viewer");

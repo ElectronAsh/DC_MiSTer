@@ -334,6 +334,7 @@ pvr pvr (
 	
 	.ra_trig( 1'b1 ),
 	.bg_poly_en( 1'b1 ),
+	.tl_poly_en( 1'b1 ),
 	.trig_pvr_update( pvr_trig_pvr_update_unused ),
 	.pvr_reg_update( 1'b0 ),
 

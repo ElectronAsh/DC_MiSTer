@@ -1256,8 +1256,8 @@ else begin
 				if (!z_write_disable) begin
 					for (z_i = 0; z_i < 32; z_i = z_i + 1) begin
 						if (inTri[z_i] && depth_allow[z_i]) begin
-							if (IP_Z[z_i] < tile_z_min) tile_z_min <= IP_Z[z_i];
-							if (IP_Z[z_i] > tile_z_max) tile_z_max <= IP_Z[z_i];
+							if (IP_Z_R[z_i] < tile_z_min) tile_z_min <= IP_Z_R[z_i];
+							if (IP_Z_R[z_i] > tile_z_max) tile_z_max <= IP_Z_R[z_i];
 						end
 					end
 				end
@@ -2025,7 +2025,7 @@ wire signed [47:0] interp_in_fz3 = (interp_sel==0) ? interp_u_fz3_R :
 								   (interp_sel==1) ? interp_v_fz3_R :
 													 ($signed({1'b0, interp_fz3_mux}) <<<Z_FRAC_BITS);
 
-wire signed [47:0] FDDX_COL, FDDY_COL, small_c_COL;
+wire signed [39:0] FDDX_COL, FDDY_COL, small_c_COL;
 
 generate
 if (ENABLE_TEXTURE_PARAMS || ENABLE_GOURAUD_PARAMS || ENABLE_OFFSET_PARAMS) begin : g_param_interp
@@ -2061,12 +2061,12 @@ interp_argb (
 	// Output Delta X, Delta Y, and small_c (starting value).
 	.FDDX( FDDX_COL ),			// output signed [47:0] FDDX
 	.FDDY( FDDY_COL ),			// output signed [47:0] FDDY
-	.small_c( small_c_COL )		// output signed [:0] small_c
+	.small_c( small_c_COL )		// output signed [39:0] small_c
 );
 end
 else begin : g_no_param_interp
-	assign FDDX_COL = 48'd0;
-	assign FDDY_COL = 48'd0;
+	assign FDDX_COL = 40'd0;
+	assign FDDY_COL = 40'd0;
 	assign small_c_COL = $signed({1'b0, interp_fz3_mux}) <<< Z_FRAC_BITS;
 end
 endgenerate
@@ -2419,6 +2419,19 @@ inTri_calc_inst (
 // Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
 wire signed [47:0] IP_Z [0:31];	// [0:31] is the tile COLUMN.
 wire signed [47:0] IP_Z_INTERP;		// For sim C code debug.
+
+// Break the FZ*→interp→depth_compare→porta_we_reg combinational chain at the z_buff boundary.
+// z_buff already pipelines inTri_d/trig_z_row_write_d by one cycle; IP_Z_R matches that delay.
+reg signed [47:0] IP_Z_R [0:31];
+integer ip_z_i;
+always @(posedge clock or negedge reset_n) begin
+	if (!reset_n) begin
+		for (ip_z_i = 0; ip_z_i < 32; ip_z_i = ip_z_i + 1) IP_Z_R[ip_z_i] <= 48'sd0;
+	end
+	else begin
+		for (ip_z_i = 0; ip_z_i < 32; ip_z_i = ip_z_i + 1) IP_Z_R[ip_z_i] <= IP_Z[ip_z_i];
+	end
+end
 interp #(
 	.PIXEL_CENTER_SAMPLE(PIXEL_CENTER_SAMPLE),
 	.FRAC_BITS   (FRAC_BITS),
@@ -2512,7 +2525,7 @@ z_buff #(
 
 	.tag_in( prim_tag ),					// input [11:0] prim_tag_in
 
-	.z_in_cols ( IP_Z ),					// input signed [47:0] z_in_cols [0:31]
+	.z_in_cols ( IP_Z_R ),					// input signed [47:0] z_in_cols [0:31]
 
 	.z_out( z_out_0 ),						// output signed  [47:0]  z_out
 	.prim_tag_out( prim_tag_out_0 ),		// output [11:0]  prim_tag_out
@@ -2545,7 +2558,7 @@ z_buff #(
 
 	.tag_in( prim_tag ),
 
-	.z_in_cols ( IP_Z ),
+	.z_in_cols ( IP_Z_R ),
 
 	.z_out( z_out_1 ),
 	.prim_tag_out( prim_tag_out_1 ),
