@@ -480,6 +480,9 @@ task tag_run_finish;
 	end
 endtask
 
+wire [3:0] interp_sel_out;
+wire interp_valid;
+
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	isp_state <= 9'd0;
@@ -579,7 +582,8 @@ if (!reset_n) begin
 	pcache_write_pending <= 1'b0;
 	//trig_z_row_write <= 1'b0;
 	tile_accum_done <= 1'b0;
-	interp_sel <= 4'd11;
+	interp_sel_in <= 4'd11;
+	start_interp <= 1'b0;
 	interp_params_ready <= 1'b0;
 	any_tags_written <= 1'b0;
 	tsp_pix_wr <= 1'b0;
@@ -599,6 +603,8 @@ if (!reset_n) begin
 end
 else begin
 	cb_cache_clear <= 1'b0;
+
+	start_interp <= 1'b0;
 	
 	isp_entry_valid <= 1'b0;
 	poly_drawn <= 1'b0;
@@ -630,17 +636,19 @@ else begin
 	tsp_pix_adv <= 1'b0;
 	tsp_issue_accept = 1'b0;
 
-	if (interp_sel < 4'd11) begin
-		if ((!isp_inst[24] && (interp_sel == 4'd5)) ||
-			( isp_inst[24] && (interp_sel == 4'd10))) begin
-			interp_params_ready <= 1'b1;
-		end
-		interp_sel <= interp_sel + 1;
-		//$display("interp_sel: %d", interp_sel);
+	if ((interp_valid && !isp_inst[24] && (interp_sel_out == 4'd5)) || ( isp_inst[24] && (interp_sel_out == 4'd10))) begin
+		interp_params_ready <= 1'b1;
+	end
+
+	if (interp_sel_in < 4'd11) begin
+		start_interp <= 1'b1;
+		interp_sel_in <= interp_sel_in + 1;
+		//$display("interp_sel_in: %d", interp_sel_in);
 		//$display("FDDX_BASE_R: %08X  FDDY_BASE_R: %08X", FDDX_BASE_R, FDDY_BASE_R);
 		//$display("FDDX_U: %012X  FDDY_U: %012X", FDDX_U, FDDY_U);
 		//$display("FDDX_V: %012X  FDDY_V: %012X", FDDX_V, FDDY_V);
 	end
+	//else start_interp <= 1'b0;
 
 	if (ra_new_tile_start) begin	// New tile started!
 		//cb_cache_clear <= 1'b1;	// Using some lower bits of the texture address bits from the TCW as the "Tag" now. No need to clear before each Tile.
@@ -722,7 +730,7 @@ else begin
 				tsp_ready_type_cnt <= type_cnt;
 				tsp_ready_has_tags <= (prim_tag != 12'd1);
 				//rle_start <= 1'b1;	// rle_by_tag reduces the "Daytona Behind" (theoretical) frame rate from around 32 to 26 FPS. tsp_tag_sorter is FAR slower (like 12 FPS!).
-				//interp_sel <= 4'd0;
+				//interp_sel_in <= 4'd0;
 				if (!tsp_active) begin
 					tsp_z_bank <= isp_z_bank;
 					tsp_x_ps <= {tilex, 5'd0};
@@ -1106,7 +1114,8 @@ else begin
 			//if (tri_vis) begin
 				any_tags_written <= 1'b0;
 				//prim_tag <= prim_tag + 1;	// We post-increment this now, in isp_state 90.
-				interp_sel <= 4'd11;
+				interp_sel_in <= 4'd11;
+				//start_interp <= 1'b1;
 				interp_params_ready <= 1'b0;
 				pcache_write_pending <= 1'b0;
 				// State 49 starts the interp sequence after the fixed-point
@@ -1210,8 +1219,9 @@ else begin
 
 		49: begin
 			// First setup cycle: capture the registered float-to-fixed values.
-			interp_sel <= 4'd11;
-			interp_params_ready <= 1'b0;
+			interp_sel_in <= 4'd11;
+			//start_interp <= 1'b1;
+			//interp_params_ready <= 1'b0;
 			pcache_write_pending <= 1'b0;
 			x_ps <= tilex_start;
 			y_ps <= tiley_start + {6'd0, hsr_start_row};
@@ -1223,8 +1233,9 @@ else begin
 
 		200: begin
 			// Second setup cycle: capture delta/BIG_C terms, then start interp.
-			interp_sel <= 4'd0;
-			interp_params_ready <= 1'b0;
+			interp_sel_in <= 4'd0;
+			start_interp <= 1'b1;
+			//interp_params_ready <= 1'b0;
 			pcache_write_pending <= 1'b1;
 			isp_state <= 9'd50;
 		end
@@ -1899,36 +1910,36 @@ wire [31:0] interp_fz2_offs_argb = (gouraud) ? vert_b_off_col : vert_c_off_col;
 wire [31:0] interp_fz3_offs_argb = (gouraud) ? vert_c_off_col : vert_c_off_col;
 
 // Vertex A.
-wire [7:0] interp_fz1_mux = (interp_sel==2 ) ? interp_fz1_base_argb[31:24] :	// Base Alpha.
-							(interp_sel==3 ) ? interp_fz1_base_argb[23:16] :	// Base Red.
-							(interp_sel==4 ) ? interp_fz1_base_argb[15:08] :	// Base Green.
-							(interp_sel==5 ) ? interp_fz1_base_argb[07:00] :	// Base Blue.
-							(interp_sel==6 ) ? interp_fz1_offs_argb[31:24] :	// Offset Alpha.
-							(interp_sel==7 ) ? interp_fz1_offs_argb[23:16] :	// Offset Red.
-							(interp_sel==8 ) ? interp_fz1_offs_argb[15:08] :	// Offset Green.
-							(interp_sel==9 ) ? interp_fz1_offs_argb[07:00] :	// Offset Blue.
+wire [7:0] interp_fz1_mux = (interp_sel_in==2 ) ? interp_fz1_base_argb[31:24] :	// Base Alpha.
+							(interp_sel_in==3 ) ? interp_fz1_base_argb[23:16] :	// Base Red.
+							(interp_sel_in==4 ) ? interp_fz1_base_argb[15:08] :	// Base Green.
+							(interp_sel_in==5 ) ? interp_fz1_base_argb[07:00] :	// Base Blue.
+							(interp_sel_in==6 ) ? interp_fz1_offs_argb[31:24] :	// Offset Alpha.
+							(interp_sel_in==7 ) ? interp_fz1_offs_argb[23:16] :	// Offset Red.
+							(interp_sel_in==8 ) ? interp_fz1_offs_argb[15:08] :	// Offset Green.
+							(interp_sel_in==9 ) ? interp_fz1_offs_argb[07:00] :	// Offset Blue.
 											   8'd0;
 
 // Vertex B.
-wire [7:0] interp_fz2_mux = (interp_sel==2 ) ? interp_fz2_base_argb[31:24] :
-							(interp_sel==3 ) ? interp_fz2_base_argb[23:16] :
-							(interp_sel==4 ) ? interp_fz2_base_argb[15:08] :
-							(interp_sel==5 ) ? interp_fz2_base_argb[07:00] :
-							(interp_sel==6 ) ? interp_fz2_offs_argb[31:24] :
-							(interp_sel==7 ) ? interp_fz2_offs_argb[23:16] :
-							(interp_sel==8 ) ? interp_fz2_offs_argb[15:08] :
-							(interp_sel==9 ) ? interp_fz2_offs_argb[07:00] :
+wire [7:0] interp_fz2_mux = (interp_sel_in==2 ) ? interp_fz2_base_argb[31:24] :
+							(interp_sel_in==3 ) ? interp_fz2_base_argb[23:16] :
+							(interp_sel_in==4 ) ? interp_fz2_base_argb[15:08] :
+							(interp_sel_in==5 ) ? interp_fz2_base_argb[07:00] :
+							(interp_sel_in==6 ) ? interp_fz2_offs_argb[31:24] :
+							(interp_sel_in==7 ) ? interp_fz2_offs_argb[23:16] :
+							(interp_sel_in==8 ) ? interp_fz2_offs_argb[15:08] :
+							(interp_sel_in==9 ) ? interp_fz2_offs_argb[07:00] :
 											   8'd0;
 
 // Vertex C.
-wire [7:0] interp_fz3_mux = (interp_sel==2 ) ? interp_fz3_base_argb[31:24] :
-							(interp_sel==3 ) ? interp_fz3_base_argb[23:16] :
-							(interp_sel==4 ) ? interp_fz3_base_argb[15:08] :
-							(interp_sel==5 ) ? interp_fz3_base_argb[07:00] :
-							(interp_sel==6 ) ? interp_fz3_offs_argb[31:24] :
-							(interp_sel==7 ) ? interp_fz3_offs_argb[23:16] :
-							(interp_sel==8 ) ? interp_fz3_offs_argb[15:08] :
-							(interp_sel==9 ) ? interp_fz3_offs_argb[07:00] :
+wire [7:0] interp_fz3_mux = (interp_sel_in==2 ) ? interp_fz3_base_argb[31:24] :
+							(interp_sel_in==3 ) ? interp_fz3_base_argb[23:16] :
+							(interp_sel_in==4 ) ? interp_fz3_base_argb[15:08] :
+							(interp_sel_in==5 ) ? interp_fz3_base_argb[07:00] :
+							(interp_sel_in==6 ) ? interp_fz3_offs_argb[31:24] :
+							(interp_sel_in==7 ) ? interp_fz3_offs_argb[23:16] :
+							(interp_sel_in==8 ) ? interp_fz3_offs_argb[15:08] :
+							(interp_sel_in==9 ) ? interp_fz3_offs_argb[07:00] :
 											   8'd0;
 
 reg signed [47:0] FY2_sub_FY1;
@@ -1936,9 +1947,9 @@ reg signed [47:0] FY3_sub_FY1;
 reg signed [47:0] FX2_sub_FX1;
 reg signed [47:0] FX3_sub_FX1;
 
-reg signed [63:0] C_mult_1;	// Needs to be wide than 48-bit.
-reg signed [63:0] C_mult_2;	// Needs to be wide than 48-bit.
-reg signed [47:0] BIG_C;	// Might be OK as 48-bit?
+reg signed [55:0] C_mult_1;		// Needs to be wide than 48-bit.
+reg signed [55:0] C_mult_2;		// Needs to be wide than 48-bit.
+reg signed [47:0] BIG_C;		// Might be OK as 48-bit?
 
 reg signed [47:0] FY2_sub_FY1_R;
 reg signed [47:0] FY3_sub_FY1_R;
@@ -2013,22 +2024,24 @@ always @(posedge clock or negedge reset_n) begin
 	end
 end
 
-wire signed [47:0] interp_in_fz1 = (interp_sel==0) ? interp_u_fz1_R :
-								   (interp_sel==1) ? interp_v_fz1_R :
+wire signed [47:0] interp_in_fz1 = (interp_sel_in==0) ? interp_u_fz1_R :
+								   (interp_sel_in==1) ? interp_v_fz1_R :
 													 ($signed({1'b0, interp_fz1_mux}) <<<Z_FRAC_BITS);
 
-wire signed [47:0] interp_in_fz2 = (interp_sel==0) ? interp_u_fz2_R :
-								   (interp_sel==1) ? interp_v_fz2_R :
+wire signed [47:0] interp_in_fz2 = (interp_sel_in==0) ? interp_u_fz2_R :
+								   (interp_sel_in==1) ? interp_v_fz2_R :
 													 ($signed({1'b0, interp_fz2_mux}) <<<Z_FRAC_BITS);
 
-wire signed [47:0] interp_in_fz3 = (interp_sel==0) ? interp_u_fz3_R :
-								   (interp_sel==1) ? interp_v_fz3_R :
+wire signed [47:0] interp_in_fz3 = (interp_sel_in==0) ? interp_u_fz3_R :
+								   (interp_sel_in==1) ? interp_v_fz3_R :
 													 ($signed({1'b0, interp_fz3_mux}) <<<Z_FRAC_BITS);
 
-wire signed [39:0] FDDX_COL, FDDY_COL, small_c_COL;
+wire signed [47:0] FDDX_COL, FDDY_COL;
+wire signed [47:0] small_c_COL;
 
 generate
 if (ENABLE_TEXTURE_PARAMS || ENABLE_GOURAUD_PARAMS || ENABLE_OFFSET_PARAMS) begin : g_param_interp
+/*
 interp #(
 	.PIXEL_CENTER_SAMPLE(PIXEL_CENTER_SAMPLE),
 	.FRAC_BITS   (FRAC_BITS),
@@ -2062,6 +2075,44 @@ interp_argb (
 	.FDDX( FDDX_COL ),			// output signed [47:0] FDDX
 	.FDDY( FDDY_COL ),			// output signed [47:0] FDDY
 	.small_c( small_c_COL )		// output signed [39:0] small_c
+);
+*/
+
+interp_params #(
+    .FRAC_BITS( FRAC_BITS ),
+    .Z_FRAC_BITS( Z_FRAC_BITS ),
+    .FRAC_DIFF( FRAC_DIFF )
+)
+interp_argb (
+	.clock( clock ),
+	.reset_n( reset_n ),
+	
+    .interp_sel_in( interp_sel_in ),	// input [3:0]  interp_sel_in
+    .start_interp( start_interp ),		// input  start_interp
+
+	// FRAC_BITS Format...
+	// All of these, including BIG_C are pre-calculated, per-triangle.
+	.FY2_sub_FY1( FY2_sub_FY1 ),	// input signed [47:0] FY2_sub_FY1
+	.FY3_sub_FY1( FY3_sub_FY1 ),	// input signed [47:0] FY3_sub_FY1
+	.FX2_sub_FX1( FX2_sub_FX1 ),	// input signed [47:0] FX2_sub_FX1
+	.FX3_sub_FX1( FX3_sub_FX1 ),	// input signed [47:0] FX3_sub_FX1
+	.FX1( FX1_FIXED ),			// input signed [47:0] FX1
+	.FY1( FY1_FIXED ),			// input signed [47:0] FY1
+	
+	// Now in Z_FRAC_BITS format...
+	.BIG_C( BIG_C ),				// input signed [63:0] BIG_C
+
+	// Input values for tha actual Interp...
+	.FZ1( interp_in_fz1 ),		// input signed [47:0] FZ1
+	.FZ2( interp_in_fz2 ),		// input signed [47:0] FZ2
+	.FZ3( interp_in_fz3 ),		// input signed [47:0] FZ3
+
+    .FDDX( FDDX_COL ),			// output [39:0]  FDDX.
+    .FDDY( FDDY_COL ),			// output [39:0]  FDDY.
+    .small_c( small_c_COL ),	// output [39:0]  small_c.
+	
+    .interp_sel_out( interp_sel_out ),	// output [3:0]  interp_sel_out.
+    .interp_valid( interp_valid )		// output  interp_valid.
 );
 end
 else begin : g_no_param_interp
@@ -2106,8 +2157,8 @@ reg signed [31:0] c_OFFS_G;
 reg signed [31:0] c_OFFS_B;
 
 always @(posedge clock)
-begin
-	case (interp_sel)
+if (interp_valid) begin
+	case (interp_sel_out)
 		// Texture UV...
 		0: begin FDDX_U <= FDDX_COL; FDDY_U <= FDDY_COL; small_c_u <= small_c_COL; end
 		1: begin FDDX_V <= FDDX_COL; FDDY_V <= FDDY_COL; small_c_v <= small_c_COL; end
@@ -2125,6 +2176,13 @@ begin
 		9: begin FDDX_OFFS_B <= FDDX_COL; FDDY_OFFS_B <= FDDY_COL; c_OFFS_B <= small_c_COL; end
 		default:;
 	endcase
+
+	$display("interp_sel_out: %d", interp_sel_out);
+	$display("FDDX_BASE_R: %08X  FDDY_BASE_R: %08X", FDDX_BASE_R, FDDY_BASE_R);
+	$display("FDDX_BASE_G: %08X  FDDY_BASE_G: %08X", FDDX_BASE_G, FDDY_BASE_G);
+	$display("FDDX_BASE_B: %08X  FDDY_BASE_B: %08X", FDDX_BASE_B, FDDY_BASE_B);
+	$display("FDDX_U: %012X   FDDY_U: %012X", FDDX_U, FDDY_U);
+	$display("FDDX_V: %012X   FDDY_V: %012X", FDDX_V, FDDY_V);
 end
 
 
@@ -2727,7 +2785,8 @@ reg [21:0] tsp_tex_req_addr;
 reg [21:0] tsp_tex_wait_addr_prev;
 reg [21:0] tex_vram_req_word_addr;
 
-reg [3:0] interp_sel;
+reg [3:0] interp_sel_in;
+reg start_interp;
 
 wire pipe_flush = (tsp_state == 9'd51);
 
@@ -2819,5 +2878,3 @@ function automatic signed [FIXED_W-1:0] max4;
         max4 = (m1 > m2) ? m1 : m2;
     end
 endfunction
-
-
