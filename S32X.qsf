@@ -421,6 +421,7 @@ set_global_assignment -name VERILOG_FILE rtl/pvr/pcache_mem.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/param_buffer.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/leading_trailing.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/isp_parser.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/z_span_32.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/inTri_calc.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/interp_instance.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/interp_params.v
@@ -455,4 +456,5 @@ set_global_assignment -name SDC_FILE S32X.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE S32X.sv
 set_global_assignment -name SIGNALTAP_FILE stp1.stp
 set_global_assignment -name QIP_FILE pcache_mem.qip
+
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

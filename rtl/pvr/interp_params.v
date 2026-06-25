@@ -176,8 +176,8 @@ reg signed [47:0] FX1_s4;
 reg signed [47:0] FY1_s4;
 reg signed [47:0] FZ1_s4;
 
-wire signed [64:0] Aa_num = $signed({{17{Aa_r[47]}}, Aa_r}) <<< Z_FRAC_BITS;
-wire signed [64:0] Ba_num = $signed({{17{Ba_r[47]}}, Ba_r}) <<< Z_FRAC_BITS;
+wire signed [63:0] Aa_num = $signed({{17{Aa_r[47]}}, Aa_r}) <<< Z_FRAC_BITS;
+wire signed [63:0] Ba_num = $signed({{17{Ba_r[47]}}, Ba_r}) <<< Z_FRAC_BITS;
 
 always @(posedge clock) begin
     FDDX_r <= (BIG_C_s3 == 0) ? 48'sd0 : (Aa_num / BIG_C_s3);

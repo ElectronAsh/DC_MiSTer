@@ -18,9 +18,9 @@ module pvr #(
 	parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS),
 
 `ifndef VERILATOR
-	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b1,
+	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b0,
 	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b1,
-	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b1,
+	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b0,
 	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1,
 	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1,
 	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 8

@@ -210,15 +210,15 @@ wire [10:0] tex_v_size_full = (8 << tex_v_size);
 wire signed [63:0] x_ps_mult_fddx_u = (x_ps_signed * FDDX_U);
 wire signed [63:0] y_ps_mult_fddy_u = (y_ps_signed * FDDY_U);
 wire signed [63:0] IP_U_INTERP = x_ps_mult_fddx_u + y_ps_mult_fddy_u + small_c_u;
-wire signed [80:0] IP_U_PERSP_NUM = IP_U_INTERP <<< Z_FRAC_BITS;
-wire signed [80:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;
+wire signed [47:0] IP_U_PERSP_NUM = IP_U_INTERP <<< Z_FRAC_BITS;
+wire signed [47:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;
 wire signed [9:0] u_div_z = IP_U_PERSP >>> Z_FRAC_BITS;
 
 wire signed [63:0] x_ps_mult_fddx_v = (x_ps_signed * FDDX_V);
 wire signed [63:0] y_ps_mult_fddy_v = (y_ps_signed * FDDY_V);
 wire signed [63:0] IP_V_INTERP = x_ps_mult_fddx_v + y_ps_mult_fddy_v + small_c_v;
-wire signed [80:0] IP_V_PERSP_NUM = IP_V_INTERP <<< Z_FRAC_BITS;
-wire signed [80:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;
+wire signed [47:0] IP_V_PERSP_NUM = IP_V_INTERP <<< Z_FRAC_BITS;
+wire signed [47:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;
 wire signed [9:0] v_div_z = IP_V_PERSP >>> Z_FRAC_BITS;
 
 uv_clamp_flip  uv_clamp_flip_inst(
@@ -245,15 +245,15 @@ generate
 		wire signed [63:0] x_ps_mult_fddx_u = (x_ps_signed * FDDX_U);
 		wire signed [63:0] y_ps_mult_fddy_u = (y_ps_signed * FDDY_U);
 		wire signed [63:0] IP_U_INTERP = x_ps_mult_fddx_u + y_ps_mult_fddy_u + small_c_u;
-		wire signed [80:0] IP_U_PERSP_NUM = IP_U_INTERP <<< Z_FRAC_BITS;
-		wire signed [80:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;
+		wire signed [47:0] IP_U_PERSP_NUM = IP_U_INTERP <<< Z_FRAC_BITS;
+		wire signed [47:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;
 		wire signed [9:0] u_div_z = IP_U_PERSP >>> Z_FRAC_BITS;
 
 		wire signed [63:0] x_ps_mult_fddx_v = (x_ps_signed * FDDX_V);
 		wire signed [63:0] y_ps_mult_fddy_v = (y_ps_signed * FDDY_V);
 		wire signed [63:0] IP_V_INTERP = x_ps_mult_fddx_v + y_ps_mult_fddy_v + small_c_v;
-		wire signed [80:0] IP_V_PERSP_NUM = IP_V_INTERP <<< Z_FRAC_BITS;
-		wire signed [80:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;
+		wire signed [47:0] IP_V_PERSP_NUM = IP_V_INTERP <<< Z_FRAC_BITS;
+		wire signed [47:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;
 		wire signed [9:0] v_div_z = IP_V_PERSP >>> Z_FRAC_BITS;
 
 		uv_clamp_flip  uv_clamp_flip_inst(
