@@ -651,20 +651,13 @@ else begin
 	tsp_pix_adv <= 1'b0;
 	tsp_issue_accept = 1'b0;
 
-	if (z_params_valid) z_params_ready <= 1'b1;
 	case ({z_span_start, z_span_valid})
 		2'b10: z_span_pending <= z_span_pending + 4'd1;
 		2'b01: z_span_pending <= z_span_pending - 4'd1;
 		default: ;
 	endcase
 
-	if ((interp_valid && !isp_inst[24] && (interp_sel_out == 4'd5)) || ( isp_inst[24] && (interp_sel_out == 4'd10))) begin
-		interp_params_ready <= 1'b1;
-	end
-
-	if (interp_valid && interp_sel_out == 4'd11) z_params_valid <= 1'b1;
-
-	if (interp_sel_in < 4'd11) begin
+	if (interp_sel_in < 4'd12) begin
 		start_interp <= 1'b1;
 		interp_sel_in <= interp_sel_in + 1;
 		//$display("interp_sel_in: %d", interp_sel_in);
@@ -672,6 +665,13 @@ else begin
 		//$display("FDDX_U: %012X  FDDY_U: %012X", FDDX_U, FDDY_U);
 		//$display("FDDX_V: %012X  FDDY_V: %012X", FDDX_V, FDDY_V);
 	end
+
+	if ((interp_valid && !isp_inst[24] && (interp_sel_out == 4'd5)) || ( isp_inst[24] && (interp_sel_out == 4'd10))) begin
+		interp_params_ready <= 1'b1;
+	end
+
+	if (interp_valid && interp_sel_out == 4'd12) z_params_valid <= 1'b1;
+	if (z_params_valid) z_params_ready <= 1'b1;
 
 	if (ra_new_tile_start) begin	// New tile started!
 		//cb_cache_clear <= 1'b1;	// Using some lower bits of the texture address bits from the TCW as the "Tag" now. No need to clear before each Tile.
@@ -2061,7 +2061,7 @@ interp_params #(
     .Z_FRAC_BITS( Z_FRAC_BITS ),
     .FRAC_DIFF( FRAC_DIFF )
 )
-interp_argb (
+interp_params_inst (
 	.clock( clock ),
 	.reset_n( reset_n ),
 	
@@ -2074,20 +2074,20 @@ interp_argb (
 	.FY3_sub_FY1( FY3_sub_FY1 ),	// input signed [47:0] FY3_sub_FY1
 	.FX2_sub_FX1( FX2_sub_FX1 ),	// input signed [47:0] FX2_sub_FX1
 	.FX3_sub_FX1( FX3_sub_FX1 ),	// input signed [47:0] FX3_sub_FX1
-	.FX1( FX1_FIXED ),			// input signed [47:0] FX1
-	.FY1( FY1_FIXED ),			// input signed [47:0] FY1
+	.FX1( FX1_FIXED ),				// input signed [47:0] FX1
+	.FY1( FY1_FIXED ),				// input signed [47:0] FY1
 	
 	// Now in Z_FRAC_BITS format...
 	.BIG_C( BIG_C ),				// input signed [63:0] BIG_C
 
 	// Input values for tha actual Interp...
-	.FZ1( interp_in_fz1 ),		// input signed [47:0] FZ1
-	.FZ2( interp_in_fz2 ),		// input signed [47:0] FZ2
-	.FZ3( interp_in_fz3 ),		// input signed [47:0] FZ3
+	.FZ1( interp_in_fz1 ),			// input signed [47:0] FZ1
+	.FZ2( interp_in_fz2 ),			// input signed [47:0] FZ2
+	.FZ3( interp_in_fz3 ),			// input signed [47:0] FZ3
 
-    .FDDX( FDDX_COL ),			// output [39:0]  FDDX.
-    .FDDY( FDDY_COL ),			// output [39:0]  FDDY.
-    .small_c( small_c_COL ),	// output [39:0]  small_c.
+    .FDDX( FDDX_COL ),				// output [39:0]  FDDX.
+    .FDDY( FDDY_COL ),				// output [39:0]  FDDY.
+    .small_c( small_c_COL ),		// output [39:0]  small_c.
 	
     .interp_sel_out( interp_sel_out ),	// output [3:0]  interp_sel_out.
     .interp_valid( interp_valid )		// output  interp_valid.
