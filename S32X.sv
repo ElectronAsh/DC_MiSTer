@@ -955,15 +955,22 @@ localparam [5:0] PLL_CFG_START_REG      = 6'd2;
 localparam [5:0] PLL_CFG_C_COUNTERS_REG = 6'd5;
 
 function [31:0] clk_cfg_c_counter;
-	input [1:0] sel;
-	begin
-		case (sel)
-			2'd0: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd8, 8'd8}; // 5 MHz,  /16
-			2'd1: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd4, 8'd4}; // 10 MHz, /8
-			2'd2: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd2, 8'd2}; // 20 MHz, /4
-			2'd3: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd1, 8'd1}; // 40 MHz, /2
-		endcase
-	end
+    input [1:0] sel;
+    begin
+        case (sel)
+            // Divide VCO (400 MHz) by 80
+            2'd0: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd40, 8'd40}; // 5 MHz
+
+            // Divide VCO by 40
+            2'd1: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd20, 8'd20}; // 10 MHz
+
+            // Divide VCO by 20
+            2'd2: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd10, 8'd10}; // 20 MHz
+
+            // Divide VCO by 10
+            2'd3: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd5,  8'd5 }; // 40 MHz
+        endcase
+    end
 endfunction
 
 pll_cfg pll_cfg
@@ -1082,12 +1089,12 @@ else begin
 	end
 	
 	if (pvr_reg_update) begin
-		if (vram_valid) begin										// Write two 32-bit words to the PVR regs at once.
+		if (vram_valid) begin												// Write two 32-bit words to the PVR regs at once.
 			pvr_ptr[ pvr_read_offs[15:2]+0 ] <= vram_din[31:00];	// Words are read from each 64-bit DDR3 Word in this order.
 			pvr_ptr[ pvr_read_offs[15:2]+1 ] <= vram_din[63:32];	// Each 32-bit Word is NON-byteswapped, so the same order we use in the core.
 			pvr_read_offs <= pvr_read_offs + 16'd8;					// Increment the BYTE counter by 8 (to the next 64-bit WORD).
 		end
-		if (pvr_read_offs[15:3]>=79) pvr_reg_update <= 1'b0;	// 80 64-bit words covers 0x000-0x140.
+		if (pvr_read_offs[15:3]>=79) pvr_reg_update <= 1'b0;		// 80 64-bit words covers 0x000-0x140.
 	end
 	
 	if (tile_accum_done) pvr_ptr['h18>>2] <= 32'h0;
@@ -1432,7 +1439,6 @@ vram_read_arbiter_2c vram_read_arbiter_geo (
 
 wire [28:0] tex_ddram_addr_raw;
 
-`ifdef VERILATOR
 vram_read_cache #(
 	.TEX_COMBO_HIT(0),
 	.CACHE_LINES(2),
@@ -1459,16 +1465,6 @@ vram_read_cache #(
 	.DDRAM_DOUT_READY( DDRAM2_DOUT_READY ),
 	.DDRAM_BUSY( DDRAM2_BUSY )
 );
-`else
-assign tex_vram_din_core = 64'd0;
-assign tex_vram_wait_core = 1'b0;
-assign tex_vram_valid_core = 1'b0;
-assign tex_vram_req_ack_core = 1'b0;
-assign tex_cache_hit = 1'b0;
-assign tex_ddram_addr_raw = 29'd0;
-assign DDRAM2_RD = 1'b0;
-assign DDRAM2_BURSTCNT = 8'd0;
-`endif
 
 assign DDRAM2_CLK  = clk_sys;
 assign DDRAM2_ADDR = DDRAM_BASE + tex_ddram_addr_raw;
@@ -1922,4 +1918,3 @@ end
 */
 
 endmodule
-

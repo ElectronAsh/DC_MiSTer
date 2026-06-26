@@ -97,7 +97,6 @@ wire eol = opb_word[28];						// End Of List.
 
 reg [7:0] ol_jump_bytes;
 reg ra_trig_reg;
-//reg ra_mailbox_wr_issued;
 
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
@@ -113,7 +112,6 @@ if (!reset_n) begin
 	ra_new_tile_start <= 1'b0;
 	tile_prims_done <= 1'b0;
 	ra_trig_reg <= 1'b0;
-	//ra_mailbox_wr_issued <= 1'b0;
 	trig_pvr_update <= 1'b0;
 	frame_done <= 1'b0;
 end
@@ -136,11 +134,11 @@ else begin
 
 	case (ra_state)
 	0: begin
-		if (ra_trig_reg) begin
+		if (ra_trig_reg) begin	// Manual render (via MiSTer menu) has been triggered.
 			ra_trig_reg <= 1'b0;
 			ra_state <= 8'd1;
 		end
-		else begin
+		else begin					// Else, keep triggering a DDR3 -> Core PVR regs copy, then check the TEST_SELECT reg for a non-zero value.
 			trig_pvr_update <= 1'b1;
 			ra_state <= 8'd200;
 		end
@@ -372,21 +370,24 @@ else begin
 	end
 	
 	15: begin	// All tiles Done. Clear the frame-done mailbox words for reicast on the ARM side.
-		/*
+		ra_vram_addr <= 24'h800018;
+		ra_vram_dout <= 32'hDEADDEAD;
+		ra_vram_wr   <= 1'b1;
+		if (ra_vram_wr_accept) ra_state <= 8'd16;
+	end
+	
+	16: begin
 		ra_vram_addr <= 24'h7FFFF8;		// 8MB, minus 8 bytes.
-		ra_vram_dout <= 32'h00000000;
-		if (!ra_mailbox_wr_issued) begin
-			ra_mailbox_wr_issued <= 1'b1;
-		end
-		else if (!ra_vram_wait) begin
-			ra_mailbox_wr_issued <= 1'b0;
-			ra_state <= 8'd16;
-		end
-		*/
-		 ra_vram_addr <= 24'h800018;
-		 ra_vram_dout <= 32'hDEADDEAD;
-		 ra_vram_wr   <= 1'b1;
-		 if (ra_vram_wr_accept) ra_state <= 8'd0;
+		ra_vram_dout <= 32'hDEADDEAD;
+		ra_vram_wr   <= 1'b1;
+		if (ra_vram_wr_accept) ra_state <= 8'd17;
+	end
+	
+	17: begin
+		ra_vram_addr <= 24'h7FFFFC;		// 8MB, minus 4 bytes.
+		ra_vram_dout <= 32'hDEADDEAD;
+		ra_vram_wr   <= 1'b1;
+		if (ra_vram_wr_accept) ra_state <= 8'd0;
 	end
 		
 	default: ;

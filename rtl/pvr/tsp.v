@@ -276,53 +276,6 @@ generate
 endgenerate
 `endif
 
-/*
-texture_address  texture_address_inst (
-	.clock( clock ),
-	.reset_n( reset_n ),
-	
-	.isp_inst( isp_inst_out ),			// input [31:0]  isp_inst.
-	.tsp_inst( tsp_inst_out ),			// input [31:0]  tsp_inst.
-	.tcw_word( tcw_word_out ),			// input [31:0]  tcw_word.
-	
-	.TEXT_CONTROL( TEXT_CONTROL ),		// input [31:0]  TEXT_CONTROL.
-
-	.PAL_RAM_CTRL( PAL_RAM_CTRL ),		// input from PAL_RAM_CTRL, bits [1:0].
-	.pal_addr( pal_addr ),				// input [9:0]  pal_addr
-	.pal_din( pal_din ),				// input [31:0]  pal_din
-	.pal_wr( pal_wr ),					// input  pal_wr
-	.pal_rd( pal_rd ),					// input  pal_rd
-	.pal_dout( pal_dout ),				// output [31:0]  pal_dout
-
-	//.prim_tag( prim_tag_out ),		// input [11:0]  prim_tag
-	.prim_tag( tcw_word_out[13:2] ),	// input [11:0]  prim_tag
-	.cb_cache_clear( cb_cache_clear ),	// input  cb_cache_clear (on new tile start).
-	.cb_cache_hit( cb_cache_hit ),		// output  cb_cache_hit
-	
-	.read_codebook( read_codebook ),	// input  read_codebook
-	.codebook_wait( codebook_wait ),	// output codebook_wait
-	
-	.ui( u_flipped ),
-	.vi( v_flipped ),
-	//.ui( sim_ui ),
-	//.vi( sim_vi ),
-	
-	.vram_wait( vram_wait ),
-	.tex_vram_valid( tex_vram_valid ),
-	.vram_word_addr( tsp_tex_word_addr ),	// output [21:0]  tsp_tex_word_addr. 32-bit or 64-bit WORD address! Hard to explain. lol
-	.vram_din( tex_vram_din ),			// input [63:0]  vram_din. Full 64-bit data for texture reads.
-	
-	// Todo: tex_fog_control. See the Sega Bible PDF, page 201.
-//	.base_argb( {base_alpha, interp_base_col[23:0]} ),		// input [31:0]  base_argb.  Flat-shading colour input. (will also do Gouraud eventually).
-//	.offs_argb( {offs_alpha, interp_offs_col[23:0]} ),		// input [31:0]  offs_argb.  Offset colour input.
-	.base_argb( interp_base_col ),		// input [31:0]  base_argb.  Flat-shading colour input. (will also do Gouraud eventually).
-	.offs_argb( interp_offs_col ),		// input [31:0]  offs_argb.  Offset colour input.
-	
-	.texel_argb( texel_argb ),			// output [31:0]  texel_argb. Texel ARGB 8888 output.
-	.final_argb( final_argb )			// output [31:0]  final_argb. Final blended ARGB 8888 output.
-);
-*/
-
 
 wire stall_tex_fetch;
 wire stall_codebook;

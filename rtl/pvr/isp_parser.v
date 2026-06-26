@@ -339,8 +339,7 @@ reg [5:0] tsp_tiley;
 reg [2:0] tsp_type_cnt;
 reg [4:0] tsp_drain_count;
 reg deferred_tile_started;
-wire tsp_active = (tsp_state != 9'd0);
-assign tsp_busy = tsp_active;
+assign tsp_busy = (tsp_state != 9'd0);
 
 reg [31:0] total_tri_count;
 reg [31:0] total_vis_count;
@@ -377,8 +376,10 @@ reg signed [47:0] tile_z_max;
 integer z_i;
 reg zpipe_valid;
 reg zpipe_flush;
-reg z_param_start;
 reg z_params_ready;
+reg z_params_hsr_ready;
+reg z_params_hsr_ready_d1;
+reg z_params_hsr_ready_d2;
 reg [3:0] z_span_pending;
 reg [1:0] inTri_pixel_group;
 
@@ -483,10 +484,12 @@ task tag_run_finish;
 	end
 endtask
 
-wire [3:0] interp_sel_out;
-wire interp_valid;
+reg [5:0] param_id_in;
+reg start_interp;
 
-reg z_params_ready_d;
+wire [5:0] param_id_out;
+wire interp_valid;
+wire z_param_result_valid = interp_valid && (param_id_out == 6'd0);
 
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
@@ -587,7 +590,7 @@ if (!reset_n) begin
 	pcache_write_pending <= 1'b0;
 	//trig_z_row_write <= 1'b0;
 	tile_accum_done <= 1'b0;
-	interp_sel_in <= 4'd11;
+	param_id_in <= 6'd11;
 	start_interp <= 1'b0;
 	interp_params_ready <= 1'b0;
 	any_tags_written <= 1'b0;
@@ -605,19 +608,21 @@ if (!reset_n) begin
 	zpipe_valid <= 1'b0;
 	zpipe_flush <= 1'b0;
 	z_params_valid <= 1'b0;
-	z_param_start <= 1'b0;
 	z_params_ready <= 1'b0;
-	z_params_ready_d <= 1'b0;
+	z_params_hsr_ready <= 1'b0;
+	z_params_hsr_ready_d1 <= 1'b0;
+	z_params_hsr_ready_d2 <= 1'b0;
 	z_span_pending <= 4'd0;
 	 inTri_pixel_group <= 2'd0;
 end
 else begin
 	cb_cache_clear <= 1'b0;
 
-	z_params_ready_d <= z_params_ready;
+	z_params_hsr_ready_d1 <= z_param_result_valid;
+	z_params_hsr_ready_d2 <= z_params_hsr_ready_d1;
+	if (z_params_hsr_ready_d2) z_params_hsr_ready <= 1'b1;
 
 	start_interp <= 1'b0;
-	z_param_start <= 1'b0;
 	
 	z_params_valid <= 1'b0;
 
@@ -657,21 +662,25 @@ else begin
 		default: ;
 	endcase
 
-	if (interp_sel_in < 4'd12) begin
-		start_interp <= 1'b1;
-		interp_sel_in <= interp_sel_in + 1;
-		//$display("interp_sel_in: %d", interp_sel_in);
-		//$display("FDDX_BASE_R: %08X  FDDY_BASE_R: %08X", FDDX_BASE_R, FDDY_BASE_R);
-		//$display("FDDX_U: %012X  FDDY_U: %012X", FDDX_U, FDDY_U);
-		//$display("FDDX_V: %012X  FDDY_V: %012X", FDDX_V, FDDY_V);
+	if (param_id_in < 6'd11) begin
+		start_interp <= (param_id_in < 6'd10);
+		param_id_in <= param_id_in + 1;
+		
+		if (start_interp) begin
+			$display("param_id_in: %d", param_id_in);
+			$display("FDDX_BASE_R: %08X  FDDY_BASE_R: %08X", FDDX_BASE_R, FDDY_BASE_R);
+			$display("FDDX_U: %012X  FDDY_U: %012X", FDDX_U, FDDY_U);
+			$display("FDDX_V: %012X  FDDY_V: %012X", FDDX_V, FDDY_V);
+		end
+		
 	end
 
-	if ((interp_valid && !isp_inst[24] && (interp_sel_out == 4'd5)) || ( isp_inst[24] && (interp_sel_out == 4'd10))) begin
+	if ((interp_valid && !isp_inst[24] && (param_id_out == 6'd6)) || (isp_inst[24] && (param_id_out == 6'd10))) begin
 		interp_params_ready <= 1'b1;
 	end
 
-	if (interp_valid && interp_sel_out == 4'd12) z_params_valid <= 1'b1;
-	if (z_params_valid) z_params_ready <= 1'b1;
+	z_params_valid <= z_param_result_valid;
+	if (z_param_result_valid) z_params_ready <= 1'b1;
 
 	if (ra_new_tile_start) begin	// New tile started!
 		//cb_cache_clear <= 1'b1;	// Using some lower bits of the texture address bits from the TCW as the "Tag" now. No need to clear before each Tile.
@@ -753,8 +762,8 @@ else begin
 				tsp_ready_type_cnt <= type_cnt;
 				tsp_ready_has_tags <= (prim_tag != 12'd1);
 				//rle_start <= 1'b1;	// rle_by_tag reduces the "Daytona Behind" (theoretical) frame rate from around 32 to 26 FPS. tsp_tag_sorter is FAR slower (like 12 FPS!).
-				//interp_sel_in <= 4'd0;
-				if (!tsp_active) begin
+				//param_id_in <= 6'd0;
+				if (!tsp_busy) begin
 					tsp_z_bank <= isp_z_bank;
 					tsp_x_ps <= {tilex, 5'd0};
 					tsp_y_ps <= {tiley, 5'd0};
@@ -1137,7 +1146,7 @@ else begin
 			//if (tri_vis) begin
 				any_tags_written <= 1'b0;
 				//prim_tag <= prim_tag + 1;	// We post-increment this now, in isp_state 90.
-				interp_sel_in <= 4'd11;
+				param_id_in <= 6'd11;
 				//start_interp <= 1'b1;
 				interp_params_ready <= 1'b0;
 				pcache_write_pending <= 1'b0;
@@ -1244,8 +1253,7 @@ else begin
 
 		49: begin
 			// First setup cycle: capture the registered float-to-fixed values.
-			interp_sel_in <= 4'd11;
-			//start_interp <= 1'b1;
+			param_id_in <= 6'd11;
 			//interp_params_ready <= 1'b0;
 			pcache_write_pending <= 1'b0;
 			x_ps <= tilex_start;
@@ -1254,16 +1262,20 @@ else begin
 			zpipe_valid <= 1'b0;
 			zpipe_flush <= 1'b0;
 			z_params_ready <= 1'b0;
+			z_params_hsr_ready <= 1'b0;
+			z_params_hsr_ready_d1 <= 1'b0;
+			z_params_hsr_ready_d2 <= 1'b0;
 			z_span_pending <= 4'd0;
 			isp_state <= 9'd200;
 		end
 
 		200: begin
-			// Second setup cycle: capture delta/BIG_C terms, then start interp.
-			interp_sel_in <= 4'd0;
+			// Arm the param burst after the fixed-point vertex capture. The
+			// registered start_interp pulse is seen by interp_params next
+			// cycle, when param_id_in is already ID 0.
+			param_id_in <= 6'd0;
 			start_interp <= 1'b1;
 			//interp_params_ready <= 1'b0;
-			z_param_start <= 1'b1;
 			pcache_write_pending <= 1'b1;
 			isp_state <= 9'd50;
 		end
@@ -1302,8 +1314,8 @@ else begin
 				end
 			end
 
-			if (z_params_ready_d && !zpipe_flush) begin	// z_params_ready_d is a temporary kludge, due to y_ps incrementing too early.
-				zpipe_valid <= 1'b1;					// That was causing the first tile row to be corrupted / at HSR.
+			if (z_params_hsr_ready && !zpipe_flush) begin
+				zpipe_valid <= 1'b1;
 				if (INTRI_PIXELS_PER_CYCLE <= 8 && inTri_pixel_group != 2'd3) begin
 					inTri_pixel_group <= inTri_pixel_group + 2'd1;
 				end
@@ -1359,7 +1371,7 @@ else begin
 		end
 
 		// Write pixel to Tile ARGB buffer.
-		53: /*if (!tsp_pipeline_stall)*/ begin
+		53: begin
 			if (!tsp_pipeline_stall) begin
 				tsp_pix_wr <= 1'b1;
 				tsp_pix_adv <= tsp_pix_valid;
@@ -1456,7 +1468,7 @@ else begin
 
 		57: begin
 			if (!deferred_tile_started) begin
-				if (!tsp_active) begin
+				if (!tsp_busy) begin
 					tsp_z_bank <= tsp_ready_bank;
 					tsp_x_ps <= {tsp_ready_tilex, 5'd0};
 					tsp_y_ps <= {tsp_ready_tiley, 5'd0};
@@ -1470,12 +1482,11 @@ else begin
 					tsp_row_settle <= 1'b1;
 					tsp_state <= 9'd51;
 					prim_tag_out_prev <= 12'd4095;
-					if (!tsp_ready_has_tags)
-						tsp_empty_tile_skip_count <= tsp_empty_tile_skip_count + 1'b1;
+					if (!tsp_ready_has_tags) tsp_empty_tile_skip_count <= tsp_empty_tile_skip_count + 1'b1;
 					deferred_tile_started <= 1'b1;
 				end
 			end
-			else if (!tsp_active) begin
+			else if (!tsp_busy) begin
 				clear_z_target_bank <= tsp_ready_bank;
 				clear_z_next_bank <= 1'b1;
 				clear_z_next_tags_only <= 1'b1;
@@ -1850,59 +1861,77 @@ wire [4:0] hsr_end_row = render_bg ? 5'd31 : tri_max_row;
 wire signed [47:0] FX1_FIXED;
 wire signed [47:0] FY1_FIXED;
 wire signed [47:0] FZ1_FIXED;
-wire signed [47:0] FU1_FIXED;
-wire signed [47:0] FV1_FIXED;
 float_to_fixed #(.FRAC_BITS(FRAC_BITS))   float_x1 (.float_in( vert_a_x ),  .fixed( FX1_FIXED ));
 float_to_fixed #(.FRAC_BITS(FRAC_BITS))   float_y1 (.float_in( vert_a_y ),  .fixed( FY1_FIXED ));
 float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_z1 (.float_in( vert_a_z ),  .fixed( FZ1_FIXED ));
-float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_u1 (.float_in( vert_a_u0 ), .fixed( FU1_FIXED ));
-float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_v1 (.float_in( vert_a_v0 ), .fixed( FV1_FIXED ));
 
 wire signed [47:0] FX2_FIXED;
 wire signed [47:0] FY2_FIXED;
 wire signed [47:0] FZ2_FIXED;
-wire signed [47:0] FU2_FIXED;
-wire signed [47:0] FV2_FIXED;
 float_to_fixed #(.FRAC_BITS(FRAC_BITS))   float_x2 (.float_in( vert_b_x ),  .fixed( FX2_FIXED ));
 float_to_fixed #(.FRAC_BITS(FRAC_BITS))   float_y2 (.float_in( vert_b_y ),  .fixed( FY2_FIXED ));
 float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_z2 (.float_in( vert_b_z ),  .fixed( FZ2_FIXED ));
-float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_u2 (.float_in( vert_b_u0 ), .fixed( FU2_FIXED ));
-float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_v2 (.float_in( vert_b_v0 ), .fixed( FV2_FIXED ));
 
 wire signed [47:0] FX3_FIXED;
 wire signed [47:0] FY3_FIXED;
 wire signed [47:0] FZ3_FIXED;
-wire signed [47:0] FU3_FIXED;
-wire signed [47:0] FV3_FIXED;
 float_to_fixed #(.FRAC_BITS(FRAC_BITS))   float_x3 (.float_in( vert_c_x ),  .fixed( FX3_FIXED ));
 float_to_fixed #(.FRAC_BITS(FRAC_BITS))   float_y3 (.float_in( vert_c_y ),  .fixed( FY3_FIXED ));
 float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_z3 (.float_in( vert_c_z ),  .fixed( FZ3_FIXED ));
-float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_u3 (.float_in( vert_c_u0 ), .fixed( FU3_FIXED ));
-float_to_fixed #(.FRAC_BITS(Z_FRAC_BITS)) float_v3 (.float_in( vert_c_v0 ), .fixed( FV3_FIXED ));
 
 wire signed [47:0] FX4_FIXED;
 wire signed [47:0] FY4_FIXED;
 float_to_fixed #(.FRAC_BITS(FRAC_BITS)) float_x4 (.float_in( vert_d_x ), .fixed( FX4_FIXED ));
 float_to_fixed #(.FRAC_BITS(FRAC_BITS)) float_y4 (.float_in( vert_d_y ), .fixed( FY4_FIXED ));
-reg signed [47:0] FX1_FIXED_R, FY1_FIXED_R, FZ1_FIXED_R, FU1_FIXED_R, FV1_FIXED_R;
-reg signed [47:0] FX2_FIXED_R, FY2_FIXED_R, FZ2_FIXED_R, FU2_FIXED_R, FV2_FIXED_R;
-reg signed [47:0] FX3_FIXED_R, FY3_FIXED_R, FZ3_FIXED_R, FU3_FIXED_R, FV3_FIXED_R;
+reg signed [47:0] FX1_FIXED_R, FY1_FIXED_R, FZ1_FIXED_R;
+reg signed [47:0] FX2_FIXED_R, FY2_FIXED_R, FZ2_FIXED_R;
+reg signed [47:0] FX3_FIXED_R, FY3_FIXED_R, FZ3_FIXED_R;
 reg signed [47:0] FX4_FIXED_R, FY4_FIXED_R;
 
-always @(posedge clock or negedge reset_n) begin
-	if (!reset_n) begin
-		FX1_FIXED_R <= 48'd0; FY1_FIXED_R <= 48'd0; FZ1_FIXED_R <= 48'd0; FU1_FIXED_R <= 48'd0; FV1_FIXED_R <= 48'd0;
-		FX2_FIXED_R <= 48'd0; FY2_FIXED_R <= 48'd0; FZ2_FIXED_R <= 48'd0; FU2_FIXED_R <= 48'd0; FV2_FIXED_R <= 48'd0;
-		FX3_FIXED_R <= 48'd0; FY3_FIXED_R <= 48'd0; FZ3_FIXED_R <= 48'd0; FU3_FIXED_R <= 48'd0; FV3_FIXED_R <= 48'd0;
-		FX4_FIXED_R <= 48'd0; FY4_FIXED_R <= 48'd0;
-	end
-	else begin
-		FX1_FIXED_R <= FX1_FIXED; FY1_FIXED_R <= FY1_FIXED; FZ1_FIXED_R <= FZ1_FIXED; FU1_FIXED_R <= FU1_FIXED; FV1_FIXED_R <= FV1_FIXED;
-		FX2_FIXED_R <= FX2_FIXED; FY2_FIXED_R <= FY2_FIXED; FZ2_FIXED_R <= FZ2_FIXED; FU2_FIXED_R <= FU2_FIXED; FV2_FIXED_R <= FV2_FIXED;
-		FX3_FIXED_R <= FX3_FIXED; FY3_FIXED_R <= FY3_FIXED; FZ3_FIXED_R <= FZ3_FIXED; FU3_FIXED_R <= FU3_FIXED; FV3_FIXED_R <= FV3_FIXED;
-		FX4_FIXED_R <= FX4_FIXED; FY4_FIXED_R <= FY4_FIXED;
-	end
+reg signed [47:0] FY2_sub_FY1;
+reg signed [47:0] FY3_sub_FY1;
+reg signed [47:0] FX2_sub_FX1;
+reg signed [47:0] FX3_sub_FX1;
+
+reg signed [55:0] C_mult_1;		// Needs to be wider than 48-bit.
+reg signed [55:0] C_mult_2;		// Needs to be wider than 48-bit.
+reg signed [47:0] BIG_C;		// Might be OK as 48-bit?
+
+always @(posedge clock) begin
+	FX1_FIXED_R <= FX1_FIXED; FY1_FIXED_R <= FY1_FIXED; FZ1_FIXED_R <= FZ1_FIXED;
+	FX2_FIXED_R <= FX2_FIXED; FY2_FIXED_R <= FY2_FIXED; FZ2_FIXED_R <= FZ2_FIXED;
+	FX3_FIXED_R <= FX3_FIXED; FY3_FIXED_R <= FY3_FIXED; FZ3_FIXED_R <= FZ3_FIXED;
+	FX4_FIXED_R <= FX4_FIXED; FY4_FIXED_R <= FY4_FIXED;
 end
+
+always @(posedge clock) begin
+	FY2_sub_FY1 <= (FY2_FIXED - FY1_FIXED);
+	FY3_sub_FY1 <= (FY3_FIXED - FY1_FIXED);
+	FX2_sub_FX1 <= (FX2_FIXED - FX1_FIXED);
+	FX3_sub_FX1 <= (FX3_FIXED - FX1_FIXED);
+end
+
+always @(posedge clock) begin
+	C_mult_1    <= (FX2_sub_FX1 * FY3_sub_FY1);
+	C_mult_2    <= (FX3_sub_FX1 * FY2_sub_FY1);
+end
+
+reg signed [63:0] BIG_C_raw;
+always @(posedge clock) begin
+    BIG_C_raw <= C_mult_2 - C_mult_1;
+end
+
+/*
+always @(posedge clock) begin
+	//BIG_C       <= ((FX3_sub_FX1 * FY2_sub_FY1) - (FX2_sub_FX1 * FY3_sub_FY1)) >>>(FRAC_BITS-FRAC_DIFF);
+	//BIG_C <= (C_mult_2 - C_mult_1) >>> (FRAC_BITS-FRAC_DIFF);
+	BIG_C <= BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
+end
+*/
+wire signed [47:0] BIG_C_shifted = BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
+
+always @(posedge clock) BIG_C <= BIG_C_shifted;
+
 
 // From the Sega Bible PDF, page 204..
 //
@@ -1921,135 +1950,8 @@ wire [31:0] interp_fz1_offs_argb = (gouraud) ? vert_a_off_col : vert_c_off_col;
 wire [31:0] interp_fz2_offs_argb = (gouraud) ? vert_b_off_col : vert_c_off_col;
 wire [31:0] interp_fz3_offs_argb = (gouraud) ? vert_c_off_col : vert_c_off_col;
 
-// Vertex A.
-wire [7:0] interp_fz1_mux = (interp_sel_in==2 ) ? interp_fz1_base_argb[31:24] :	// Base Alpha.
-							(interp_sel_in==3 ) ? interp_fz1_base_argb[23:16] :	// Base Red.
-							(interp_sel_in==4 ) ? interp_fz1_base_argb[15:08] :	// Base Green.
-							(interp_sel_in==5 ) ? interp_fz1_base_argb[07:00] :	// Base Blue.
-							(interp_sel_in==6 ) ? interp_fz1_offs_argb[31:24] :	// Offset Alpha.
-							(interp_sel_in==7 ) ? interp_fz1_offs_argb[23:16] :	// Offset Red.
-							(interp_sel_in==8 ) ? interp_fz1_offs_argb[15:08] :	// Offset Green.
-							(interp_sel_in==9 ) ? interp_fz1_offs_argb[07:00] :	// Offset Blue.
-											   8'd0;
-
-// Vertex B.
-wire [7:0] interp_fz2_mux = (interp_sel_in==2 ) ? interp_fz2_base_argb[31:24] :
-							(interp_sel_in==3 ) ? interp_fz2_base_argb[23:16] :
-							(interp_sel_in==4 ) ? interp_fz2_base_argb[15:08] :
-							(interp_sel_in==5 ) ? interp_fz2_base_argb[07:00] :
-							(interp_sel_in==6 ) ? interp_fz2_offs_argb[31:24] :
-							(interp_sel_in==7 ) ? interp_fz2_offs_argb[23:16] :
-							(interp_sel_in==8 ) ? interp_fz2_offs_argb[15:08] :
-							(interp_sel_in==9 ) ? interp_fz2_offs_argb[07:00] :
-											   8'd0;
-
-// Vertex C.
-wire [7:0] interp_fz3_mux = (interp_sel_in==2 ) ? interp_fz3_base_argb[31:24] :
-							(interp_sel_in==3 ) ? interp_fz3_base_argb[23:16] :
-							(interp_sel_in==4 ) ? interp_fz3_base_argb[15:08] :
-							(interp_sel_in==5 ) ? interp_fz3_base_argb[07:00] :
-							(interp_sel_in==6 ) ? interp_fz3_offs_argb[31:24] :
-							(interp_sel_in==7 ) ? interp_fz3_offs_argb[23:16] :
-							(interp_sel_in==8 ) ? interp_fz3_offs_argb[15:08] :
-							(interp_sel_in==9 ) ? interp_fz3_offs_argb[07:00] :
-											   8'd0;
-
-reg signed [47:0] FY2_sub_FY1;
-reg signed [47:0] FY3_sub_FY1;
-reg signed [47:0] FX2_sub_FX1;
-reg signed [47:0] FX3_sub_FX1;
-
-reg signed [55:0] C_mult_1;		// Needs to be wide than 48-bit.
-reg signed [55:0] C_mult_2;		// Needs to be wide than 48-bit.
-reg signed [47:0] BIG_C;		// Might be OK as 48-bit?
-
-reg signed [47:0] FY2_sub_FY1_R;
-reg signed [47:0] FY3_sub_FY1_R;
-reg signed [47:0] FX2_sub_FX1_R;
-reg signed [47:0] FX3_sub_FX1_R;
-reg signed [47:0] BIG_C_R;
-
-always @(*) begin
-	FY2_sub_FY1 = (FY2_FIXED_R - FY1_FIXED_R);
-	FY3_sub_FY1 = (FY3_FIXED_R - FY1_FIXED_R);
-	FX2_sub_FX1 = (FX2_FIXED_R - FX1_FIXED_R);
-	FX3_sub_FX1 = (FX3_FIXED_R - FX1_FIXED_R);
-
-	C_mult_1 = (FX2_sub_FX1 * FY3_sub_FY1);
-	C_mult_2 = (FX3_sub_FX1 * FY2_sub_FY1);
-	BIG_C    = (C_mult_2 - C_mult_1) >>>(FRAC_BITS-FRAC_DIFF);
-end
-
-always @(posedge clock or negedge reset_n) begin
-	if (!reset_n) begin
-		FY2_sub_FY1_R <= 48'd0;
-		FY3_sub_FY1_R <= 48'd0;
-		FX2_sub_FX1_R <= 48'd0;
-		FX3_sub_FX1_R <= 48'd0;
-		BIG_C_R <= 48'd0;
-	end
-	else begin
-		FY2_sub_FY1_R <= FY2_sub_FY1;
-		FY3_sub_FY1_R <= FY3_sub_FY1;
-		FX2_sub_FX1_R <= FX2_sub_FX1;
-		FX3_sub_FX1_R <= FX3_sub_FX1;
-		BIG_C_R <= BIG_C;
-	end
-end
-
 wire [10:0] tex_u_size_full = (8 << tsp_inst[5:3]);
-wire signed [47:0] u1_mult_width = FU1_FIXED_R * tex_u_size_full;
-wire signed [47:0] u2_mult_width = FU2_FIXED_R * tex_u_size_full;
-wire signed [47:0] u3_mult_width = FU3_FIXED_R * tex_u_size_full;
-
 wire [10:0] tex_v_size_full = (8 << tsp_inst[2:0]);
-wire signed [47:0] v1_mult_height = FV1_FIXED_R * tex_v_size_full;
-wire signed [47:0] v2_mult_height = FV2_FIXED_R * tex_v_size_full;
-wire signed [47:0] v3_mult_height = FV3_FIXED_R * tex_v_size_full;
-
-wire signed [47:0] interp_u_fz1 = (u1_mult_width  * FZ1_FIXED_R) >>> Z_FRAC_BITS;
-wire signed [47:0] interp_u_fz2 = (u2_mult_width  * FZ2_FIXED_R) >>> Z_FRAC_BITS;
-wire signed [47:0] interp_u_fz3 = (u3_mult_width  * FZ3_FIXED_R) >>> Z_FRAC_BITS;
-wire signed [47:0] interp_v_fz1 = (v1_mult_height * FZ1_FIXED_R) >>> Z_FRAC_BITS;
-wire signed [47:0] interp_v_fz2 = (v2_mult_height * FZ2_FIXED_R) >>> Z_FRAC_BITS;
-wire signed [47:0] interp_v_fz3 = (v3_mult_height * FZ3_FIXED_R) >>> Z_FRAC_BITS;
-
-reg signed [47:0] interp_u_fz1_R, interp_u_fz2_R, interp_u_fz3_R;
-reg signed [47:0] interp_v_fz1_R, interp_v_fz2_R, interp_v_fz3_R;
-
-always @(posedge clock or negedge reset_n) begin
-	if (!reset_n) begin
-		interp_u_fz1_R <= 48'd0;
-		interp_u_fz2_R <= 48'd0;
-		interp_u_fz3_R <= 48'd0;
-		interp_v_fz1_R <= 48'd0;
-		interp_v_fz2_R <= 48'd0;
-		interp_v_fz3_R <= 48'd0;
-	end
-	else begin
-		interp_u_fz1_R <= interp_u_fz1;
-		interp_u_fz2_R <= interp_u_fz2;
-		interp_u_fz3_R <= interp_u_fz3;
-		interp_v_fz1_R <= interp_v_fz1;
-		interp_v_fz2_R <= interp_v_fz2;
-		interp_v_fz3_R <= interp_v_fz3;
-	end
-end
-
-wire signed [47:0] interp_in_fz1 = (interp_sel_in==0) ? interp_u_fz1_R :
-								   (interp_sel_in==1) ? interp_v_fz1_R :
-								   (interp_sel_in==10) ? FZ1_FIXED_R :
-													 ($signed({1'b0, interp_fz1_mux}) <<<Z_FRAC_BITS);
-
-wire signed [47:0] interp_in_fz2 = (interp_sel_in==0) ? interp_u_fz2_R :
-								   (interp_sel_in==1) ? interp_v_fz2_R :
-								   (interp_sel_in==10) ? FZ2_FIXED_R :
-													 ($signed({1'b0, interp_fz2_mux}) <<<Z_FRAC_BITS);
-
-wire signed [47:0] interp_in_fz3 = (interp_sel_in==0) ? interp_u_fz3_R :
-								   (interp_sel_in==1) ? interp_v_fz3_R :
-								   (interp_sel_in==10) ? FZ3_FIXED_R :
-													 ($signed({1'b0, interp_fz3_mux}) <<<Z_FRAC_BITS);
 
 wire signed [47:0] FDDX_COL, FDDY_COL;
 wire signed [47:0] small_c_COL;
@@ -2065,8 +1967,8 @@ interp_params_inst (
 	.clock( clock ),
 	.reset_n( reset_n ),
 	
-    .interp_sel_in( interp_sel_in ),	// input [3:0]  interp_sel_in
-    .start_interp( start_interp ),		// input  start_interp
+    .param_id_in( param_id_in ),	// input [5:0]  param_id_in
+    .start_interp( start_interp ),	// input  start_interp
 
 	// FRAC_BITS Format...
 	// All of these, including BIG_C are pre-calculated, per-triangle.
@@ -2074,29 +1976,47 @@ interp_params_inst (
 	.FY3_sub_FY1( FY3_sub_FY1 ),	// input signed [47:0] FY3_sub_FY1
 	.FX2_sub_FX1( FX2_sub_FX1 ),	// input signed [47:0] FX2_sub_FX1
 	.FX3_sub_FX1( FX3_sub_FX1 ),	// input signed [47:0] FX3_sub_FX1
-	.FX1( FX1_FIXED ),				// input signed [47:0] FX1
-	.FY1( FY1_FIXED ),				// input signed [47:0] FY1
+	.FX1( FX1_FIXED ),				// input signed [47:0] FX1. Fixed-point X coord for Vertex A.
+	.FY1( FY1_FIXED ),				// input signed [47:0] FY1. Fixed-point Y coord for Vertex A.
 	
 	// Now in Z_FRAC_BITS format...
 	.BIG_C( BIG_C ),				// input signed [63:0] BIG_C
 
-	// Input values for tha actual Interp...
-	.FZ1( interp_in_fz1 ),			// input signed [47:0] FZ1
-	.FZ2( interp_in_fz2 ),			// input signed [47:0] FZ2
-	.FZ3( interp_in_fz3 ),			// input signed [47:0] FZ3
+	.param_a_z( vert_a_z ),
+	.param_b_z( vert_b_z ),
+	.param_c_z( vert_c_z ),
 
-    .FDDX( FDDX_COL ),				// output [39:0]  FDDX.
-    .FDDY( FDDY_COL ),				// output [39:0]  FDDY.
-    .small_c( small_c_COL ),		// output [39:0]  small_c.
+	.param_a_u( vert_a_u0 ),
+	.param_b_u( vert_b_u0 ),
+	.param_c_u( vert_c_u0 ),
+
+	.param_a_v( vert_a_v0 ),
+	.param_b_v( vert_b_v0 ),
+	.param_c_v( vert_c_v0 ),
+
+	.param_a_base_argb( interp_fz1_base_argb ),
+	.param_b_base_argb( interp_fz2_base_argb ),
+	.param_c_base_argb( interp_fz3_base_argb ),
+
+	.param_a_offs_argb( interp_fz1_offs_argb ),
+	.param_b_offs_argb( interp_fz2_offs_argb ),
+	.param_c_offs_argb( interp_fz3_offs_argb ),
+
+	.tex_u_size( tex_u_size_full ),
+	.tex_v_size( tex_v_size_full ),
+
+    .FDDX( FDDX_COL ),					// output [39:0]  FDDX.
+    .FDDY( FDDY_COL ),					// output [39:0]  FDDY.
+    .small_c( small_c_COL ),			// output [39:0]  small_c.
 	
-    .interp_sel_out( interp_sel_out ),	// output [3:0]  interp_sel_out.
+    .param_id_out( param_id_out ),	// output [5:0]  param_id_out.
     .interp_valid( interp_valid )		// output  interp_valid.
 );
 end
 else begin : g_no_param_interp
 	assign FDDX_COL = 40'd0;
 	assign FDDY_COL = 40'd0;
-	assign small_c_COL = $signed({1'b0, interp_fz3_mux}) <<< Z_FRAC_BITS;
+	assign small_c_COL = 48'd0;
 end
 endgenerate
 
@@ -2136,24 +2056,24 @@ reg signed [31:0] c_OFFS_B;
 
 always @(posedge clock)
 if (interp_valid) begin
-	case (interp_sel_out)
+	case (param_id_out)
+		0: begin z_FDDX <= FDDX_COL; z_FDDY <= FDDY_COL; z_small_c <= small_c_COL; end
+
 		// Texture UV...
-		0: begin FDDX_U <= FDDX_COL; FDDY_U <= FDDY_COL; small_c_u <= small_c_COL; end
-		1: begin FDDX_V <= FDDX_COL; FDDY_V <= FDDY_COL; small_c_v <= small_c_COL; end
+		1: begin FDDX_U <= FDDX_COL; FDDY_U <= FDDY_COL; small_c_u <= small_c_COL; end
+		2: begin FDDX_V <= FDDX_COL; FDDY_V <= FDDY_COL; small_c_v <= small_c_COL; end
 
 		// Base colour ARGB...
-		2: begin FDDX_BASE_A <= FDDX_COL; FDDY_BASE_A <= FDDY_COL; c_BASE_A <= small_c_COL; end
-		3: begin FDDX_BASE_R <= FDDX_COL; FDDY_BASE_R <= FDDY_COL; c_BASE_R <= small_c_COL; end
-		4: begin FDDX_BASE_G <= FDDX_COL; FDDY_BASE_G <= FDDY_COL; c_BASE_G <= small_c_COL; end
-		5: begin FDDX_BASE_B <= FDDX_COL; FDDY_BASE_B <= FDDY_COL; c_BASE_B <= small_c_COL; end
+		3: begin FDDX_BASE_A <= FDDX_COL; FDDY_BASE_A <= FDDY_COL; c_BASE_A <= small_c_COL; end
+		4: begin FDDX_BASE_R <= FDDX_COL; FDDY_BASE_R <= FDDY_COL; c_BASE_R <= small_c_COL; end
+		5: begin FDDX_BASE_G <= FDDX_COL; FDDY_BASE_G <= FDDY_COL; c_BASE_G <= small_c_COL; end
+		6: begin FDDX_BASE_B <= FDDX_COL; FDDY_BASE_B <= FDDY_COL; c_BASE_B <= small_c_COL; end
 		
 		// Offset colour ARGB...
-		6: begin FDDX_OFFS_A <= FDDX_COL; FDDY_OFFS_A <= FDDY_COL; c_OFFS_A <= small_c_COL; end
-		7: begin FDDX_OFFS_R <= FDDX_COL; FDDY_OFFS_R <= FDDY_COL; c_OFFS_R <= small_c_COL; end
-		8: begin FDDX_OFFS_G <= FDDX_COL; FDDY_OFFS_G <= FDDY_COL; c_OFFS_G <= small_c_COL; end
-		9: begin FDDX_OFFS_B <= FDDX_COL; FDDY_OFFS_B <= FDDY_COL; c_OFFS_B <= small_c_COL; end
-
-		10: begin z_FDDX <= FDDX_COL; z_FDDY <= FDDY_COL; z_small_c <= small_c_COL; end
+		7: begin FDDX_OFFS_A <= FDDX_COL; FDDY_OFFS_A <= FDDY_COL; c_OFFS_A <= small_c_COL; end
+		8: begin FDDX_OFFS_R <= FDDX_COL; FDDY_OFFS_R <= FDDY_COL; c_OFFS_R <= small_c_COL; end
+		9: begin FDDX_OFFS_G <= FDDX_COL; FDDY_OFFS_G <= FDDY_COL; c_OFFS_G <= small_c_COL; end
+		10: begin FDDX_OFFS_B <= FDDX_COL; FDDY_OFFS_B <= FDDY_COL; c_OFFS_B <= small_c_COL; end
 		default:;
 	endcase
 end
@@ -2327,8 +2247,8 @@ wire signed [47:0] small_c_v_out_0;
 wire signed [47:0] small_c_v_out_1;
 assign small_c_v_out = tsp_z_bank ? small_c_v_out_1 : small_c_v_out_0;
 
-wire [11:0] prim_tag_mux_0 = (tsp_active && !tsp_z_bank) ? prim_tag_out : prim_tag;
-wire [11:0] prim_tag_mux_1 = (tsp_active &&  tsp_z_bank) ? prim_tag_out : prim_tag;
+wire [11:0] prim_tag_mux_0 = (tsp_busy && !tsp_z_bank) ? prim_tag_out : prim_tag;
+wire [11:0] prim_tag_mux_1 = (tsp_busy &&  tsp_z_bank) ? prim_tag_out : prim_tag;
 
 param_buffer #(
 	.ENABLE_TEXTURE_PARAMS(ENABLE_TEXTURE_PARAMS),
@@ -2457,7 +2377,7 @@ wire signed [15:0] z_span_y_in = $signed({5'd0, y_ps});
 wire signed [15:0] z_span_x_in = $signed({5'd0, x_ps});
 wire signed [63:0] z_span_x_mul = z_span_x_in * $signed(z_FDDX[39:0]);
 wire signed [47:0] z_span_small_c = z_small_c + z_span_x_mul;
-wire z_span_start = (isp_state == 9'd50) && !z_clear_busy && z_params_ready && !zpipe_flush;
+wire z_span_start = (isp_state == 9'd50) && !z_clear_busy && z_params_hsr_ready && !zpipe_flush;
 wire z_span_valid;
 wire signed [15:0] z_span_y_out;
 wire signed [47:0] z_span_col [0:31];
@@ -2532,40 +2452,6 @@ generate
 	end
 endgenerate
 wire signed [47:0] IP_Z_INTERP = IP_Z_R[0];
-/*
-interp #(
-	.PIXEL_CENTER_SAMPLE(PIXEL_CENTER_SAMPLE),
-	.FRAC_BITS   (FRAC_BITS),
-	.Z_FRAC_BITS (Z_FRAC_BITS),
-	.FRAC_DIFF   (FRAC_DIFF),
-	.COMPUTE_COLS(1'b1)
-)
-interp_inst_z (
-	.clock( clock ),
-
-	// FRAC_BITS format...
-	.FY2_sub_FY1( FY2_sub_FY1_R ),	// input signed [47:0] FY2_sub_FY1 
-	.FY3_sub_FY1( FY3_sub_FY1_R ),	// input signed [47:0] FY3_sub_FY1
-	.FX2_sub_FX1( FX2_sub_FX1_R ),	// input signed [47:0] FX2_sub_FX1
-	.FX3_sub_FX1( FX3_sub_FX1_R ),	// input signed [47:0] FX3_sub_FX1
-	.FX1( FX1_FIXED_R ),				// input signed [47:0] FX1
-	.FY1( FY1_FIXED_R ),				// input signed [47:0] FY1
-	
-	// Now in Z_FRAC_BITS format...
-	.BIG_C( BIG_C_R ),			// input signed [63:0] BIG_C
-
-	.FZ1( FZ1_FIXED_R ),			// input signed [47:0] z1
-	.FZ2( FZ2_FIXED_R ),			// input signed [47:0] z2
-	.FZ3( FZ3_FIXED_R ),			// input signed [47:0] z3
-	
-	// Integer...
-	.x_ps( x_ps ),			// input [10:0] x_ps
-	.y_ps( y_ps ),	// input [10:0]
-	
-	.interp( IP_Z_INTERP ),	// output signed [47:0]  interp
-	.interp_cols( IP_Z )	// output signed [47:0]  interp_cols [0:31]
-);
-*/
 
 
 /* reicast offline-renderer...
@@ -2616,8 +2502,8 @@ z_buff #(
 	.clear_tags_only( clear_tags_only_bank_0 ),
 	.z_clear_busy( z_clear_busy_0 ),
 
-	.col_sel( rle_busy ? rle_col_sel : ((tsp_active && !tsp_z_bank) ? tsp_x_ps[4:0] : x_ps[4:0]) ),		// input [4:0] col_sel
-	.row_sel( rle_busy ? rle_row_sel : ((tsp_active && !tsp_z_bank) ? tsp_y_ps[4:0] : z_write_row_sel) ),		// input [4:0] row_sel
+	.col_sel( rle_busy ? rle_col_sel : ((tsp_busy && !tsp_z_bank) ? tsp_x_ps[4:0] : x_ps[4:0]) ),		// input [4:0] col_sel
+	.row_sel( rle_busy ? rle_row_sel : ((tsp_busy && !tsp_z_bank) ? tsp_y_ps[4:0] : z_write_row_sel) ),		// input [4:0] row_sel
 
 	.inTri( z_inTri_to_zbuff ),			// input [31:0]  inTri
 	.trig_z_row_write( trig_z_row_write & !isp_z_bank ),
@@ -2649,8 +2535,8 @@ z_buff #(
 	.clear_tags_only( clear_tags_only_bank_1 ),
 	.z_clear_busy( z_clear_busy_1 ),
 
-	.col_sel( rle_busy ? rle_col_sel : ((tsp_active && tsp_z_bank) ? tsp_x_ps[4:0] : x_ps[4:0]) ),
-	.row_sel( rle_busy ? rle_row_sel : ((tsp_active && tsp_z_bank) ? tsp_y_ps[4:0] : z_write_row_sel) ),
+	.col_sel( rle_busy ? rle_col_sel : ((tsp_busy && tsp_z_bank) ? tsp_x_ps[4:0] : x_ps[4:0]) ),
+	.row_sel( rle_busy ? rle_row_sel : ((tsp_busy && tsp_z_bank) ? tsp_y_ps[4:0] : z_write_row_sel) ),
 
 	.inTri( z_inTri_to_zbuff ),
 	.trig_z_row_write( trig_z_row_write & isp_z_bank ),
@@ -2733,10 +2619,10 @@ wire transfer_z;
 wire rle_valid;
 
 
-wire rle_busy;
-wire rle_param_load;	// Not needed atm. Params get read during RLE / Z-buffer / prim_tag_out anyway.
+wire rle_busy = 1'b0;
+wire rle_param_load = 1'b0;	// Not needed atm. Params get read during RLE / Z-buffer / prim_tag_out anyway.
 
-wire rle_done;
+wire rle_done = 1'b1;
 /*
 rle_by_tag  rle_by_tag_inst (
     .clk( clock ),					// input  clock
@@ -2829,9 +2715,6 @@ reg [21:0] tsp_tex_word_addr_old;
 reg [21:0] tsp_tex_req_addr;
 reg [21:0] tsp_tex_wait_addr_prev;
 reg [21:0] tex_vram_req_word_addr;
-
-reg [3:0] interp_sel_in;
-reg start_interp;
 
 wire pipe_flush = (tsp_state == 9'd51);
 

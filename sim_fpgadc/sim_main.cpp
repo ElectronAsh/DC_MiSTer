@@ -1754,7 +1754,7 @@ int verilate() {
 			rng_FZ.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FZ1_FIXED));
 			rng_FZ.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FZ2_FIXED));
 			rng_FZ.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FZ3_FIXED));
-			rng_BIG_C.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__BIG_C_R));
+			rng_BIG_C.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__BIG_C));
 			rng_FDDX.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__z_FDDX));
 			rng_FDDY.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__z_FDDY));
 			rng_small_c.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__z_small_c));
