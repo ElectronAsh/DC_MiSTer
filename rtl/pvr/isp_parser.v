@@ -1919,7 +1919,7 @@ reg signed [47:0] FX3_sub_FX1;
 
 reg signed [55:0] C_mult_1;		// Needs to be wider than 48-bit.
 reg signed [55:0] C_mult_2;		// Needs to be wider than 48-bit.
-reg signed [47:0] BIG_C;		// Might be OK as 48-bit?
+reg signed [39:0] BIG_C;		// Might be OK as 48-bit?
 
 always @(posedge clock) begin
 	FX1_FIXED_R <= FX1_FIXED; FY1_FIXED_R <= FY1_FIXED; FZ1_FIXED_R <= FZ1_FIXED;
@@ -1952,7 +1952,7 @@ always @(posedge clock) begin
 	BIG_C <= BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
 end
 */
-wire signed [47:0] BIG_C_shifted = BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
+wire signed [39:0] BIG_C_shifted = BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
 always @(posedge clock) BIG_C <= BIG_C_shifted;
 
 // From the Sega Bible PDF, page 204..
@@ -1975,8 +1975,9 @@ wire [31:0] interp_fz3_offs_argb = (gouraud) ? vert_c_off_col : vert_c_off_col;
 wire [10:0] tex_u_size_full = (8 << tsp_inst[5:3]);
 wire [10:0] tex_v_size_full = (8 << tsp_inst[2:0]);
 
-wire signed [47:0] FDDX_COL, FDDY_COL;
-wire signed [47:0] small_c_COL;
+wire signed [31:0] FDDX_COL;
+wire signed [31:0] FDDY_COL;
+wire signed [31:0] small_c_COL;
 
 generate
 if (ENABLE_TEXTURE_PARAMS || ENABLE_GOURAUD_PARAMS || ENABLE_OFFSET_PARAMS) begin : g_param_interp
@@ -2027,18 +2028,18 @@ interp_params_inst (
 	.tex_u_size( tex_u_size_full ),
 	.tex_v_size( tex_v_size_full ),
 
-    .FDDX( FDDX_COL ),					// output [39:0]  FDDX.
-    .FDDY( FDDY_COL ),					// output [39:0]  FDDY.
-    .small_c( small_c_COL ),			// output [39:0]  small_c.
+    .FDDX( FDDX_COL ),					// output [31:0]  FDDX.
+    .FDDY( FDDY_COL ),					// output [31:0]  FDDY.
+    .small_c( small_c_COL ),			// output [31:0]  small_c.
 	
     .param_id_out( param_id_out ),	// output [5:0]  param_id_out.
     .interp_valid( interp_valid )		// output  interp_valid.
 );
 end
 else begin : g_no_param_interp
-	assign FDDX_COL = 40'd0;
-	assign FDDY_COL = 40'd0;
-	assign small_c_COL = 48'd0;
+	assign FDDX_COL = 32'd0;
+	assign FDDY_COL = 32'd0;
+	assign small_c_COL = 32'd0;
 end
 endgenerate
 
@@ -2079,22 +2080,22 @@ reg signed [31:0] c_OFFS_B;
 always @(posedge clock)
 if (interp_valid) begin
 	case (param_id_out)
-		0: begin z_FDDX <= FDDX_COL; z_FDDY <= FDDY_COL; z_small_c <= small_c_COL; end
+		0:  begin FDDX_Z <= FDDX_COL; FDDY_Z <= FDDY_COL; small_c_z <= small_c_COL; end
 
 		// Texture UV...
-		1: begin FDDX_U <= FDDX_COL; FDDY_U <= FDDY_COL; small_c_u <= small_c_COL; end
-		2: begin FDDX_V <= FDDX_COL; FDDY_V <= FDDY_COL; small_c_v <= small_c_COL; end
+		1:  begin FDDX_U <= FDDX_COL; FDDY_U <= FDDY_COL; small_c_u <= small_c_COL; end
+		2:  begin FDDX_V <= FDDX_COL; FDDY_V <= FDDY_COL; small_c_v <= small_c_COL; end
 
 		// Base colour ARGB...
-		3: begin FDDX_BASE_A <= FDDX_COL; FDDY_BASE_A <= FDDY_COL; c_BASE_A <= small_c_COL; end
-		4: begin FDDX_BASE_R <= FDDX_COL; FDDY_BASE_R <= FDDY_COL; c_BASE_R <= small_c_COL; end
-		5: begin FDDX_BASE_G <= FDDX_COL; FDDY_BASE_G <= FDDY_COL; c_BASE_G <= small_c_COL; end
-		6: begin FDDX_BASE_B <= FDDX_COL; FDDY_BASE_B <= FDDY_COL; c_BASE_B <= small_c_COL; end
+		3:  begin FDDX_BASE_A <= FDDX_COL; FDDY_BASE_A <= FDDY_COL; c_BASE_A <= small_c_COL; end
+		4:  begin FDDX_BASE_R <= FDDX_COL; FDDY_BASE_R <= FDDY_COL; c_BASE_R <= small_c_COL; end
+		5:  begin FDDX_BASE_G <= FDDX_COL; FDDY_BASE_G <= FDDY_COL; c_BASE_G <= small_c_COL; end
+		6:  begin FDDX_BASE_B <= FDDX_COL; FDDY_BASE_B <= FDDY_COL; c_BASE_B <= small_c_COL; end
 		
 		// Offset colour ARGB...
-		7: begin FDDX_OFFS_A <= FDDX_COL; FDDY_OFFS_A <= FDDY_COL; c_OFFS_A <= small_c_COL; end
-		8: begin FDDX_OFFS_R <= FDDX_COL; FDDY_OFFS_R <= FDDY_COL; c_OFFS_R <= small_c_COL; end
-		9: begin FDDX_OFFS_G <= FDDX_COL; FDDY_OFFS_G <= FDDY_COL; c_OFFS_G <= small_c_COL; end
+		7:  begin FDDX_OFFS_A <= FDDX_COL; FDDY_OFFS_A <= FDDY_COL; c_OFFS_A <= small_c_COL; end
+		8:  begin FDDX_OFFS_R <= FDDX_COL; FDDY_OFFS_R <= FDDY_COL; c_OFFS_R <= small_c_COL; end
+		9:  begin FDDX_OFFS_G <= FDDX_COL; FDDY_OFFS_G <= FDDY_COL; c_OFFS_G <= small_c_COL; end
 		10: begin FDDX_OFFS_B <= FDDX_COL; FDDY_OFFS_B <= FDDY_COL; c_OFFS_B <= small_c_COL; end
 		default:;
 	endcase
@@ -2390,15 +2391,15 @@ inTri_calc_inst (
 (*keep*)wire [31:0] inTri;
 
 // Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
-reg signed [47:0] z_FDDX;
-reg signed [47:0] z_FDDY;
-reg signed [47:0] z_small_c;
+reg signed [47:0] FDDX_Z;
+reg signed [47:0] FDDY_Z;
+reg signed [47:0] small_c_z;
 reg  z_params_valid;
 
 wire signed [15:0] z_span_y_in = $signed({5'd0, y_ps});
 wire signed [15:0] z_span_x_in = $signed({5'd0, x_ps});
-wire signed [63:0] z_span_x_mul = z_span_x_in * $signed(z_FDDX[39:0]);
-wire signed [47:0] z_span_small_c = z_small_c + z_span_x_mul;
+wire signed [63:0] z_span_x_mul = z_span_x_in * $signed(FDDX_Z[39:0]);
+wire signed [47:0] z_span_small_c = small_c_z + z_span_x_mul;
 wire z_span_start = (isp_state == 9'd50) && !z_clear_busy && z_params_hsr_ready && !zpipe_flush;
 wire z_span_valid;
 wire signed [15:0] z_span_y_out;
@@ -2412,8 +2413,8 @@ z_span_32_inst (
 	.reset_n( reset_n ),
 	.z_span_start( z_span_start ),
 	.y_ps_in( z_span_y_in ),
-	.FDDX( z_FDDX[39:0] ),
-	.FDDY( z_FDDY[39:0] ),
+	.FDDX( FDDX_Z[39:0] ),
+	.FDDY( FDDY_Z[39:0] ),
 	.small_c( z_span_small_c ),
 	.z_span_valid( z_span_valid ),
 	.y_ps_out( z_span_y_out ),
