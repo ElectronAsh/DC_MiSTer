@@ -554,7 +554,7 @@ if (!reset_n) begin
 	prefetched_poly_pending <= 1'b0;
 	prefetched_opb_word <= 32'd0;
 	prefetched_poly_addr <= 24'd0;
-	quad_second_half <= 1'b1;
+	quad_second_half <= 1'b0;
 	poly_drawn <= 1'b0;
 	read_codebook <= 1'b0;
 	tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
@@ -740,6 +740,7 @@ else begin
 			if (render_poly) begin
 				strip_cnt <= 3'd0;
 				array_cnt <= 4'd0;
+				quad_second_half <= 1'b0;
 				vert_d_x <= 32'd0;
 				vert_d_y <= 32'd0;
 				vert_d_z <= 32'd0;
@@ -1114,7 +1115,7 @@ else begin
 				vert_a_v0 <= vert_b_v0;
 				vert_a_base_col_0 <= vert_b_base_col_0;
 				vert_a_off_col <= vert_b_off_col;
-			
+
 				vert_b_x  <= vert_a_x;
 				vert_b_y  <= vert_a_y;
 				vert_b_z  <= vert_a_z;
@@ -1123,57 +1124,39 @@ else begin
 				vert_b_base_col_0 <= vert_a_base_col_0;
 				vert_b_off_col <= vert_a_off_col;
 			end
-			/*
-			else if (is_tri_strip && strip_cnt[0]) begin
-				// Swap verts B and C for odd strip segments
-				vert_b_x  <= vert_c_x;
-				vert_b_y  <= vert_c_y;
-				vert_b_z  <= vert_c_z;
-				vert_b_u0 <= vert_c_u0;
-				vert_b_v0 <= vert_c_v0;
-				vert_b_base_col_0 <= vert_c_base_col_0;
-				vert_b_off_col <= vert_c_off_col;
 
-				vert_c_x  <= vert_b_x;
-				vert_c_y  <= vert_b_y;
-				vert_c_z  <= vert_b_z;
-				vert_c_u0 <= vert_b_u0;
-				vert_c_v0 <= vert_b_v0;
-				vert_c_base_col_0 <= vert_b_base_col_0;
-				vert_c_off_col <= vert_b_off_col;
-			end
-			*/
 			isp_entry_valid <= 1'b1;
-			isp_vram_addr <= isp_vram_addr + 4;
-			
-			//if (tri_vis) begin
-				any_tags_written <= 1'b0;
-				//prim_tag <= prim_tag + 1;	// We post-increment this now, in isp_state 90.
-				param_id_in <= 6'd11;
-				//start_interp <= 1'b1;
+
+			if (!(is_quad_array && quad_second_half)) begin
+				isp_vram_addr <= isp_vram_addr + 4;
 				interp_params_ready <= 1'b0;
-				pcache_write_pending <= 1'b0;
-				// State 49 starts the interp sequence after the fixed-point
-				// vertex registers have captured the current primitive.
-				if (render_bg) begin
-					vert_a_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);	// ISP_BACKGND_D has only 28 bits.
-					vert_b_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);
-					vert_c_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);
-					vert_d_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);
-				end
-				x_ps <= tilex_start;	// No speed-up possible with x_ps for Tag buffer writes, since a full ROW (span) gets written at every cycle.
-				y_ps <= tiley_start + {6'd0, hsr_start_row};
-				 inTri_pixel_group <= 2'd0;
-				 zpipe_valid <= 1'b0;
-				 zpipe_flush <= 1'b0;
-				 z_params_ready <= 1'b0;
-				 z_span_pending <= 4'd0;
-				isp_state <= 9'd49;			// "Draw" the triangle! (register spans to the TAG buffer).
-			//end
-			//else begin
-				//poly_drawn <= 1'b1;			// Skip this Triangle!
-				//isp_state <= 9'd0;
-			//end
+			end
+
+			any_tags_written <= 1'b0;
+			param_id_in <= 6'd11;
+
+			pcache_write_pending <= 1'b0;
+			// State 49 starts the interp sequence after the fixed-point
+			// vertex registers have captured the current primitive.
+			if (render_bg) begin
+				vert_a_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);	// ISP_BACKGND_D has only 28 bits.
+				vert_b_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);
+				vert_c_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);
+				vert_d_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);
+			end
+			x_ps <= tilex_start;	// No speed-up possible with x_ps for Tag buffer writes, since a full ROW (span) gets written at every cycle.
+			y_ps <= tiley_start + {6'd0, hsr_start_row};
+			inTri_pixel_group <= 2'd0;
+			zpipe_valid <= 1'b0;
+			zpipe_flush <= 1'b0;
+			if (!(is_quad_array && quad_second_half)) begin
+				z_params_ready <= 1'b0;
+				z_params_hsr_ready <= 1'b0;
+				z_params_hsr_ready_d1 <= 1'b0;
+				z_params_hsr_ready_d2 <= 1'b0;
+			end
+			z_span_pending <= 4'd0;
+			isp_state <= 9'd49;			// "Draw" the triangle! (register spans to the TAG buffer).
 		end
 		
 		48: if (!z_clear_busy) begin
@@ -1188,22 +1171,13 @@ else begin
 				end
 			end
 			else if (is_tri_array || is_quad_array) begin	// Triangle Array or Quad Array.
-				if (array_cnt==4'd0) begin			// If Array is done...
+				if ((array_cnt==4'd0) || (is_quad_array && !quad_second_half)) begin
 					if (is_quad_array) begin		// Quad Array (maybe) done.
 						if (!quad_second_half) begin		// Second half of Quad not done yet...
-							// Draw the second half as A-D-C. Slot B must take all
-							// of D's attributes so its texture plane matches its
-							// screen position.
+							// Vertex D carries only X/Y. Rasterize A-D-C while
+							// retaining the projective planes from A/B/C.
 							vert_b_x          <= vert_d_x;
 							vert_b_y          <= vert_d_y;
-							vert_b_z          <= vert_d_z;
-							vert_b_u0         <= vert_d_u0;
-							vert_b_v0         <= vert_d_v0;
-							vert_b_u1         <= vert_d_u1;
-							vert_b_v1         <= vert_d_v1;
-							vert_b_base_col_0 <= vert_d_base_col_0;
-							vert_b_base_col_1 <= vert_d_base_col_1;
-							vert_b_off_col    <= vert_d_off_col;
 
 							if (render_bg) begin
 								//vert_a_x <= vert_b_x;
@@ -1236,7 +1210,6 @@ else begin
 							vert_c_x  <= vert_d_x;
 							vert_c_y  <= vert_d_y;
 							*/
-							isp_vram_addr <= isp_vram_addr + 4;
 							isp_state <= 9'd47;		// Draw the second half of the Quad.
 													// isp_entry_valid will tell the C code to latch the
 													// params again, and convert to fixed-point.
@@ -1254,6 +1227,7 @@ else begin
 				end
 				else begin	// Triangle Array or Quad Array not done yet...
 					array_cnt <= array_cnt - 3'd1;
+					quad_second_half <= 1'b0;
 					param_issue_addr(isp_vram_addr - 24'd4, 9'd2);	// Jump back, to grab the next PRIM (including ISP/TSP/TCW).
 				end
 			end
@@ -1273,12 +1247,22 @@ else begin
 			inTri_pixel_group <= 2'd0;
 			zpipe_valid <= 1'b0;
 			zpipe_flush <= 1'b0;
-			z_params_ready <= 1'b0;
-			z_params_hsr_ready <= 1'b0;
-			z_params_hsr_ready_d1 <= 1'b0;
-			z_params_hsr_ready_d2 <= 1'b0;
 			z_span_pending <= 4'd0;
-			isp_state <= 9'd200;
+			if (is_quad_array && quad_second_half) begin
+				// Store the first triangle's completed planes under the second
+				// triangle's tag. The same planes cover the complete quad.
+				pcache_write <= 1'b1;
+				pcache_write_0 <= !isp_z_bank;
+				pcache_write_1 <=  isp_z_bank;
+				isp_state <= 9'd50;
+			end
+			else begin
+				z_params_ready <= 1'b0;
+				z_params_hsr_ready <= 1'b0;
+				z_params_hsr_ready_d1 <= 1'b0;
+				z_params_hsr_ready_d2 <= 1'b0;
+				isp_state <= 9'd200;
+			end
 		end
 
 		200: begin

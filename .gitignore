@@ -4,8 +4,6 @@ greybox_tmp
 output_files
 sim_fpgadc/out/*.ic501
 sim_fpgadc/out/dc*.bin
-sim_fpgadc/out/pvr_regs*
-sim_fpgadc/out/vram*
 sim_fpgadc/out/*.bmp
 sim_fpgadc/x64/*
 sim_fpgadc/ConsoleApplication1/Debug/*

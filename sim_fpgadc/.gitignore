@@ -8,7 +8,6 @@
 *.recipe
 
 # Verilator output
-out/
 out_cache/
 
 # Build outputs
