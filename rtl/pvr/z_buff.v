@@ -484,19 +484,18 @@ module z_mem_dual (
 
 reg [11:0] tag_mem [0:31];
 reg [47:0] z_mem [0:31];
-reg [47:0] z_in_q;
-reg [11:0] tag_in_q;
 
 always @(posedge clock) begin
-	z_in_q <= z_in;
-	tag_in_q <= tag_in;
 	if (z_clear) begin
 		tag_mem[ addr_wr ] <= 12'd0;
 		if (!clear_tags_only) z_mem[ addr_wr ] <= 48'd0;
 	end
 	else if (z_write_allow) begin
-		tag_mem[ addr_wr ] <= tag_in_q;
-		if (!z_write_disable) z_mem[ addr_wr ] <= z_in_q;
+		// z_buff has already registered the write controls, and isp_parser
+		// delays z_in to the same token. Registering the data again here writes
+		// row N-1 into row N, leaving the first tile row with stale/reset Z.
+		tag_mem[ addr_wr ] <= tag_in;
+		if (!z_write_disable) z_mem[ addr_wr ] <= z_in;
 	end
 
 	q <= {tag_mem[ addr_rd ], z_mem[ addr_rd ]};
