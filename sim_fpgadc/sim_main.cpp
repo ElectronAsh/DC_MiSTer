@@ -57,10 +57,39 @@ struct RangeTracker {
 
 RangeTracker rng_FZ, rng_Aa, rng_Ba, rng_BIG_C, rng_FDDX, rng_FDDY, rng_small_c, rng_interp_col;
 
+struct VertexUvSnapshot {
+	uint32_t x = 0;
+	uint32_t y = 0;
+	uint32_t z = 0;
+	uint32_t u = 0;
+	uint32_t v = 0;
+};
+
+struct ParamWriteSnapshot {
+	bool valid = false;
+	uint64_t cycle = 0;
+	uint16_t tag = 0;
+	uint8_t bank = 0;
+	uint8_t tile_x = 0;
+	uint8_t tile_y = 0;
+	VertexUvSnapshot a;
+	VertexUvSnapshot b;
+	VertexUvSnapshot c;
+	uint64_t fddx_u = 0;
+	uint64_t fddy_u = 0;
+	uint64_t fddx_v = 0;
+	uint64_t fddy_v = 0;
+	uint64_t small_c_u = 0;
+	uint64_t small_c_v = 0;
+};
+
 struct TspIssueSnapshot {
 	bool valid = false;
 	uint64_t cycle = 0;
 	uint16_t tag = 0;
+	uint8_t bank = 0;
+	uint8_t tile_x = 0;
+	uint8_t tile_y = 0;
 	uint16_t x = 0;
 	uint16_t y = 0;
 	uint32_t isp_inst = 0;
@@ -72,8 +101,10 @@ struct TspIssueSnapshot {
 	uint64_t fddy_v = 0;
 	uint64_t small_c_u = 0;
 	uint64_t small_c_v = 0;
+	ParamWriteSnapshot param_write;
 };
 
+ParamWriteSnapshot param_write_snapshots[2][1024];
 TspIssueSnapshot last_tsp_issue;
 
 // DirectX data
@@ -1671,12 +1702,59 @@ int verilate() {
 		top->clk = 0;
 		top->eval();            // Evaluate model!
 
+		const bool pcache_write_0 =
+			top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__pcache_write_0;
+		const bool pcache_write_1 =
+			top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__pcache_write_1;
+		if (pcache_write_0 || pcache_write_1) {
+			const uint8_t bank = pcache_write_1 ? 1 : 0;
+			const uint16_t tag =
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__prim_tag;
+			ParamWriteSnapshot &snapshot = param_write_snapshots[bank][tag & 1023];
+			snapshot.valid = true;
+			snapshot.cycle = main_time;
+			snapshot.tag = tag;
+			snapshot.bank = bank;
+			snapshot.tile_x = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tilex;
+			snapshot.tile_y = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tiley;
+			snapshot.a = {
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_x,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_y,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_z,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_u0,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_v0
+			};
+			snapshot.b = {
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_b_x,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_b_y,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_b_z,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_b_u0,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_b_v0
+			};
+			snapshot.c = {
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_c_x,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_c_y,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_c_z,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_c_u0,
+				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_c_v0
+			};
+			snapshot.fddx_u = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDX_U;
+			snapshot.fddy_u = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_U;
+			snapshot.fddx_v = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDX_V;
+			snapshot.fddy_v = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_V;
+			snapshot.small_c_u = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_u;
+			snapshot.small_c_v = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_v;
+		}
+
 		// Capture the parameter RAM outputs in the same combinational phase in
 		// which the ISP accepts this pixel into the TSP pipeline.
 		if (top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_issue_cmd) {
 			last_tsp_issue.valid = true;
 			last_tsp_issue.cycle = main_time;
 			last_tsp_issue.tag = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__prim_tag_out;
+			last_tsp_issue.bank = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_z_bank;
+			last_tsp_issue.tile_x = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_tilex;
+			last_tsp_issue.tile_y = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_tiley;
 			last_tsp_issue.x = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_x_ps;
 			last_tsp_issue.y = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_y_ps;
 			last_tsp_issue.isp_inst = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__isp_inst_out;
@@ -1688,6 +1766,8 @@ int verilate() {
 			last_tsp_issue.fddy_v = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__FDDY_V;
 			last_tsp_issue.small_c_u = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__small_c_u;
 			last_tsp_issue.small_c_v = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__small_c_v;
+			last_tsp_issue.param_write =
+				param_write_snapshots[last_tsp_issue.bank][last_tsp_issue.tag & 1023];
 		}
 
 		top->clk = 1;
@@ -3159,8 +3239,11 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Separator();
 		ImGui::Text("Last issued TSP sample");
 		if (last_tsp_issue.valid) {
-			ImGui::Text("cycle %-10llu tag 0x%03X  pixel (%u, %u)",
+			ImGui::Text("cycle %-10llu bank %u tile (%u,%u) tag 0x%03X pixel (%u,%u)",
 				(unsigned long long)last_tsp_issue.cycle,
+				last_tsp_issue.bank,
+				last_tsp_issue.tile_x,
+				last_tsp_issue.tile_y,
 				last_tsp_issue.tag,
 				last_tsp_issue.x,
 				last_tsp_issue.y);
@@ -3174,6 +3257,51 @@ int main(int argc, char** argv, char** env) {
 			show_q17_48("FDDY_V", last_tsp_issue.fddy_v);
 			show_q17_48("small_c_u", last_tsp_issue.small_c_u);
 			show_q17_48("small_c_v", last_tsp_issue.small_c_v);
+
+			const ParamWriteSnapshot &source = last_tsp_issue.param_write;
+			if (source.valid) {
+				const uint64_t mask48 = 0x0000FFFFFFFFFFFFULL;
+				const bool coeff_match =
+					((source.fddx_u & mask48) == (last_tsp_issue.fddx_u & mask48)) &&
+					((source.fddy_u & mask48) == (last_tsp_issue.fddy_u & mask48)) &&
+					((source.fddx_v & mask48) == (last_tsp_issue.fddx_v & mask48)) &&
+					((source.fddy_v & mask48) == (last_tsp_issue.fddy_v & mask48)) &&
+					((source.small_c_u & mask48) == (last_tsp_issue.small_c_u & mask48)) &&
+					((source.small_c_v & mask48) == (last_tsp_issue.small_c_v & mask48));
+				const bool tile_match =
+					(source.tile_x == last_tsp_issue.tile_x) &&
+					(source.tile_y == last_tsp_issue.tile_y);
+				ImGui::Text("Param write: cycle %llu bank %u tile (%u,%u) tag 0x%03X",
+					(unsigned long long)source.cycle,
+					source.bank,
+					source.tile_x,
+					source.tile_y,
+					source.tag);
+				ImGui::Text("Readback coefficients %s, tile identity %s",
+					coeff_match ? "MATCH" : "MISMATCH",
+					tile_match ? "MATCH" : "STALE");
+
+				auto bits_float = [](uint32_t bits) {
+					float value;
+					memcpy(&value, &bits, sizeof(value));
+					return value;
+				};
+				auto show_vertex_uv = [&](const char *label, const VertexUvSnapshot &vertex) {
+					ImGui::Text("%s: xy=(%+.4f,%+.4f) z=%+.6f uv=(%+.6f,%+.6f)",
+						label,
+						bits_float(vertex.x),
+						bits_float(vertex.y),
+						bits_float(vertex.z),
+						bits_float(vertex.u),
+						bits_float(vertex.v));
+				};
+				show_vertex_uv("A", source.a);
+				show_vertex_uv("B", source.b);
+				show_vertex_uv("C", source.c);
+			}
+			else {
+				ImGui::Text("No matching parameter write was observed.");
+			}
 		}
 		else {
 			ImGui::Text("No nonzero tag has been issued yet.");
@@ -3198,7 +3326,7 @@ int main(int argc, char** argv, char** env) {
 		ImGui::End();
 
 		ImGui::Begin("Bit-Width Analysis (interp Z, run to measure)");
-		ImGui::Text("Signal        max_abs              bits needed (signed)");
+		ImGui::Text("Signal             max_abs           bits needed (signed)");
 		ImGui::Separator();
 		auto bw = [](const char* name, const RangeTracker& r) {
 			ImGui::Text("%-12s  %20lld   %d", name, (long long)r.max_abs, r.bits_signed());

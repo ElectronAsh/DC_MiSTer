@@ -490,6 +490,9 @@ reg start_interp;
 wire [5:0] param_id_out;
 wire interp_valid;
 wire z_param_result_valid = interp_valid && (param_id_out == 6'd0);
+wire interp_param_result_valid = interp_valid &&
+	((!isp_inst[24] && (param_id_out == 6'd6)) ||
+	 ( isp_inst[24] && (param_id_out == 6'd10)));
 
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
@@ -675,7 +678,7 @@ else begin
 		*/
 	end
 
-	if ((interp_valid && !isp_inst[24] && (param_id_out == 6'd6)) || (isp_inst[24] && (param_id_out == 6'd10))) begin
+	if (interp_param_result_valid) begin
 		interp_params_ready <= 1'b1;
 	end
 
@@ -1300,7 +1303,9 @@ else begin
 		end
 		// Pipelined Tag/Z write: read row N, then write row N-1 (dual-port RAMs).
 		50: if (!z_clear_busy) begin
-			if (pcache_write_pending && interp_params_ready) begin
+			// Commit from this primitive's final pipeline token. A sticky ready
+			// flag can still be high from an earlier launch and write stale UVs.
+			if (pcache_write_pending && interp_param_result_valid) begin
 				pcache_write <= 1'b1;
 				pcache_write_0 <= !isp_z_bank;
 				pcache_write_1 <=  isp_z_bank;
@@ -1948,9 +1953,7 @@ always @(posedge clock) begin
 end
 */
 wire signed [47:0] BIG_C_shifted = BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
-
 always @(posedge clock) BIG_C <= BIG_C_shifted;
-
 
 // From the Sega Bible PDF, page 204..
 //

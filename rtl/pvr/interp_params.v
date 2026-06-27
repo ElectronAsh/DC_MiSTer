@@ -314,8 +314,8 @@ reg signed [47:0] FY1_s4;
 reg signed [47:0] param_a_s4;
 
 // Ideally needs to be at least 56 bits here, else things go screwy, especially the extra large polys on Daytona Bhind.
-wire signed [59:0] A_num_num = $signed({{17{A_num_r[47]}}, A_num_r}) <<< Z_FRAC_BITS;
-wire signed [59:0] B_num_num = $signed({{17{B_num_r[47]}}, B_num_r}) <<< Z_FRAC_BITS;
+wire signed [55:0] A_num_num = $signed({{17{A_num_r[47]}}, A_num_r}) <<< Z_FRAC_BITS;
+wire signed [55:0] B_num_num = $signed({{17{B_num_r[47]}}, B_num_r}) <<< Z_FRAC_BITS;
 
 always @(posedge clock) begin
     //FDDX_r <= (BIG_C_s3 == 0) ? 48'sd0 : (A_num_num / BIG_C_s3);

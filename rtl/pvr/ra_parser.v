@@ -369,9 +369,9 @@ else begin
 		end
 	end
 	
-	15: begin	// All tiles Done. Clear the frame-done mailbox words for reicast on the ARM side.
-		ra_vram_addr <= 24'h800018;
-		ra_vram_dout <= 32'hDEADDEAD;
+	15: begin	// All tiles Done. Set the "frame done" mailbox words for reicast on the ARM side.
+		ra_vram_addr <= 24'h800018;		// Supposed to point to the TEST_SELECT pvr reg (copy), at offset 0x18 above the 8MB VRAM.
+		ra_vram_dout <= 32'hDEADDEAD;		// 
 		ra_vram_wr   <= 1'b1;
 		if (ra_vram_wr_accept) ra_state <= 8'd16;
 	end
