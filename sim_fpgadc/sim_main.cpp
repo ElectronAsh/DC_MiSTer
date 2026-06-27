@@ -57,6 +57,25 @@ struct RangeTracker {
 
 RangeTracker rng_FZ, rng_Aa, rng_Ba, rng_BIG_C, rng_FDDX, rng_FDDY, rng_small_c, rng_interp_col;
 
+struct TspIssueSnapshot {
+	bool valid = false;
+	uint64_t cycle = 0;
+	uint16_t tag = 0;
+	uint16_t x = 0;
+	uint16_t y = 0;
+	uint32_t isp_inst = 0;
+	uint32_t tsp_inst = 0;
+	uint32_t tcw_word = 0;
+	uint64_t fddx_u = 0;
+	uint64_t fddy_u = 0;
+	uint64_t fddx_v = 0;
+	uint64_t fddy_v = 0;
+	uint64_t small_c_u = 0;
+	uint64_t small_c_v = 0;
+};
+
+TspIssueSnapshot last_tsp_issue;
+
 // DirectX data
 static ID3D11Device*            g_pd3dDevice = NULL;
 static ID3D11DeviceContext*     g_pd3dDeviceContext = NULL;
@@ -1651,6 +1670,26 @@ int verilate() {
 
 		top->clk = 0;
 		top->eval();            // Evaluate model!
+
+		// Capture the parameter RAM outputs in the same combinational phase in
+		// which the ISP accepts this pixel into the TSP pipeline.
+		if (top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_issue_cmd) {
+			last_tsp_issue.valid = true;
+			last_tsp_issue.cycle = main_time;
+			last_tsp_issue.tag = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__prim_tag_out;
+			last_tsp_issue.x = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_x_ps;
+			last_tsp_issue.y = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_y_ps;
+			last_tsp_issue.isp_inst = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__isp_inst_out;
+			last_tsp_issue.tsp_inst = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_inst_out;
+			last_tsp_issue.tcw_word = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tcw_word_out;
+			last_tsp_issue.fddx_u = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__FDDX_U;
+			last_tsp_issue.fddy_u = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__FDDY_U;
+			last_tsp_issue.fddx_v = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__FDDX_V;
+			last_tsp_issue.fddy_v = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__FDDY_V;
+			last_tsp_issue.small_c_u = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__small_c_u;
+			last_tsp_issue.small_c_v = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__small_c_v;
+		}
+
 		top->clk = 1;
 		top->eval();            // Evaluate model!
 
@@ -1838,9 +1877,11 @@ int verilate() {
 				top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__rle_count);
 		}
 
+		/*
 		if (top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__rle_done) {
 			printf("PRIM Done !\n\n");
 		}
+		*/
 
 		/*
 		for (uint16_t i = 0; i < 1024; i++) {
@@ -2997,6 +3038,7 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Text("           texture: %d  mipmap: %d  vq: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__texture,
 			top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__mip_map,
 			top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vq_comp);
+		ImGui::SameLine();
 		ImGui::Text("              twid: %d", top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__texture_address_inst__DOT__u_addrgen__DOT__is_twid);
 		ImGui::Text("            uv_16b: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__uv_16_bit);
 		ImGui::SameLine();
@@ -3004,7 +3046,6 @@ int main(int argc, char** argv, char** env) {
 		ImGui::SameLine();
 		ImGui::Text(" gour: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__gouraud);
 		//ImGui::Text("       stride_flag: %d", top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__texture_address_inst__DOT__stride_flag);
-		ImGui::SameLine();
 		//ImGui::Text(" stride: %d", top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__texture_address_inst__DOT__stride);
 		ImGui::Text("        shade_inst: %d", top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__texture_address_inst__DOT__u_shade__DOT__shade_inst_r);
 		ImGui::Text("        texel_argb: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__texture_address_inst__DOT__u_shade__DOT__texel_argb);
@@ -3088,6 +3129,55 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Text(" vert_d_base_col_0: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_d_base_col_0);
 		//ImGui::Text(" vert_d_base_col_1: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_d_base_col_1);
 		ImGui::Text("    vert_d_off_col: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_d_off_col);
+
+		ImGui::Text("          vert_a_z: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_z);
+		ImGui::Text("          vert_b_z: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_b_z);
+		ImGui::Text("          vert_c_z: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_c_z);
+		ImGui::Text("         vert_a_u0: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_u0);
+		ImGui::Text("         vert_b_u0: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_b_u0);
+		ImGui::Text("         vert_c_u0: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_c_u0);
+		ImGui::Text("         vert_a_v0: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_v0);
+		ImGui::Text("         vert_b_v0: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_b_v0);
+		ImGui::Text("         vert_c_v0: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_c_v0);
+		auto show_q17_48 = [](const char* label, uint64_t raw) {
+			const uint64_t raw48 = raw & 0x0000FFFFFFFFFFFFULL;
+			const int64_t value = sign_extend_48(raw48);
+			ImGui::Text("%-20s 0x%012llX %+12.6f", label,
+				(unsigned long long)raw48,
+				(double)value / (double)(1ULL << Z_FRAC_BITS));
+		};
+
+		ImGui::Separator();
+		ImGui::Text("Incoming ISP params");
+		show_q17_48("FDDX_U", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDX_U);
+		show_q17_48("FDDY_U", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_U);
+		show_q17_48("FDDX_V", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDX_V);
+		show_q17_48("FDDY_V", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_V);
+		show_q17_48("small_c_u", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_u);
+		show_q17_48("small_c_v", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_v);
+
+		ImGui::Separator();
+		ImGui::Text("Last issued TSP sample");
+		if (last_tsp_issue.valid) {
+			ImGui::Text("cycle %-10llu tag 0x%03X  pixel (%u, %u)",
+				(unsigned long long)last_tsp_issue.cycle,
+				last_tsp_issue.tag,
+				last_tsp_issue.x,
+				last_tsp_issue.y);
+			ImGui::Text("isp 0x%08X  tsp 0x%08X  tcw 0x%08X",
+				last_tsp_issue.isp_inst,
+				last_tsp_issue.tsp_inst,
+				last_tsp_issue.tcw_word);
+			show_q17_48("FDDX_U", last_tsp_issue.fddx_u);
+			show_q17_48("FDDY_U", last_tsp_issue.fddy_u);
+			show_q17_48("FDDX_V", last_tsp_issue.fddx_v);
+			show_q17_48("FDDY_V", last_tsp_issue.fddy_v);
+			show_q17_48("small_c_u", last_tsp_issue.small_c_u);
+			show_q17_48("small_c_v", last_tsp_issue.small_c_v);
+		}
+		else {
+			ImGui::Text("No nonzero tag has been issued yet.");
+		}
 		ImGui::End();
 
 		ImGui::Begin("Min/Max values (per frame)");

@@ -613,14 +613,14 @@ if (!reset_n) begin
 	z_params_hsr_ready_d1 <= 1'b0;
 	z_params_hsr_ready_d2 <= 1'b0;
 	z_span_pending <= 4'd0;
-	 inTri_pixel_group <= 2'd0;
+	inTri_pixel_group <= 2'd0;
 end
 else begin
 	cb_cache_clear <= 1'b0;
 
 	z_params_hsr_ready_d1 <= z_param_result_valid;
 	z_params_hsr_ready_d2 <= z_params_hsr_ready_d1;
-	if (z_params_hsr_ready_d2) z_params_hsr_ready <= 1'b1;
+	if (z_params_hsr_ready_d1) z_params_hsr_ready <= 1'b1;
 
 	start_interp <= 1'b0;
 	
@@ -665,14 +665,14 @@ else begin
 	if (param_id_in < 6'd11) begin
 		start_interp <= (param_id_in < 6'd10);
 		param_id_in <= param_id_in + 1;
-		
+		/*
 		if (start_interp) begin
 			$display("param_id_in: %d", param_id_in);
 			$display("FDDX_BASE_R: %08X  FDDY_BASE_R: %08X", FDDX_BASE_R, FDDY_BASE_R);
 			$display("FDDX_U: %012X  FDDY_U: %012X", FDDX_U, FDDY_U);
 			$display("FDDX_V: %012X  FDDY_V: %012X", FDDX_V, FDDY_V);
 		end
-		
+		*/
 	end
 
 	if ((interp_valid && !isp_inst[24] && (param_id_out == 6'd6)) || (isp_inst[24] && (param_id_out == 6'd10))) begin
@@ -1188,10 +1188,19 @@ else begin
 				if (array_cnt==4'd0) begin			// If Array is done...
 					if (is_quad_array) begin		// Quad Array (maybe) done.
 						if (!quad_second_half) begin		// Second half of Quad not done yet...
-							// Swap some verts and UV stuff, for the second half of a Quad. (kludge!)
-							vert_b_x <= vert_d_x;
-							vert_b_y <= vert_d_y;
-							//vert_b_z <= vert_d_z;
+							// Draw the second half as A-D-C. Slot B must take all
+							// of D's attributes so its texture plane matches its
+							// screen position.
+							vert_b_x          <= vert_d_x;
+							vert_b_y          <= vert_d_y;
+							vert_b_z          <= vert_d_z;
+							vert_b_u0         <= vert_d_u0;
+							vert_b_v0         <= vert_d_v0;
+							vert_b_u1         <= vert_d_u1;
+							vert_b_v1         <= vert_d_v1;
+							vert_b_base_col_0 <= vert_d_base_col_0;
+							vert_b_base_col_1 <= vert_d_base_col_1;
+							vert_b_off_col    <= vert_d_off_col;
 
 							if (render_bg) begin
 								//vert_a_x <= vert_b_x;
@@ -1270,8 +1279,18 @@ else begin
 		end
 
 		200: begin
-			// Arm the param burst after the fixed-point vertex capture. The
-			// registered start_interp pulse is seen by interp_params next
+			// BIG_C is a registered pipeline behind the live vertex inputs.
+			// Allow swaps performed in state 47 to propagate before launching
+			// any parameter from this primitive.
+			isp_state <= 9'd201;
+		end
+
+		201: begin
+			isp_state <= 9'd202;
+		end
+
+		202: begin
+			// The registered start_interp pulse is seen by interp_params next
 			// cycle, when param_id_in is already ID 0.
 			param_id_in <= 6'd0;
 			start_interp <= 1'b1;

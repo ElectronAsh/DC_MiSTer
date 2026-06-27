@@ -296,7 +296,9 @@ end
 (* preserve, dont_merge *) reg signed [47:0] BIG_C_div;
 
 always @(posedge clock) begin
-    BIG_C_div <= BIG_C_s3;
+    // A_num_r is produced from stage 2 on the same edge that BIG_C_s3 is
+    // produced. Register stage 2 here so the divider sees matching tokens.
+    BIG_C_div <= BIG_C_s2;
 end
 
 //

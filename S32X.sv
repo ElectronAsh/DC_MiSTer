@@ -1396,7 +1396,11 @@ assign fb_wait = geo_wr_wait | ra_vram_wr_selected;
 assign ra_vram_wr_wait_core = geo_wr_wait | fb_pending;
 assign ra_vram_wait_core = ra_vram_wr_core ? ra_vram_wr_wait_core : ra_vram_rd_wait_core;
 
-vram_read_arbiter_2c vram_read_arbiter_geo (
+vram_read_arbiter_2c #(
+	.B_CACHE_WORDS(44),
+	.B_CACHE_BITS(6),
+	.B_BURST_WORDS(44)
+) vram_read_arbiter_geo (
 	.clock( clk_sys ),
 	.reset_n( !reset ),
 

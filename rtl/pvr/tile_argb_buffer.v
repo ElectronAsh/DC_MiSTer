@@ -25,7 +25,7 @@ module tile_argb_buffer (
 	output reg [7:0] wb_byteena,
 	output wire [7:0] wb_burstcnt,
 
-	output reg vram_wr,
+	output wire vram_wr,
 	input vram_wait
 );
 
@@ -34,7 +34,11 @@ module tile_argb_buffer (
 wire [8:0] pix_word_addr = {y_ps[4:0], x_ps[4:1]};
 wire       pix_lane      = x_ps[0];
 
-wire [8:0] buff_addr     = wb_active ? wb_words_issued[8:0] : pix_word_addr;
+wire       wb_output_ready = !wb_emit_valid || !vram_wait;
+wire       wb_can_issue    = wb_active && wb_output_ready && (wb_words_issued < 10'd512);
+wire [8:0] buff_addr       = wb_active ?
+                             (wb_can_issue ? wb_words_issued[8:0] : wb_read_addr_d) :
+                             pix_word_addr;
 wire [1:0] buff_be       = 2'b01 << pix_lane;
 wire [9:0] pix_valid_idx = {pix_word_addr, pix_lane};
 wire [63:0] buff_dout;
@@ -59,6 +63,7 @@ reg  [8:0]  wb_read_addr_d;
 reg         wb_read_valid;
 reg         wb_active;
 reg         wb_emit_valid;
+reg         wb_emit_last;
 reg [1023:0] lane_valid;
 reg         wb_clear_invalid;
 reg         wb_have_last_tile;
@@ -70,6 +75,7 @@ wire [1:0] wb_lane_valid_now = {lane_valid[{wb_read_addr_d, 1'b1}],
                                  lane_valid[{wb_read_addr_d, 1'b0}]};
 assign wb_busy    = wb_active;
 assign wb_burstcnt = (wb_active && wb_emit_valid && (wb_word_addr[2:0] == 3'd0)) ? 8'd8 : 8'd1;
+assign vram_wr = wb_emit_valid;
 
 reg [5:0] tilex;
 reg [5:0] tiley;
@@ -90,12 +96,12 @@ if (!reset_n) begin
 	wb_read_valid   <= 1'b0;
 	wb_active       <= 1'b0;
 	wb_emit_valid   <= 1'b0;
+	wb_emit_last    <= 1'b0;
 	lane_valid      <= 1024'd0;
 	wb_clear_invalid   <= 1'b0;
 	wb_have_last_tile  <= 1'b0;
 	wb_last_tilex      <= 6'd0;
 	wb_last_tiley      <= 6'd0;
-	vram_wr         <= 1'b0;
 	wb_done         <= 1'b0;
 	dbg_wr_pix_count   <= 32'd0;
 	dbg_tile_wb_count  <= 32'd0;
@@ -104,7 +110,6 @@ if (!reset_n) begin
 	dbg_last_fourpix_out  <= 64'd0;
 end
 else begin
-	vram_wr <= 1'b0;
 	wb_done <= 1'b0;
 
 	if (wr_pix && !wb_active) begin
@@ -120,6 +125,7 @@ else begin
 		wb_read_valid   <= 1'b0;
 		wb_active       <= 1'b1;
 		wb_emit_valid   <= 1'b0;
+		wb_emit_last    <= 1'b0;
 		wb_clear_invalid  <= !wb_have_last_tile || (wb_tilex != wb_last_tilex) || (wb_tiley != wb_last_tiley);
 		wb_have_last_tile <= 1'b1;
 		wb_last_tilex     <= wb_tilex;
@@ -131,36 +137,41 @@ else begin
 	// Writeback: one RAM read (64-bit = 2 ARGB pixels) → one DDR write (32-bit = 2x 16bpp).
 	// No half-word ping-pong needed — each word address maps 1:1 to a DDR write.
 	if (wb_active) begin
-		if (wb_emit_valid) begin
-			vram_wr <= 1'b1;
+		if (wb_emit_valid && !vram_wait) begin
 			dbg_last_wb_word_addr <= wb_word_addr;
 			dbg_last_fourpix_out  <= fourpix_out;
-			if (!vram_wait) begin
-				dbg_vram_wr_count <= dbg_vram_wr_count + 32'd1;
-				wb_emit_valid <= 1'b0;
-				if (wb_read_addr_d == 9'd511) begin
-					wb_active     <= 1'b0;
-					wb_read_valid <= 1'b0;
-					wb_done       <= 1'b1;
-				end
+			dbg_vram_wr_count <= dbg_vram_wr_count + 32'd1;
+			if (wb_emit_last) begin
+				wb_active <= 1'b0;
+				wb_done   <= 1'b1;
 			end
 		end
-		else if (wb_read_valid) begin
-			// Convert the two ARGB pixels in buff_dout to 16bpp and prepare the DDR word.
-			lane_valid[{wb_read_addr_d, 1'b0}] <= 1'b0;
-			lane_valid[{wb_read_addr_d, 1'b1}] <= 1'b0;
-			fourpix_out <= {two_pix_to_565_masked(buff_dout, wb_lane_valid_now, wb_clear_invalid),
-			                two_pix_to_565_masked(buff_dout, wb_lane_valid_now, wb_clear_invalid)};
-			wb_byteena  <= wb_clear_invalid ? 8'hF : lane_byteena(wb_lane_valid_now);
-			// wb_read_addr_d[8:4] = row within tile, wb_read_addr_d[3:0] = pixel-pair column within tile.
-			wb_word_addr <= ({tiley, wb_read_addr_d[8:4]} * 320) + {tilex, wb_read_addr_d[3:0]};
-			wb_read_valid <= 1'b0;
-			wb_emit_valid <= 1'b1;
-		end
-		else if (wb_words_issued < 10'd512) begin
-			wb_read_addr_d  <= wb_words_issued[8:0];
-			wb_words_issued <= wb_words_issued + 10'd1;
-			wb_read_valid   <= 1'b1;
+
+		if (wb_output_ready) begin
+			if (wb_read_valid) begin
+				lane_valid[{wb_read_addr_d, 1'b0}] <= 1'b0;
+				lane_valid[{wb_read_addr_d, 1'b1}] <= 1'b0;
+				fourpix_out <= {two_pix_to_565_masked(buff_dout, wb_lane_valid_now, wb_clear_invalid),
+				                two_pix_to_565_masked(buff_dout, wb_lane_valid_now, wb_clear_invalid)};
+				wb_byteena <= wb_clear_invalid ? 8'h0f : lane_byteena(wb_lane_valid_now);
+				wb_word_addr <= ({tiley, wb_read_addr_d[8:4]} * 320) +
+				                {tilex, wb_read_addr_d[3:0]};
+				wb_emit_valid <= 1'b1;
+				wb_emit_last  <= (wb_read_addr_d == 9'd511);
+			end
+			else begin
+				wb_emit_valid <= 1'b0;
+				wb_emit_last  <= 1'b0;
+			end
+
+			if (wb_words_issued < 10'd512) begin
+				wb_read_addr_d  <= wb_words_issued[8:0];
+				wb_words_issued <= wb_words_issued + 10'd1;
+				wb_read_valid   <= 1'b1;
+			end
+			else begin
+				wb_read_valid <= 1'b0;
+			end
 		end
 	end
 

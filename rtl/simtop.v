@@ -361,6 +361,8 @@ pvr pvr (
 	.ra_vram_din64( ra_vram_din_core ),			// input  [63:0] ra_vram_din64
 	.ra_vram_dout( ra_vram_dout_core ),			// output [31:0] ra_vram_dout
 
+	.ra_vram_wr_accept( ra_vram_wr_accept_core ),	// input  ra_vram_wr_accept
+
 	.isp_vram_wait( isp_vram_wait_core ),		// input  isp_vram_wait
 	.isp_vram_valid( isp_vram_valid_core ),		// input  isp_vram_valid
 	.isp_vram_req_ack( isp_vram_req_ack_core ),	// input  isp_vram_req_ack
@@ -408,6 +410,7 @@ wire        geo_ddram_we;
 wire [7:0]  geo_ddram_burstcnt;
 
 wire ra_vram_wr_selected = ra_vram_wr_core && !fb_pending;
+wire ra_vram_wr_accept_core = ra_vram_wr_selected && !geo_wr_wait;
 wire [20:0] fb_wr_word_addr = fb_w_sof1_mirror[22:2] + {1'b0, fb_addr[19:0]};
 wire [28:0] fb_wr_addr_side = {9'd0, fb_wr_word_addr[19:0]};
 wire [7:0]  fb_wr_be_side = fb_wr_word_addr[20] ? {fb_byteena[3:0], 4'b0000} : {4'b0000, fb_byteena[3:0]};
@@ -425,7 +428,11 @@ assign fb_wait = geo_wr_wait | ra_vram_wr_selected;
 assign ra_vram_wr_wait_core = geo_wr_wait | fb_pending;
 assign ra_vram_wait_core = ra_vram_wr_core ? ra_vram_wr_wait_core : ra_vram_rd_wait_core;
 
-vram_read_arbiter_2c vram_read_arbiter_geo (
+vram_read_arbiter_2c #(
+	.B_CACHE_WORDS(44),
+	.B_CACHE_BITS(6),
+	.B_BURST_WORDS(44)
+) vram_read_arbiter_geo (
 	.clock( clk ),
 	.reset_n( !rst ),
 

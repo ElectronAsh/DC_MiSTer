@@ -3,13 +3,19 @@
 
 module vram_read_arbiter_2c #(
 `ifdef VERILATOR
-    parameter CACHE_WORDS = 64,
-    parameter CACHE_BITS  = 6,
-    parameter BURST_WORDS = 32,
+    parameter A_CACHE_WORDS = 64,
+    parameter A_CACHE_BITS  = 6,
+    parameter A_BURST_WORDS = 32,
+    parameter B_CACHE_WORDS = 64,
+    parameter B_CACHE_BITS  = 6,
+    parameter B_BURST_WORDS = 32,
 `else
-    parameter CACHE_WORDS = 1,
-    parameter CACHE_BITS  = 1,
-    parameter BURST_WORDS = 1,
+    parameter A_CACHE_WORDS = 1,
+    parameter A_CACHE_BITS  = 1,
+    parameter A_BURST_WORDS = 1,
+    parameter B_CACHE_WORDS = 1,
+    parameter B_CACHE_BITS  = 1,
+    parameter B_BURST_WORDS = 1,
 `endif
     parameter WRITE_BURST_WORDS = 8
 ) (
@@ -56,17 +62,19 @@ module vram_read_arbiter_2c #(
 
     localparam OWNER_A = 1'b0;
     localparam OWNER_B = 1'b1;
-    localparam [7:0] BURST_LEN = BURST_WORDS;
-    localparam [19:0] BURST_INC = BURST_WORDS;
+    localparam [7:0] A_BURST_LEN = A_BURST_WORDS;
+    localparam [7:0] B_BURST_LEN = B_BURST_WORDS;
+    localparam [19:0] A_BURST_INC = A_BURST_WORDS;
+    localparam [19:0] B_BURST_INC = B_BURST_WORDS;
     localparam [7:0] WRITE_BURST_LEN = WRITE_BURST_WORDS;
 
     wire [19:0] a_req_word = a_addr[21:2];
     wire [19:0] b_req_word = b_addr[21:2];
 
-    reg [63:0] a_cache [0:CACHE_WORDS-1];
-    reg [63:0] b_cache [0:CACHE_WORDS-1];
-    reg [CACHE_WORDS-1:0] a_cache_valid;
-    reg [CACHE_WORDS-1:0] b_cache_valid;
+    reg [63:0] a_cache [0:A_CACHE_WORDS-1];
+    reg [63:0] b_cache [0:B_CACHE_WORDS-1];
+    reg [A_CACHE_WORDS-1:0] a_cache_valid;
+    reg [B_CACHE_WORDS-1:0] b_cache_valid;
     reg [19:0] a_cache_base;
     reg [19:0] b_cache_base;
     reg        a_cache_base_valid;
@@ -102,19 +110,19 @@ module vram_read_arbiter_2c #(
 
     wire [20:0] a_req_delta = {1'b0, a_req_word} - {1'b0, a_cache_base};
     wire [20:0] b_req_delta = {1'b0, b_req_word} - {1'b0, b_cache_base};
-    wire        a_req_in_cache = a_cache_base_valid && (a_req_delta < CACHE_WORDS);
-    wire        b_req_in_cache = b_cache_base_valid && (b_req_delta < CACHE_WORDS);
-    wire [CACHE_BITS-1:0] a_req_index = a_req_delta[CACHE_BITS-1:0];
-    wire [CACHE_BITS-1:0] b_req_index = b_req_delta[CACHE_BITS-1:0];
+    wire        a_req_in_cache = a_cache_base_valid && (a_req_delta < A_CACHE_WORDS);
+    wire        b_req_in_cache = b_cache_base_valid && (b_req_delta < B_CACHE_WORDS);
+    wire [A_CACHE_BITS-1:0] a_req_index = a_req_delta[A_CACHE_BITS-1:0];
+    wire [B_CACHE_BITS-1:0] b_req_index = b_req_delta[B_CACHE_BITS-1:0];
     wire        a_req_hit = a_req_in_cache && a_cache_valid[a_req_index];
     wire        b_req_hit = b_req_in_cache && b_cache_valid[b_req_index];
 
     wire [20:0] a_pend_delta = {1'b0, a_pend_word} - {1'b0, a_cache_base};
     wire [20:0] b_pend_delta = {1'b0, b_pend_word} - {1'b0, b_cache_base};
-    wire        a_pend_in_cache = a_cache_base_valid && (a_pend_delta < CACHE_WORDS);
-    wire        b_pend_in_cache = b_cache_base_valid && (b_pend_delta < CACHE_WORDS);
-    wire [CACHE_BITS-1:0] a_pend_index = a_pend_delta[CACHE_BITS-1:0];
-    wire [CACHE_BITS-1:0] b_pend_index = b_pend_delta[CACHE_BITS-1:0];
+    wire        a_pend_in_cache = a_cache_base_valid && (a_pend_delta < A_CACHE_WORDS);
+    wire        b_pend_in_cache = b_cache_base_valid && (b_pend_delta < B_CACHE_WORDS);
+    wire [A_CACHE_BITS-1:0] a_pend_index = a_pend_delta[A_CACHE_BITS-1:0];
+    wire [B_CACHE_BITS-1:0] b_pend_index = b_pend_delta[B_CACHE_BITS-1:0];
     wire        a_pend_hit = a_pend_in_cache && a_cache_valid[a_pend_index];
     wire        b_pend_hit = b_pend_in_cache && b_cache_valid[b_pend_index];
     wire        a_need_fill = a_pend_valid && !a_pend_hit;
@@ -122,10 +130,10 @@ module vram_read_arbiter_2c #(
 
     wire [20:0] fill_delta_a = {1'b0, fill_word} - {1'b0, a_cache_base};
     wire [20:0] fill_delta_b = {1'b0, fill_word} - {1'b0, b_cache_base};
-    wire        fill_in_a_cache = a_cache_base_valid && (fill_delta_a < CACHE_WORDS);
-    wire        fill_in_b_cache = b_cache_base_valid && (fill_delta_b < CACHE_WORDS);
-    wire [CACHE_BITS-1:0] fill_index_a = fill_delta_a[CACHE_BITS-1:0];
-    wire [CACHE_BITS-1:0] fill_index_b = fill_delta_b[CACHE_BITS-1:0];
+    wire        fill_in_a_cache = a_cache_base_valid && (fill_delta_a < A_CACHE_WORDS);
+    wire        fill_in_b_cache = b_cache_base_valid && (fill_delta_b < B_CACHE_WORDS);
+    wire [A_CACHE_BITS-1:0] fill_index_a = fill_delta_a[A_CACHE_BITS-1:0];
+    wire [B_CACHE_BITS-1:0] fill_index_b = fill_delta_b[B_CACHE_BITS-1:0];
 
     wire [7:0] c_burstcnt_safe = (c_burstcnt == 8'd0) ? 8'd1 : c_burstcnt;
 
@@ -156,8 +164,8 @@ module vram_read_arbiter_2c #(
             DDRAM_BE            <= 8'hff;
             DDRAM_WE            <= 1'b0;
             DDRAM_BURSTCNT      <= 8'd1;
-            a_cache_valid       <= {CACHE_WORDS{1'b0}};
-            b_cache_valid       <= {CACHE_WORDS{1'b0}};
+            a_cache_valid       <= {A_CACHE_WORDS{1'b0}};
+            b_cache_valid       <= {B_CACHE_WORDS{1'b0}};
             a_cache_base        <= 20'd0;
             b_cache_base        <= 20'd0;
             a_cache_base_valid  <= 1'b0;
@@ -359,27 +367,27 @@ module vram_read_arbiter_2c #(
                 end
             end
 
-            // Launch the next burst for a pending miss. A miss outside the current
-            // 64-word window starts a new window at the requested word.
+            // Launch the next burst for a pending miss. A miss outside that
+            // client's cache window starts a new window at the requested word.
             if (!fill_active && !write_active && !c_pending && !DDRAM_PAUSE) begin
                 if (a_need_fill && b_need_fill) begin
                     if (rr_owner) begin
                         if (!a_pend_in_cache) begin
                             a_cache_base <= a_pend_word;
                             a_cache_base_valid <= 1'b1;
-                            a_cache_valid <= {CACHE_WORDS{1'b0}};
+                            a_cache_valid <= {A_CACHE_WORDS{1'b0}};
                         end
                         DDRAM_ADDR <= {9'd0, a_pend_word};
                         DDRAM_RD <= 1'b1;
-                        DDRAM_BURSTCNT <= BURST_LEN;
+                        DDRAM_BURSTCNT <= A_BURST_LEN;
                         fill_active <= 1'b1;
                         fill_cmd_pending <= 1'b1;
                         fill_owner <= OWNER_A;
                         fill_word <= a_pend_word;
                         fill_count <= 8'd0;
-                        fill_len <= BURST_LEN;
-                        a_prefetch_valid <= !a_pend_in_cache ? (BURST_LEN < CACHE_WORDS) : ((a_pend_delta + BURST_WORDS) < CACHE_WORDS);
-                        a_prefetch_word <= a_pend_word + BURST_INC;
+                        fill_len <= A_BURST_LEN;
+                        a_prefetch_valid <= !a_pend_in_cache ? (A_BURST_LEN < A_CACHE_WORDS) : ((a_pend_delta + A_BURST_WORDS) < A_CACHE_WORDS);
+                        a_prefetch_word <= a_pend_word + A_BURST_INC;
                         rr_owner <= OWNER_B;
                         ddr_issue_count <= ddr_issue_count + 1'd1;
                         a_refill_count <= a_refill_count + 1'd1;
@@ -387,19 +395,19 @@ module vram_read_arbiter_2c #(
                         if (!b_pend_in_cache) begin
                             b_cache_base <= b_pend_word;
                             b_cache_base_valid <= 1'b1;
-                            b_cache_valid <= {CACHE_WORDS{1'b0}};
+                            b_cache_valid <= {B_CACHE_WORDS{1'b0}};
                         end
                         DDRAM_ADDR <= {9'd0, b_pend_word};
                         DDRAM_RD <= 1'b1;
-                        DDRAM_BURSTCNT <= BURST_LEN;
+                        DDRAM_BURSTCNT <= B_BURST_LEN;
                         fill_active <= 1'b1;
                         fill_cmd_pending <= 1'b1;
                         fill_owner <= OWNER_B;
                         fill_word <= b_pend_word;
                         fill_count <= 8'd0;
-                        fill_len <= BURST_LEN;
-                        b_prefetch_valid <= !b_pend_in_cache ? (BURST_LEN < CACHE_WORDS) : ((b_pend_delta + BURST_WORDS) < CACHE_WORDS);
-                        b_prefetch_word <= b_pend_word + BURST_INC;
+                        fill_len <= B_BURST_LEN;
+                        b_prefetch_valid <= !b_pend_in_cache ? (B_BURST_LEN < B_CACHE_WORDS) : ((b_pend_delta + B_BURST_WORDS) < B_CACHE_WORDS);
+                        b_prefetch_word <= b_pend_word + B_BURST_INC;
                         rr_owner <= OWNER_A;
                         ddr_issue_count <= ddr_issue_count + 1'd1;
                         b_refill_count <= b_refill_count + 1'd1;
@@ -408,19 +416,19 @@ module vram_read_arbiter_2c #(
                     if (!a_pend_in_cache) begin
                         a_cache_base <= a_pend_word;
                         a_cache_base_valid <= 1'b1;
-                        a_cache_valid <= {CACHE_WORDS{1'b0}};
+                        a_cache_valid <= {A_CACHE_WORDS{1'b0}};
                     end
                     DDRAM_ADDR <= {9'd0, a_pend_word};
                     DDRAM_RD <= 1'b1;
-                    DDRAM_BURSTCNT <= BURST_LEN;
+                    DDRAM_BURSTCNT <= A_BURST_LEN;
                     fill_active <= 1'b1;
                     fill_cmd_pending <= 1'b1;
                     fill_owner <= OWNER_A;
                     fill_word <= a_pend_word;
                     fill_count <= 8'd0;
-                    fill_len <= BURST_LEN;
-                    a_prefetch_valid <= !a_pend_in_cache ? (BURST_LEN < CACHE_WORDS) : ((a_pend_delta + BURST_WORDS) < CACHE_WORDS);
-                    a_prefetch_word <= a_pend_word + BURST_INC;
+                    fill_len <= A_BURST_LEN;
+                    a_prefetch_valid <= !a_pend_in_cache ? (A_BURST_LEN < A_CACHE_WORDS) : ((a_pend_delta + A_BURST_WORDS) < A_CACHE_WORDS);
+                    a_prefetch_word <= a_pend_word + A_BURST_INC;
                     rr_owner <= OWNER_B;
                     ddr_issue_count <= ddr_issue_count + 1'd1;
                     a_refill_count <= a_refill_count + 1'd1;
@@ -428,45 +436,45 @@ module vram_read_arbiter_2c #(
                     if (!b_pend_in_cache) begin
                         b_cache_base <= b_pend_word;
                         b_cache_base_valid <= 1'b1;
-                        b_cache_valid <= {CACHE_WORDS{1'b0}};
+                        b_cache_valid <= {B_CACHE_WORDS{1'b0}};
                     end
                     DDRAM_ADDR <= {9'd0, b_pend_word};
                     DDRAM_RD <= 1'b1;
-                    DDRAM_BURSTCNT <= BURST_LEN;
+                    DDRAM_BURSTCNT <= B_BURST_LEN;
                     fill_active <= 1'b1;
                     fill_cmd_pending <= 1'b1;
                     fill_owner <= OWNER_B;
                     fill_word <= b_pend_word;
                     fill_count <= 8'd0;
-                    fill_len <= BURST_LEN;
-                    b_prefetch_valid <= !b_pend_in_cache ? (BURST_LEN < CACHE_WORDS) : ((b_pend_delta + BURST_WORDS) < CACHE_WORDS);
-                    b_prefetch_word <= b_pend_word + BURST_INC;
+                    fill_len <= B_BURST_LEN;
+                    b_prefetch_valid <= !b_pend_in_cache ? (B_BURST_LEN < B_CACHE_WORDS) : ((b_pend_delta + B_BURST_WORDS) < B_CACHE_WORDS);
+                    b_prefetch_word <= b_pend_word + B_BURST_INC;
                     rr_owner <= OWNER_A;
                     ddr_issue_count <= ddr_issue_count + 1'd1;
                     b_refill_count <= b_refill_count + 1'd1;
                 end else if (a_prefetch_valid) begin
                     DDRAM_ADDR <= {9'd0, a_prefetch_word};
                     DDRAM_RD <= 1'b1;
-                    DDRAM_BURSTCNT <= BURST_LEN;
+                    DDRAM_BURSTCNT <= A_BURST_LEN;
                     fill_active <= 1'b1;
                     fill_cmd_pending <= 1'b1;
                     fill_owner <= OWNER_A;
                     fill_word <= a_prefetch_word;
                     fill_count <= 8'd0;
-                    fill_len <= BURST_LEN;
+                    fill_len <= A_BURST_LEN;
                     a_prefetch_valid <= 1'b0;
                     ddr_issue_count <= ddr_issue_count + 1'd1;
                     a_refill_count <= a_refill_count + 1'd1;
                 end else if (b_prefetch_valid) begin
                     DDRAM_ADDR <= {9'd0, b_prefetch_word};
                     DDRAM_RD <= 1'b1;
-                    DDRAM_BURSTCNT <= BURST_LEN;
+                    DDRAM_BURSTCNT <= B_BURST_LEN;
                     fill_active <= 1'b1;
                     fill_cmd_pending <= 1'b1;
                     fill_owner <= OWNER_B;
                     fill_word <= b_prefetch_word;
                     fill_count <= 8'd0;
-                    fill_len <= BURST_LEN;
+                    fill_len <= B_BURST_LEN;
                     b_prefetch_valid <= 1'b0;
                     ddr_issue_count <= ddr_issue_count + 1'd1;
                     b_refill_count <= b_refill_count + 1'd1;
