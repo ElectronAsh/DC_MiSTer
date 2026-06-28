@@ -103,7 +103,12 @@ wire signed [EDGE_COORD_W-1:0] dy_bc = fy3 - fy2;
 wire signed [EDGE_COORD_W-1:0] dx_ca = fx1 - fx3;
 wire signed [EDGE_COORD_W-1:0] dy_ca = fy1 - fy3;
 
-wire signed [EDGE_W-1:0] ab_const_term = edge_mul(dx_ab, y_ps_fixed - fy1);
+// The lite core is over the Cyclone V DSP budget before fitting. Keep three
+// edge products in ALMs so Quartus does not have to rebalance them out of DSPs
+// during placement. These retain the original combinational latency.
+(* multstyle = "logic" *)
+wire signed [(EDGE_COORD_W*2)-1:0] ab_const_product = dx_ab * (y_ps_fixed - fy1);
+wire signed [EDGE_W-1:0] ab_const_term = ab_const_product[EDGE_W-1:0];
 wire signed [EDGE_W-1:0] bc_const_term = edge_mul(dx_bc, y_ps_fixed - fy2);
 wire signed [EDGE_W-1:0] ca_const_term = edge_mul(dx_ca, y_ps_fixed - fy3);
 
@@ -128,7 +133,12 @@ wire signed [EDGE_W-1:0] edge_cd_base = cd_const_term - edge_mul(dy_cd, x_base_f
 wire signed [EDGE_W-1:0] edge_da_base = da_const_term - edge_mul(dy_da, x_base_fixed - fx4);
 `endif
 
-wire signed [EDGE_W-1:0] tri_area2 = edge_mul(dx_ab, fy3 - fy1) - edge_mul(dy_ab, fx3 - fx1);
+(* multstyle = "logic" *)
+wire signed [(EDGE_COORD_W*2)-1:0] tri_area_product_x = dx_ab * (fy3 - fy1);
+(* multstyle = "logic" *)
+wire signed [(EDGE_COORD_W*2)-1:0] tri_area_product_y = dy_ab * (fx3 - fx1);
+wire signed [EDGE_W-1:0] tri_area2 =
+	tri_area_product_x[EDGE_W-1:0] - tri_area_product_y[EDGE_W-1:0];
 wire sign_ref = tri_area2 >= 0;
 
 wire include_ab = sign_ref ? ((dy_ab < 0) || ((dy_ab == 0) && (dx_ab > 0))) :

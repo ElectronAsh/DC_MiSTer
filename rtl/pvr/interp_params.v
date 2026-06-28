@@ -303,26 +303,82 @@ end
 
 //
 // ------------------------------------------------------------------------
-// Stage 4 : Divide
+// Stage 4 : Pipelined divide
 // ------------------------------------------------------------------------
 //
-reg signed [31:0] FDDX_r;
-reg signed [31:0] FDDY_r;
+localparam DIV_PIPELINE = 6;
 
 reg signed [47:0] FX1_s4;
 reg signed [47:0] FY1_s4;
 reg signed [47:0] param_a_s4;
 
+reg signed [47:0] FX1_div_s1;
+reg signed [47:0] FX1_div_s2;
+reg signed [47:0] FX1_div_s3;
+reg signed [47:0] FX1_div_s4;
+reg signed [47:0] FX1_div_s5;
+
+reg signed [47:0] FY1_div_s1;
+reg signed [47:0] FY1_div_s2;
+reg signed [47:0] FY1_div_s3;
+reg signed [47:0] FY1_div_s4;
+reg signed [47:0] FY1_div_s5;
+
+reg signed [47:0] param_a_div_s1;
+reg signed [47:0] param_a_div_s2;
+reg signed [47:0] param_a_div_s3;
+reg signed [47:0] param_a_div_s4;
+reg signed [47:0] param_a_div_s5;
+
 // Ideally needs to be at least 56 bits here, else things go screwy, especially the extra large polys on Daytona Bhind.
 wire signed [55:0] A_num_num = $signed({{17{A_num_r[47]}}, A_num_r}) <<< Z_FRAC_BITS;
 wire signed [55:0] B_num_num = $signed({{17{B_num_r[47]}}, B_num_r}) <<< Z_FRAC_BITS;
 
+wire signed [55:0] FDDX_div;
+wire signed [55:0] FDDY_div;
+wire signed [31:0] FDDX_r = FDDX_div[31:0];
+wire signed [31:0] FDDY_r = FDDY_div[31:0];
+
+interp_signed_div_pipe #(
+    .PIPELINE(DIV_PIPELINE)
+) FDDX_div_inst (
+    .clock(clock),
+    .numer(A_num_num),
+    .denom(BIG_C_div),
+    .quotient(FDDX_div)
+);
+
+interp_signed_div_pipe #(
+    .PIPELINE(DIV_PIPELINE)
+) FDDY_div_inst (
+    .clock(clock),
+    .numer(B_num_num),
+    .denom(BIG_C_div),
+    .quotient(FDDY_div)
+);
+
 always @(posedge clock) begin
-    FDDX_r <= (BIG_C_div == 0) ? 40'sd0 : (A_num_num / BIG_C_div);
-    FDDY_r <= (BIG_C_div == 0) ? 40'sd0 : (B_num_num / BIG_C_div);
     FX1_s4 <= FX1_s3;
     FY1_s4 <= FY1_s3;
     param_a_s4 <= param_a_s3;
+
+    FX1_div_s1 <= FX1_s4;
+    FX1_div_s2 <= FX1_div_s1;
+    FX1_div_s3 <= FX1_div_s2;
+    FX1_div_s4 <= FX1_div_s3;
+    FX1_div_s5 <= FX1_div_s4;
+
+    FY1_div_s1 <= FY1_s4;
+    FY1_div_s2 <= FY1_div_s1;
+    FY1_div_s3 <= FY1_div_s2;
+    FY1_div_s4 <= FY1_div_s3;
+    FY1_div_s5 <= FY1_div_s4;
+
+    param_a_div_s1 <= param_a_s4;
+    param_a_div_s2 <= param_a_div_s1;
+    param_a_div_s3 <= param_a_div_s2;
+    param_a_div_s4 <= param_a_div_s3;
+    param_a_div_s5 <= param_a_div_s4;
 end
 
 //
@@ -330,8 +386,8 @@ end
 // Stage 5 : ddx*fx1 and ddy*fy1
 // ------------------------------------------------------------------------
 //
-wire signed [47:0] FX1_z = FX1_s4 <<< FRAC_DIFF;
-wire signed [47:0] FY1_z = FY1_s4 <<< FRAC_DIFF;
+wire signed [47:0] FX1_z = FX1_div_s5 <<< FRAC_DIFF;
+wire signed [47:0] FY1_z = FY1_div_s5 <<< FRAC_DIFF;
 
 reg signed [63:0] ddx_fx1_mult_r;
 reg signed [63:0] ddy_fy1_mult_r;
@@ -341,14 +397,14 @@ reg signed [47:0] ddy_fy1_r;
 
 reg signed [31:0] FDDX_s5;
 reg signed [31:0] FDDY_s5;
-reg signed [41:0] param_a_s5;
+reg signed [47:0] param_a_s5;
 
 always @(posedge clock) begin
     ddx_fx1_mult_r <= FDDX_r * FX1_z;
     ddy_fy1_mult_r <= FDDY_r * FY1_z;
     FDDX_s5 <= FDDX_r;
     FDDY_s5 <= FDDY_r;
-    param_a_s5 <= param_a_s4;
+    param_a_s5 <= param_a_div_s5;
 end
 
 reg signed [31:0] FDDX_s6;
@@ -379,7 +435,7 @@ end
 // Valid pipeline
 // ------------------------------------------------------------------------
 //
-reg [6:0] valid_pipe;
+reg [11:0] valid_pipe;
 
 reg [5:0] param_id_s0;
 reg [5:0] param_id_s1;
@@ -388,10 +444,15 @@ reg [5:0] param_id_s3;
 reg [5:0] param_id_s4;
 reg [5:0] param_id_s5;
 reg [5:0] param_id_s6;
+reg [5:0] param_id_s7;
+reg [5:0] param_id_s8;
+reg [5:0] param_id_s9;
+reg [5:0] param_id_s10;
+reg [5:0] param_id_s11;
 
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
-	valid_pipe <= 7'd0;
+	valid_pipe <= 12'd0;
 	interp_valid <= 1'b0;
 	param_id_out <= 6'd0;
 	param_id_s0 <= 6'd0;
@@ -401,10 +462,15 @@ if (!reset_n) begin
 	param_id_s4 <= 6'd0;
 	param_id_s5 <= 6'd0;
 	param_id_s6 <= 6'd0;
+	param_id_s7 <= 6'd0;
+	param_id_s8 <= 6'd0;
+	param_id_s9 <= 6'd0;
+	param_id_s10 <= 6'd0;
+	param_id_s11 <= 6'd0;
 end
 else begin
-    valid_pipe <= {valid_pipe[5:0], start_interp};
-    interp_valid <= valid_pipe[6];
+    valid_pipe <= {valid_pipe[10:0], start_interp};
+    interp_valid <= valid_pipe[11];
     if (start_interp) param_id_s0 <= param_id_in;
     param_id_s1 <= param_id_s0;
     param_id_s2 <= param_id_s1;
@@ -412,8 +478,58 @@ else begin
     param_id_s4 <= param_id_s3;
     param_id_s5 <= param_id_s4;
     param_id_s6 <= param_id_s5;
-    param_id_out <= param_id_s6;
+    param_id_s7 <= param_id_s6;
+    param_id_s8 <= param_id_s7;
+    param_id_s9 <= param_id_s8;
+    param_id_s10 <= param_id_s9;
+    param_id_s11 <= param_id_s10;
+    param_id_out <= param_id_s11;
 end
 
+
+endmodule
+
+module interp_signed_div_pipe #(
+    parameter integer PIPELINE = 6
+)(
+    input  wire               clock,
+    input  wire signed [55:0] numer,
+    input  wire signed [39:0] denom,
+    output wire signed [55:0] quotient
+);
+
+wire signed [55:0] numer_safe = (denom == 0) ? 56'sd0 : numer;
+wire signed [39:0] denom_safe = (denom == 0) ? 40'sd1 : denom;
+
+`ifdef VERILATOR
+reg signed [55:0] quotient_pipe [0:PIPELINE-1];
+integer div_stage;
+
+always @(posedge clock) begin
+    quotient_pipe[0] <= numer_safe / denom_safe;
+    for (div_stage = 1; div_stage < PIPELINE; div_stage = div_stage + 1)
+        quotient_pipe[div_stage] <= quotient_pipe[div_stage - 1];
+end
+
+assign quotient = quotient_pipe[PIPELINE-1];
+`else
+lpm_divide #(
+    .lpm_widthn(56),
+    .lpm_widthd(40),
+    .lpm_nrepresentation("SIGNED"),
+    .lpm_drepresentation("SIGNED"),
+    .lpm_pipeline(PIPELINE),
+    .lpm_type("LPM_DIVIDE"),
+    .lpm_hint("MAXIMIZE_SPEED=6")
+) lpm_divide_component (
+    .clock(clock),
+    .clken(1'b1),
+    .aclr(1'b0),
+    .numer(numer_safe),
+    .denom(denom_safe),
+    .quotient(quotient),
+    .remain()
+);
+`endif
 
 endmodule

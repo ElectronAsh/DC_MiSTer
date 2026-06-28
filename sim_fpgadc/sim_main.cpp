@@ -12,7 +12,7 @@
 #include "Vsimtop___024root.h"
 
 constexpr auto FRAC_BITS   = 12;	// 12 is about the max atm.
-constexpr auto Z_FRAC_BITS = 17;	// 17 is about the max atm.
+constexpr auto Z_FRAC_BITS = 16;	// 17 is about the max atm.
 
 #include "imgui.h"
 #include "imgui_impl_win32.h"
@@ -142,7 +142,7 @@ struct DdramEmu {
 	uint32_t burst_remaining = 0;
 };
 
-static constexpr uint32_t DDR_LATENCY_CYCLES = 0;
+static constexpr uint32_t DDR_LATENCY_CYCLES = 10;
 
 static void ddram_tick(
 	DdramEmu &s,

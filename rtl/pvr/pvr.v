@@ -13,7 +13,7 @@
 module pvr #(
 	parameter PIXEL_CENTER_SAMPLE = 1'b0,
 	parameter FRAC_BITS   = 8'd12,	// 12 is about the max atm.
-	parameter Z_FRAC_BITS = 8'd17,	// 17 is about the max atm.
+	parameter Z_FRAC_BITS = 8'd16,	// 17 is about the max atm.
 	// Z_FRAC_BITS needs to be >= FRAC_BITS. (above about 18, and some HUD text on HOTD2 Gargoyle gets mirrored?)
 	parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS),
 

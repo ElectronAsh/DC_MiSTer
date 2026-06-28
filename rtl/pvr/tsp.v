@@ -133,6 +133,14 @@ wire cache_bypass       = isp_inst_out[21];
 wire dcalc_ctrl         = isp_inst_out[20];
 // Bits [19:0] are reserved.
 
+wire texture_render_enabled = texture && debug_ena_texel_reads;
+wire [31:0] isp_inst_texture_gated = {
+	isp_inst_out[31:26],
+	texture_render_enabled,
+	isp_inst_out[24:0]
+};
+wire read_codebook_gated = read_codebook && debug_ena_texel_reads;
+
 // ISP/TSP Instruction Word. Bit decode, for Opaque Modifier Volume or Translucent Modified Volume...
 wire [2:0] volume_inst = isp_inst_out[31:29];
 //wire [1:0] culling_mode = isp_inst[28:27];	// Same bit select as above.
@@ -211,14 +219,14 @@ wire signed [63:0] x_ps_mult_fddx_u = (x_ps_signed * FDDX_U);
 wire signed [63:0] y_ps_mult_fddy_u = (y_ps_signed * FDDY_U);
 wire signed [63:0] IP_U_INTERP = x_ps_mult_fddx_u + y_ps_mult_fddy_u + small_c_u;
 wire signed [47:0] IP_U_PERSP_NUM = IP_U_INTERP <<< Z_FRAC_BITS;
-wire signed [47:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;
+wire signed [31:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;				// Reduced result from 48-bit.
 wire signed [9:0] u_div_z = IP_U_PERSP >>> Z_FRAC_BITS;
 
 wire signed [63:0] x_ps_mult_fddx_v = (x_ps_signed * FDDX_V);
 wire signed [63:0] y_ps_mult_fddy_v = (y_ps_signed * FDDY_V);
 wire signed [63:0] IP_V_INTERP = x_ps_mult_fddx_v + y_ps_mult_fddy_v + small_c_v;
 wire signed [47:0] IP_V_PERSP_NUM = IP_V_INTERP <<< Z_FRAC_BITS;
-wire signed [47:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;
+wire signed [31:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;				// Reduced result from 48-bit.
 wire signed [9:0] v_div_z = IP_V_PERSP >>> Z_FRAC_BITS;
 
 uv_clamp_flip  uv_clamp_flip_inst(
@@ -246,14 +254,14 @@ generate
 		wire signed [63:0] y_ps_mult_fddy_u = (y_ps_signed * FDDY_U);
 		wire signed [63:0] IP_U_INTERP = x_ps_mult_fddx_u + y_ps_mult_fddy_u + small_c_u;
 		wire signed [47:0] IP_U_PERSP_NUM = IP_U_INTERP <<< Z_FRAC_BITS;
-		wire signed [47:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;
+		wire signed [31:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;	// Reduced from 48-bit.
 		wire signed [9:0] u_div_z = IP_U_PERSP >>> Z_FRAC_BITS;
 
 		wire signed [63:0] x_ps_mult_fddx_v = (x_ps_signed * FDDX_V);
 		wire signed [63:0] y_ps_mult_fddy_v = (y_ps_signed * FDDY_V);
 		wire signed [63:0] IP_V_INTERP = x_ps_mult_fddx_v + y_ps_mult_fddy_v + small_c_v;
 		wire signed [47:0] IP_V_PERSP_NUM = IP_V_INTERP <<< Z_FRAC_BITS;
-		wire signed [47:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;
+		wire signed [31:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;	// Reduced from 48-bit.
 		wire signed [9:0] v_div_z = IP_V_PERSP >>> Z_FRAC_BITS;
 
 		uv_clamp_flip  uv_clamp_flip_inst(
@@ -280,7 +288,9 @@ endgenerate
 wire stall_tex_fetch;
 wire stall_codebook;
 wire fb_writeback_stall;
-assign pipeline_stall = stall_tex_fetch || stall_codebook || (ENABLE_TEXTURE_PIPELINE && vram_wait) || fb_writeback_stall;
+assign pipeline_stall = stall_tex_fetch || stall_codebook ||
+						(ENABLE_TEXTURE_PIPELINE && debug_ena_texel_reads && vram_wait) ||
+						fb_writeback_stall;
 
 wire trace_a;
 wire trace_b;
@@ -301,7 +311,7 @@ texture_pipeline  texture_address_inst (
     .vi             ( v_flipped      ),
 
     // ISP / TSP / TCW control words
-    .isp_inst       ( isp_inst_out   ),
+    .isp_inst       ( isp_inst_texture_gated ),
     .tsp_inst       ( tsp_inst_out   ),
     .tcw_word       ( tcw_word_out   ),
 
@@ -314,7 +324,7 @@ texture_pipeline  texture_address_inst (
 	.pal_rd( pal_rd ),					// input  pal_rd
 	.pal_dout( pal_dout ),				// output [31:0]  pal_dout
 
-	.read_codebook( read_codebook ),	// input  read_codebook
+	.read_codebook( read_codebook_gated ),	// input  read_codebook
 	.codebook_wait( codebook_wait ),	// output codebook_wait
 
 	//.prim_tag( prim_tag_out ),		// input [11:0]  prim_tag
@@ -367,7 +377,7 @@ texture_pipeline  texture_address_inst (
     .vi             ( v_flipped      ),
 
     // ISP / TSP / TCW control words
-    .isp_inst       ( isp_inst_out   ),
+    .isp_inst       ( isp_inst_texture_gated ),
     .tsp_inst       ( tsp_inst_out   ),
     .tcw_word       ( tcw_word_out   ),
 	
@@ -380,7 +390,7 @@ texture_pipeline  texture_address_inst (
 	.pal_rd( pal_rd ),					// input  pal_rd
 	.pal_dout( pal_dout ),				// output [31:0]  pal_dout
 	
-	.read_codebook( read_codebook ),	// input  read_codebook
+	.read_codebook( read_codebook_gated ),	// input  read_codebook
 	.codebook_wait( codebook_wait ),	// output codebook_wait
 	
 	//.prim_tag( prim_tag_out ),		// input [11:0]  prim_tag

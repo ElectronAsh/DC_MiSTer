@@ -10,12 +10,12 @@ module vram_read_arbiter_2c #(
     parameter B_CACHE_BITS  = 6,
     parameter B_BURST_WORDS = 32,
 `else
-    parameter A_CACHE_WORDS = 1,
-    parameter A_CACHE_BITS  = 1,
-    parameter A_BURST_WORDS = 1,
-    parameter B_CACHE_WORDS = 1,
-    parameter B_CACHE_BITS  = 1,
-    parameter B_BURST_WORDS = 1,
+    parameter A_CACHE_WORDS = 64,
+    parameter A_CACHE_BITS  = 6,
+    parameter A_BURST_WORDS = 32,
+    parameter B_CACHE_WORDS = 64,
+    parameter B_CACHE_BITS  = 6,
+    parameter B_BURST_WORDS = 32,
 `endif
     parameter WRITE_BURST_WORDS = 8
 ) (

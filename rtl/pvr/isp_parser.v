@@ -10,7 +10,7 @@ parameter FIXED_W = 48;
 
 module isp_parser #(
 	parameter [7:0] FRAC_BITS = 8'd12,
-	parameter [7:0] Z_FRAC_BITS = 8'd17,
+	parameter [7:0] Z_FRAC_BITS = 8'd16,
 	parameter [7:0] FRAC_DIFF = Z_FRAC_BITS - FRAC_BITS,
 	parameter PIXEL_CENTER_SAMPLE = 1'b1,
 	parameter ENABLE_TEXTURE_PIPELINE = 1'b1,
@@ -276,44 +276,50 @@ reg pcache_write_0;
 reg pcache_write_1;
 reg pcache_write_pending;
 
-// Debug counter
+`ifdef VERILATOR
+// Simulator-only instrumentation.
 reg [31:0] isp_vram_rd_count;
 reg [31:0] tex_vram_rd_count;
 reg [31:0] cb_word_count;
-(*noprune*)reg [31:0] param_window_hit_count;
-(*noprune*)reg [31:0] param_window_miss_count;
-(*noprune*)reg [31:0] param_window_prefetch_count;
-(*noprune*)reg [31:0] param_window_fill_count;
-(*noprune*)reg [31:0] param_window_overlap_start_count;
-(*noprune*)reg [31:0] tag_visible_pixel_count;
-(*noprune*)reg [31:0] tag_switch_count;
-(*noprune*)reg [31:0] tag_switch_stall_count;
-(*noprune*)reg [31:0] same_tag_pixel_count;
-(*noprune*)reg [31:0] tag_run_count;
-(*noprune*)reg [31:0] tag_run_len_1_count;
-(*noprune*)reg [31:0] tag_run_len_2_3_count;
-(*noprune*)reg [31:0] tag_run_len_4_7_count;
-(*noprune*)reg [31:0] tag_run_len_8_15_count;
-(*noprune*)reg [31:0] tag_run_len_16p_count;
-(*noprune*)reg [31:0] tag_switch_textured_count;
-(*noprune*)reg [31:0] tag_switch_tex_base_change_count;
-(*noprune*)reg [31:0] tag_switch_codebook_base_change_count;
-(*noprune*)reg [31:0] tsp_tex_wait_start_count;
-(*noprune*)reg [31:0] tsp_tex_wait_cycle_count;
-(*noprune*)reg [31:0] tsp_tex_wait_next_count;
-(*noprune*)reg [31:0] tsp_tex_wait_long_count;
-(*noprune*)reg [31:0] tsp_tex_initial_skip_count;
-(*noprune*)reg [31:0] tsp_tex_addr_change_wait_count;
-(*noprune*)reg [31:0] tsp_tex_valid_addr_mismatch_count;
-(*noprune*)reg [31:0] tsp_tex_rd_codebook_mode_count;
-(*noprune*)reg [31:0] tsp_empty_tile_skip_count;
-(*noprune*)reg [31:0] tsp_empty_row_skip_count;
+reg [31:0] param_window_hit_count;
+reg [31:0] param_window_miss_count;
+reg [31:0] param_window_prefetch_count;
+reg [31:0] param_window_fill_count;
+reg [31:0] param_window_overlap_start_count;
+reg [31:0] tag_visible_pixel_count;
+reg [31:0] tag_switch_count;
+reg [31:0] tag_switch_stall_count;
+reg [31:0] same_tag_pixel_count;
+reg [31:0] tag_run_count;
+reg [31:0] tag_run_len_1_count;
+reg [31:0] tag_run_len_2_3_count;
+reg [31:0] tag_run_len_4_7_count;
+reg [31:0] tag_run_len_8_15_count;
+reg [31:0] tag_run_len_16p_count;
+reg [31:0] tag_switch_textured_count;
+reg [31:0] tag_switch_tex_base_change_count;
+reg [31:0] tag_switch_codebook_base_change_count;
+reg [31:0] tsp_tex_wait_start_count;
+reg [31:0] tsp_tex_wait_cycle_count;
+reg [31:0] tsp_tex_wait_next_count;
+reg [31:0] tsp_tex_wait_long_count;
+reg [31:0] tsp_tex_initial_skip_count;
+reg [31:0] tsp_tex_addr_change_wait_count;
+reg [31:0] tsp_tex_valid_addr_mismatch_count;
+reg [31:0] tsp_tex_rd_codebook_mode_count;
 reg tag_run_active;
 reg [11:0] tag_run_tag;
 reg [15:0] tag_run_len;
 reg [21:0] tag_run_tcw_base;
 reg tag_run_textured;
 reg tag_run_vq;
+reg [7:0] tsp_tex_wait_len;
+reg [31:0] total_tri_count;
+reg [31:0] total_vis_count;
+`endif
+
+reg [31:0] tsp_empty_tile_skip_count;
+reg [31:0] tsp_empty_row_skip_count;
 
 reg isp_vram_rd_pend;
 reg tex_vram_rd_pend;
@@ -321,6 +327,8 @@ reg tex_vram_rd_pend;
 reg [11:0] prim_tag;
 reg [11:0] max_tags;
 reg [11:0] prim_tag_out_prev;
+reg [5:0] active_tilex;
+reg [5:0] active_tiley;
 reg isp_z_bank;
 reg tsp_z_bank;
 reg [31:0] tag_row_occupied_0;
@@ -341,9 +349,6 @@ reg [4:0] tsp_drain_count;
 reg deferred_tile_started;
 assign tsp_busy = (tsp_state != 9'd0);
 
-reg [31:0] total_tri_count;
-reg [31:0] total_vis_count;
-
 reg [31:0] opb_word_strip;
 reg prefetched_poly_pending;
 reg [31:0] prefetched_opb_word;
@@ -353,7 +358,6 @@ reg tsp_pix_wr;
 reg tsp_pix_adv;
 reg tsp_issue_accept;
 reg tsp_tex_waiting;
-reg [7:0] tsp_tex_wait_len;
 reg [1:0] tsp_param_wait;
 reg tsp_row_settle;
 
@@ -458,7 +462,9 @@ task param_issue_addr;
 		if (hit && param_window_valid[idx]) begin
 			param_din <= param_window[idx];
 			param_valid <= 1'b1;
+`ifdef VERILATOR
 			param_window_hit_count <= param_window_hit_count + 1'b1;
+`endif
 			isp_state <= next_state;
 		end
 		else begin
@@ -466,12 +472,15 @@ task param_issue_addr;
 			param_ext_req_addr <= addr;
 			param_ext_req_window_hit <= hit;
 			param_ext_req_window_index <= idx;
+`ifdef VERILATOR
 			param_window_miss_count <= param_window_miss_count + 1'b1;
+`endif
 			isp_state <= next_state;
 		end
 	end
 endtask
 
+`ifdef VERILATOR
 task tag_run_finish;
 	input [15:0] len;
 	begin
@@ -483,6 +492,7 @@ task tag_run_finish;
 		else tag_run_len_16p_count <= tag_run_len_16p_count + 1'b1;
 	end
 endtask
+`endif
 
 reg [5:0] param_id_in;
 reg start_interp;
@@ -503,6 +513,7 @@ if (!reset_n) begin
 	tex_vram_rd <= 1'b0;
 	isp_vram_rd_pend <= 1'b0;
 	tex_vram_rd_pend <= 1'b0;
+`ifdef VERILATOR
 	isp_vram_rd_count <= 32'd0;
 	tex_vram_rd_count <= 32'd0;
 	cb_word_count <= 32'd0;
@@ -511,6 +522,7 @@ if (!reset_n) begin
 	param_window_prefetch_count <= 32'd0;
 	param_window_fill_count <= 32'd0;
 	param_window_overlap_start_count <= 32'd0;
+`endif
 	param_window_valid <= {PARAM_WINDOW_WORDS{1'b0}};
 	param_window_base <= 24'd0;
 	param_window_active <= 1'b0;
@@ -522,6 +534,7 @@ if (!reset_n) begin
 	param_window_fill_words <= 7'd0;
 	param_valid <= 1'b0;
 	param_din <= 32'd0;
+`ifdef VERILATOR
 	tag_visible_pixel_count <= 32'd0;
 	tag_switch_count <= 32'd0;
 	tag_switch_stall_count <= 32'd0;
@@ -551,6 +564,7 @@ if (!reset_n) begin
 	tag_run_tcw_base <= 22'd0;
 	tag_run_textured <= 1'b0;
 	tag_run_vq <= 1'b0;
+`endif
 	prefetched_poly_pending <= 1'b0;
 	prefetched_opb_word <= 32'd0;
 	prefetched_poly_addr <= 24'd0;
@@ -559,8 +573,10 @@ if (!reset_n) begin
 	read_codebook <= 1'b0;
 	tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
 	tsp_tex_word_addr_old <= 22'h3fffff;
+`ifdef VERILATOR
 	tsp_tex_req_addr <= 22'd0;
 	tsp_tex_wait_addr_prev <= 22'd0;
+`endif
 	tex_vram_req_word_addr <= 22'd0;
 	cb_cache_clear <= 1'b0;
 	clear_z <= 1'b0;
@@ -570,6 +586,8 @@ if (!reset_n) begin
 	clear_z_target_bank <= 1'b0;
 	prim_tag <= 12'd1;
 	max_tags <= 12'd0;
+	active_tilex <= 6'd0;
+	active_tiley <= 6'd0;
 	isp_z_bank <= 1'b0;
 	tsp_z_bank <= 1'b0;
 	tag_row_occupied_0 <= 32'd0;
@@ -603,11 +621,15 @@ if (!reset_n) begin
 	tsp_tex_waiting <= 1'b0;
 	tsp_param_wait <= 2'd0;
 	tsp_row_settle <= 1'b0;
+`ifdef VERILATOR
 	tsp_tex_wait_len <= 8'd0;
+`endif
 	tile_z_min <= Z_MAX_INIT;
 	tile_z_max <= Z_MIN_INIT;
+`ifdef VERILATOR
 	total_tri_count <= 32'd0;
 	total_vis_count <= 32'd0;
+`endif
 	zpipe_valid <= 1'b0;
 	zpipe_flush <= 1'b0;
 	z_params_valid <= 1'b0;
@@ -648,8 +670,10 @@ else begin
 	tex_vram_rd <= 1'b0;
 	param_valid <= 1'b0;
 
+`ifdef VERILATOR
 	if (isp_vram_rd) isp_vram_rd_count <= isp_vram_rd_count + 1'd1;
 	if (tex_vram_rd) tex_vram_rd_count <= tex_vram_rd_count + 1'd1;
+`endif
 
 	pcache_write <= 1'b0;
 	pcache_write_0 <= 1'b0;
@@ -686,6 +710,8 @@ else begin
 	if (z_param_result_valid) z_params_ready <= 1'b1;
 
 	if (ra_new_tile_start) begin	// New tile started!
+		active_tilex <= tilex;
+		active_tiley <= tiley;
 		//cb_cache_clear <= 1'b1;	// Using some lower bits of the texture address bits from the TCW as the "Tag" now. No need to clear before each Tile.
 		clear_z <= !ra_cont_zclear_n;
 		prim_tag <= 12'd1;
@@ -700,7 +726,9 @@ else begin
 	if (isp_vram_valid && param_ext_req_window_hit) begin
 		param_window[param_ext_req_window_index] <= isp_vram_din;
 		param_window_valid[param_ext_req_window_index] <= 1'b1;
+`ifdef VERILATOR
 		param_window_fill_count <= param_window_fill_count + 1'b1;
+`endif
 		if (param_prefetch_active) param_window_fill_words <= param_window_fill_words + 1'b1;
 	end
 
@@ -714,7 +742,9 @@ else begin
 		param_prefetch_addr <= poly_addr;
 		param_window_fill_words <= 7'd0;
 		param_prefetch_active <= 1'b1;
+`ifdef VERILATOR
 		param_window_overlap_start_count <= param_window_overlap_start_count + 1'b1;
+`endif
 	end
 
 	if (param_prefetch_active &&
@@ -732,7 +762,9 @@ else begin
 		param_ext_req_window_hit <= param_window_contains(param_prefetch_addr);
 		param_ext_req_window_index <= param_window_index(param_prefetch_addr);
 		param_prefetch_addr <= param_prefetch_addr + 24'd4;
+`ifdef VERILATOR
 		param_window_prefetch_count <= param_window_prefetch_count + 1'b1;
+`endif
 	end
 
 	case (isp_state)
@@ -758,21 +790,21 @@ else begin
 			end
 			else if (render_to_tile) begin				// Render after each prim TYPE is written to Tag buffer.
 				max_tags <= prim_tag;
-				rle_tilex <= tilex;
-				rle_tiley <= tiley;
+				rle_tilex <= active_tilex;
+				rle_tiley <= active_tiley;
 				tsp_ready_bank <= isp_z_bank;
-				tsp_ready_tilex <= tilex;
-				tsp_ready_tiley <= tiley;
+				tsp_ready_tilex <= active_tilex;
+				tsp_ready_tiley <= active_tiley;
 				tsp_ready_type_cnt <= type_cnt;
 				tsp_ready_has_tags <= (prim_tag != 12'd1);
 				//rle_start <= 1'b1;	// rle_by_tag reduces the "Daytona Behind" (theoretical) frame rate from around 32 to 26 FPS. tsp_tag_sorter is FAR slower (like 12 FPS!).
 				//param_id_in <= 6'd0;
 				if (!tsp_busy) begin
 					tsp_z_bank <= isp_z_bank;
-					tsp_x_ps <= {tilex, 5'd0};
-					tsp_y_ps <= {tiley, 5'd0};
-					tsp_tilex <= tilex;
-					tsp_tiley <= tiley;
+					tsp_x_ps <= {active_tilex, 5'd0};
+					tsp_y_ps <= {active_tiley, 5'd0};
+					tsp_tilex <= active_tilex;
+					tsp_tiley <= active_tiley;
 					tsp_type_cnt <= type_cnt;
 					tex_base_word_addr_old <= 21'h1FFFFF;	// Arbitrary address to start with.
 					tsp_tex_word_addr_old <= 22'h3fffff;
@@ -806,7 +838,9 @@ else begin
 				param_ext_req_window_hit <= param_window_contains(param_prefetch_addr);
 				param_ext_req_window_index <= param_window_index(param_prefetch_addr);
 				param_prefetch_addr <= param_prefetch_addr + 24'd4;
+`ifdef VERILATOR
 				param_window_prefetch_count <= param_window_prefetch_count + 1'b1;
+`endif
 			end
 		end
 		
@@ -1339,7 +1373,9 @@ else begin
 			end
 
 			if (zpipe_flush && (z_span_pending == 4'd0) && !z_span_valid && !pcache_write_pending) begin
+`ifdef VERILATOR
 				total_tri_count <= total_tri_count + 1;	// Total *processed* (incoming) Triangles.
+`endif
 				if (render_bg) begin
 					prim_tag <= prim_tag + 1;	// Background uses tag 1; keep it visible to later render_to_tile passes.
 					poly_drawn <= 1'b1;		// Background poly drawn,
@@ -1348,13 +1384,15 @@ else begin
 				else begin
 					if (any_tags_written) begin
 						prim_tag <= prim_tag + 1;				// Increment prim_tag (per-tile).
+`ifdef VERILATOR
 						total_vis_count <= total_vis_count + 1;	// Total *visible* Triangles (per-frame).
+`endif
 					end
 					// Latch which bank holds the completed tile before the ISP
 					// flips back to the opposite write/clear bank.
 					tsp_ready_bank <= isp_z_bank;
-					tsp_ready_tilex <= tilex;
-					tsp_ready_tiley <= tiley;
+					tsp_ready_tilex <= active_tilex;
+					tsp_ready_tiley <= active_tiley;
 					tsp_ready_type_cnt <= type_cnt;
 					tsp_ready_has_tags <= (prim_tag != 12'd1);
 					isp_state <= 9'd48;	// Whole PRIM written to Z/Tag buffer! (if any pixels are visible in Tile) - Load the next PRIM.
@@ -1365,17 +1403,25 @@ else begin
 		// Rendering from the Tag buffer now.
 		// We jump to this state when in isp_state==0 AND "render_to_tile" is triggered.
 		51: if (!z_clear_busy && !rle_busy) begin	// // isp_inst_out[24] = Current Triangle / pixel uses Offset colour.
-			//if (!tex_vram_wait) begin
+			if (!tsp_texture_enabled) begin
+				isp_state <= 9'd53;
+			end
+			else begin
 				tex_vram_req_word_addr <= tsp_tex_word_addr;
 				tex_vram_rd <= 1'b1;			// Read the first Texel?
 				isp_state <= isp_state + 9'd1;	// Wait for tex_vram_valid.	
-			//end
+			end
 		end
 
 		// Wait for Texture WORD...
-		52: if (tex_vram_valid) begin
-			tsp_pix_wr <= 1'b1;
-			isp_state <= isp_state + 9'd1;
+		52: begin
+			if (!tsp_texture_enabled) begin
+				isp_state <= 9'd53;
+			end
+			else if (tex_vram_valid) begin
+				tsp_pix_wr <= 1'b1;
+				isp_state <= isp_state + 9'd1;
+			end
 		end
 
 		// Write pixel to Tile ARGB buffer.
@@ -1408,8 +1454,8 @@ else begin
 			//else isp_state <= 9'd53;	// Flat-shaded or Gouraud pixel, no need to do a Texel fetch.
 
 			if (tsp_pix_adv) begin
-				if (x_ps >= {tilex, 5'd31}) begin
-					if (y_ps >= {tiley, 5'd31}) begin	// We've reached the last (lower-right) pixel of the Tile...
+				if (x_ps >= {active_tilex, 5'd31}) begin
+					if (y_ps >= {active_tiley, 5'd31}) begin	// We've reached the last (lower-right) pixel of the Tile...
 						// Move the ISP to the opposite bank from the bank it just
 						// finished. Do not derive this from tsp_z_bank; that may be
 						// stale if the TSP FSM is idle or has already completed.
@@ -1490,7 +1536,9 @@ else begin
 					tsp_row_settle <= 1'b1;
 					tsp_state <= 9'd51;
 					prim_tag_out_prev <= 12'd4095;
+`ifdef VERILATOR
 					if (!tsp_ready_has_tags) tsp_empty_tile_skip_count <= tsp_empty_tile_skip_count + 1'b1;
+`endif
 					deferred_tile_started <= 1'b1;
 				end
 			end
@@ -1511,24 +1559,34 @@ else begin
 
 		100: begin
 			// Codebook fetch entry
-			if (tsp_cb_cache_hit) begin
+			if (!tsp_texture_enabled) begin
+				isp_state <= 9'd53;
+			end
+			else if (tsp_cb_cache_hit) begin
 				isp_state  <= 9'd53; // No need to do a new Codebook fetch.
 			end
 			else /*if (!tex_vram_wait)*/ begin
 				tex_vram_req_word_addr <= tsp_tex_word_addr;
 				tex_vram_rd <= 1'b1; // Start codebook fetch
+`ifdef VERILATOR
 				cb_word_count <= cb_word_count + 1'd1;
+`endif
 				isp_state   <= 9'd101;
 			end
 		end
 
 		101: begin
-			if (codebook_wait) begin // Still loading -> request next word
+			if (!tsp_texture_enabled) begin
+				isp_state <= 9'd53;
+			end
+			else if (codebook_wait) begin // Still loading -> request next word
 				if (!tex_vram_valid) begin
 					tex_vram_req_word_addr <= tsp_tex_word_addr;
 					tex_vram_rd <= 1'b1;
 				end
+`ifdef VERILATOR
 				if (tex_vram_req_ack || tex_vram_valid) cb_word_count <= cb_word_count + 1'd1;
+`endif
 			end
 			else begin // Codebook fully loaded
 				tex_vram_req_word_addr <= tsp_tex_word_addr;
@@ -1545,36 +1603,53 @@ else begin
 		end
 
 		9'd51: if (!z_clear_busy && !rle_busy) begin
+`ifdef VERILATOR
 			tsp_tex_initial_skip_count <= tsp_tex_initial_skip_count + 1'b1;
+`endif
 			tsp_state <= 9'd53;
 		end
 
-		9'd52: if (tex_vram_valid) begin
-			tsp_tex_waiting <= 1'b0;
-			tsp_state <= 9'd53;
+		9'd52: begin
+			if (!tsp_texture_enabled) begin
+				tsp_tex_waiting <= 1'b0;
+				tsp_state <= 9'd53;
+			end
+			else if (tex_vram_valid) begin
+				tsp_tex_waiting <= 1'b0;
+				tsp_state <= 9'd53;
+			end
 		end
 
 		9'd53: begin
-			if (tsp_tex_waiting) begin
+			if (!tsp_texture_enabled && tsp_tex_waiting) begin
+				tsp_tex_waiting <= 1'b0;
+			end
+			else if (tsp_tex_waiting) begin
+`ifdef VERILATOR
 				if (tsp_tex_word_addr != tsp_tex_wait_addr_prev) begin
 					tsp_tex_addr_change_wait_count <= tsp_tex_addr_change_wait_count + 1'b1;
 					tsp_tex_wait_addr_prev <= tsp_tex_word_addr;
 				end
+`endif
 				// Consume the texture response as a bubble. Issuing a pixel in the
 				// same cycle as tex_vram_valid can misalign texel data vs x/y.
 				if (tex_vram_valid) begin
 					tsp_tex_waiting <= 1'b0;
+`ifdef VERILATOR
 					if (tsp_tex_word_addr != tsp_tex_req_addr)
 						tsp_tex_valid_addr_mismatch_count <= tsp_tex_valid_addr_mismatch_count + 1'b1;
 					if (tsp_tex_wait_len <= 8'd1)
 						tsp_tex_wait_next_count <= tsp_tex_wait_next_count + 1'b1;
 					else
 						tsp_tex_wait_long_count <= tsp_tex_wait_long_count + 1'b1;
+`endif
 				end
 				else begin
 					// Hold in this state until the requested texture word arrives.
+`ifdef VERILATOR
 					tsp_tex_wait_cycle_count <= tsp_tex_wait_cycle_count + 1'b1;
 					if (tsp_tex_wait_len != 8'hff) tsp_tex_wait_len <= tsp_tex_wait_len + 1'b1;
+`endif
 				end
 			end
 			else if (tsp_row_settle) begin
@@ -1584,7 +1659,9 @@ else begin
 				tsp_row_settle <= 1'b0;
 			end
 			else if (1'b0 && !tsp_tag_row_occupied[tsp_y_ps[4:0]]) begin
+`ifdef VERILATOR
 				tsp_empty_row_skip_count <= tsp_empty_row_skip_count + 1'b1;
+`endif
 				if (tsp_y_ps >= {tsp_tiley, 5'd31}) begin
 					tsp_drain_count <= 5'd16;
 					tsp_state <= 9'd54;
@@ -1620,7 +1697,9 @@ else begin
 			else if (prim_tag_out != prim_tag_out_prev) begin
 				prim_tag_out_prev <= prim_tag_out;
 				tsp_param_wait <= 2'd2;
+`ifdef VERILATOR
 				tag_switch_stall_count <= tag_switch_stall_count + 1'b1;
+`endif
 			end
 			else if (tsp_param_wait != 2'd0) begin
 				// prim_tag_out comes from the Z/tag RAM and then addresses the
@@ -1636,19 +1715,24 @@ else begin
 				else if (tsp_texture_needs_fetch) begin
 					if (!tsp_tex_waiting) begin
 						tsp_tex_word_addr_old <= tsp_tex_word_addr;
+`ifdef VERILATOR
 						tsp_tex_req_addr <= tsp_tex_word_addr;
 						tsp_tex_wait_addr_prev <= tsp_tex_word_addr;
+`endif
 						tex_vram_req_word_addr <= tsp_tex_word_addr;
 						tex_vram_rd <= 1'b1;
 						tsp_tex_waiting <= 1'b1;
+`ifdef VERILATOR
 						tsp_tex_wait_len <= 8'd0;
 						tsp_tex_wait_start_count <= tsp_tex_wait_start_count + 1'b1;
+`endif
 					end
 				end
 				else if (tsp_issue_cmd) begin
 					tsp_pix_wr <= 1'b1;
 					tsp_pix_adv <= 1'b1;
 					tsp_issue_accept = 1'b1;
+`ifdef VERILATOR
 					if (tsp_pix_valid) begin
 						tag_visible_pixel_count <= tag_visible_pixel_count + 1'b1;
 						if (!tag_run_active) begin
@@ -1678,6 +1762,7 @@ else begin
 							tag_run_vq <= tcw_word_out[30];
 						end
 					end
+`endif
 				end
 
 				if (tsp_issue_accept) begin
@@ -1708,11 +1793,13 @@ else begin
 				tsp_drain_count <= tsp_drain_count - 5'd1;
 			end
 			else begin
+`ifdef VERILATOR
 				if (tag_run_active) begin
 					tag_run_finish(tag_run_len);
 					tag_run_active <= 1'b0;
 					tag_run_len <= 16'd0;
 				end
+`endif
 				tsp_state <= 9'd0;
 			end
 		end
@@ -1720,41 +1807,63 @@ else begin
 		9'd100: begin
 			// Pulse the cache lookup, then wait one cycle before sampling the
 			// registered hit/wait outputs from codebook_cache.
-			read_codebook <= 1'b1;
-			tsp_state <= 9'd102;
+			if (!tsp_texture_enabled) begin
+				tsp_tex_waiting <= 1'b0;
+				tsp_state <= 9'd53;
+			end
+			else begin
+				read_codebook <= 1'b1;
+				tsp_state <= 9'd102;
+			end
 		end
 
 		9'd101: begin
-			if (tsp_cb_cache_hit) begin
+			if (!tsp_texture_enabled) begin
+				tsp_tex_waiting <= 1'b0;
+				tsp_state <= 9'd53;
+			end
+			else if (tsp_cb_cache_hit) begin
 				tex_base_word_addr_old <= tsp_tcw_base_word_addr;
 				tex_vram_req_word_addr <= tsp_tex_word_addr;
 				tex_vram_rd <= 1'b1;
 				tsp_tex_word_addr_old <= tsp_tex_word_addr;
+`ifdef VERILATOR
 				tsp_tex_req_addr <= tsp_tex_word_addr;
 				tsp_tex_wait_addr_prev <= tsp_tex_word_addr;
+`endif
 				tsp_tex_waiting <= 1'b1;
+`ifdef VERILATOR
 				tsp_tex_wait_len <= 8'd0;
 				tsp_tex_wait_start_count <= tsp_tex_wait_start_count + 1'b1;
+`endif
 				tsp_state <= 9'd53;
 			end
 			else if (codebook_wait) begin
 				if (!tex_vram_valid) begin
+`ifdef VERILATOR
 					tsp_tex_rd_codebook_mode_count <= tsp_tex_rd_codebook_mode_count + 1'b1;
+`endif
 					tex_vram_req_word_addr <= tsp_tex_word_addr;
 					tex_vram_rd <= 1'b1;
 				end
+`ifdef VERILATOR
 				if (tex_vram_req_ack || tex_vram_valid) cb_word_count <= cb_word_count + 1'd1;
+`endif
 			end
 			else begin
 				tex_base_word_addr_old <= tsp_tcw_base_word_addr;
 				tex_vram_req_word_addr <= tsp_tex_word_addr;
 				tex_vram_rd <= 1'b1;
 				tsp_tex_word_addr_old <= tsp_tex_word_addr;
+`ifdef VERILATOR
 				tsp_tex_req_addr <= tsp_tex_word_addr;
 				tsp_tex_wait_addr_prev <= tsp_tex_word_addr;
+`endif
 				tsp_tex_waiting <= 1'b1;
+`ifdef VERILATOR
 				tsp_tex_wait_len <= 8'd0;
 				tsp_tex_wait_start_count <= tsp_tex_wait_start_count + 1'b1;
+`endif
 				tsp_state <= 9'd53;
 			end
 		end
@@ -1791,8 +1900,8 @@ end
 
 reg any_tags_written;
 
-wire [10:0] tilex_start = {tilex, 5'b00000};
-wire [10:0] tiley_start = {tiley, 5'b00000};
+wire [10:0] tilex_start = {active_tilex, 5'b00000};
+wire [10:0] tiley_start = {active_tiley, 5'b00000};
 
 wire [7:0] vert_words = (two_volume&shadow) ? ((skip*2)+3) : (skip+3);
 
@@ -2695,8 +2804,8 @@ tsp_tag_sorter  tag_sorter_inst (
 	.prim_tag( prim_tag_out ),			// input [11:0] prim_tag
 	
 	.param_data( sorter_param_data ),	// input [127:0] param_data
-	.tile_x( tilex ),					// input [4:0] tile_x
-	.tile_y( tiley ),					// input [4:0] tile_y
+	.tile_x( active_tilex ),			// input [4:0] tile_x
+	.tile_y( active_tiley ),			// input [4:0] tile_y
 	.type_cnt( type_cnt ),				// input [2:0] type_cnt
 	
 	.rle_tile_x( rle_tile_x ),			// output [4:0] rle_tile_x
@@ -2719,8 +2828,10 @@ reg read_codebook;
 reg cb_cache_clear;
 
 reg [21:0] tsp_tex_word_addr_old;
+`ifdef VERILATOR
 reg [21:0] tsp_tex_req_addr;
 reg [21:0] tsp_tex_wait_addr_prev;
+`endif
 reg [21:0] tex_vram_req_word_addr;
 
 wire pipe_flush = (tsp_state == 9'd51);

@@ -145,8 +145,15 @@ else begin
 	end
 
 	200: if (!trig_pvr_update && !pvr_reg_update) begin
-		if (TEST_SELECT != 32'h00000000) ra_state <= 8'd1;
+		if (TEST_SELECT != 32'h00000000) ra_state <= 8'd201;
 		else ra_state <= 8'd0;
+	end
+	
+	201: begin
+		 ra_vram_addr <= 24'h800018;
+		 ra_vram_dout <= 32'h00000000;	// Immediately clear TEST_SELECT (copy) in VRAM, before rendering a frame.
+		 ra_vram_wr   <= 1'b1;				// This is to help prevent re-triggering on the current frame, once the RA parser gets to the last state(s).
+		 if (ra_vram_wr_accept) ra_state <= 1;
 	end
 	
 	1: begin
@@ -370,20 +377,13 @@ else begin
 	end
 	
 	15: begin	// All tiles Done. Set the "frame done" mailbox words for reicast on the ARM side.
-		ra_vram_addr <= 24'h800018;		// Supposed to point to the TEST_SELECT pvr reg (copy), at offset 0x18 above the 8MB VRAM.
-		ra_vram_dout <= 32'hDEADDEAD;		// 
+		ra_vram_addr <= 24'h7FFFF8;		// 8MB, minus 8 bytes.
+		ra_vram_dout <= 32'hDEADDEAD;
 		ra_vram_wr   <= 1'b1;
 		if (ra_vram_wr_accept) ra_state <= 8'd16;
 	end
 	
 	16: begin
-		ra_vram_addr <= 24'h7FFFF8;		// 8MB, minus 8 bytes.
-		ra_vram_dout <= 32'hDEADDEAD;
-		ra_vram_wr   <= 1'b1;
-		if (ra_vram_wr_accept) ra_state <= 8'd17;
-	end
-	
-	17: begin
 		ra_vram_addr <= 24'h7FFFFC;		// 8MB, minus 4 bytes.
 		ra_vram_dout <= 32'hDEADDEAD;
 		ra_vram_wr   <= 1'b1;
