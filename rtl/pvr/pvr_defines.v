@@ -1,0 +1,8 @@
+`ifndef PVR_DEFINES_V
+`define PVR_DEFINES_V
+
+`define PVR_LITE_INTERP
+`define PVR_LITE_INTRI_SIMPLE_EDGE
+`define PVR_LITE_INTRI_TRI_ONLY
+
+`endif

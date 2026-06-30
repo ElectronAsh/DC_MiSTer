@@ -21,6 +21,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+`include "pvr/pvr_defines.v"
+
 `define REG_RD_PORTS 4
 `define REG_WR_PORTS 2
 `define FPREG_RD_PORTS 3

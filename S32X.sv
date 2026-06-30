@@ -212,12 +212,6 @@ module emu
 );
 
 
-(*keep*)assign FB_R_SOF1 = pvr_ptr['h50>>2][23:0];
-(*keep*)assign FB_R_SOF2 = pvr_ptr['h54>>2][23:0];
-
-(*keep*)assign FB_W_SOF1 = pvr_ptr['h60>>2][23:0];
-(*keep*)assign FB_W_SOF2 = pvr_ptr['h64>>2][23:0];
-
 wire bgr       = status[6];
 wire [2:0] bpp = !status[7] ? 3'b100 : 3'b110;
 wire fb_linear_debug = status[16];
@@ -967,8 +961,8 @@ function [31:0] clk_cfg_c_counter;
             // Divide VCO by 20
             2'd2: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd10, 8'd10}; // 20 MHz
 
-            // Divide VCO by 10
-            2'd3: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd5,  8'd5 }; // 40 MHz
+			// Divide VCO by 16
+			2'd3: clk_cfg_c_counter = {9'd0, 5'd0, 1'b0, 1'b0, 8'd8, 8'd8}; // 25 MHz
         endcase
     end
 endfunction
@@ -1029,9 +1023,6 @@ wire reset = /*RESET |*/ status[0] | boot1_loading | vram_dump_loading | pll_rec
 (*noprune*)reg [31:00] rom_word32;
 reg pvr_wr = 1'b0;
 
-reg [31:0] pvr_ptr [0:81];	// PVR register mirror through 0x140, read back as 64-bit pairs.
-
-
 (*keep*)wire boot1_loading = ioctl_index=={2'd1, 6'd0} && ioctl_download;	// VRAM dump loaded at core-load.
 (*keep*)wire vram_dump_loading = ioctl_index[5:0]==3 && ioctl_download;		// File index 3 "Load VRAM Dump".
 reg [7:0] download_be;
@@ -1068,7 +1059,6 @@ else begin
 
 	// Handle PVR reg writes for PVR Dump file loading...
 	if (pvr_wr) begin
-		pvr_ptr[ ioctl_addr[23:2] ] <= rom_word32;
 		pvr_wr <= 1'b0;
 	end
 	
@@ -1090,14 +1080,10 @@ else begin
 	
 	if (pvr_reg_update) begin
 		if (vram_valid) begin												// Write two 32-bit words to the PVR regs at once.
-			pvr_ptr[ pvr_read_offs[15:2]+0 ] <= vram_din[31:00];	// Words are read from each 64-bit DDR3 Word in this order.
-			pvr_ptr[ pvr_read_offs[15:2]+1 ] <= vram_din[63:32];	// Each 32-bit Word is NON-byteswapped, so the same order we use in the core.
 			pvr_read_offs <= pvr_read_offs + 16'd8;					// Increment the BYTE counter by 8 (to the next 64-bit WORD).
 		end
 		if (pvr_read_offs[15:3]>=79) pvr_reg_update <= 1'b0;		// 80 64-bit words covers 0x000-0x140.
 	end
-	
-	if (tile_accum_done) pvr_ptr['h18>>2] <= 32'h0;
 end
 
 
@@ -1229,15 +1215,13 @@ simple_cache simple_cache_inst
 
 wire debug_ena_texel_reads = status[12];
 
-wire [31:0] TEST_SELECT   = pvr_ptr['h18>>2];
-
-wire [31:0] PARAM_BASE    = pvr_ptr['h20>>2];
-wire [31:0] REGION_BASE   = pvr_ptr['h2c>>2];
-
-wire [31:0] FPU_PARAM_CFG = pvr_ptr['h7c>>2];
-wire [31:0] TEXT_CONTROL  = pvr_ptr['hE4>>2];
-wire [31:0] PAL_RAM_CTRL  = pvr_ptr['h108>>2];
-wire [31:0] TA_ALLOC_CTRL = pvr_ptr['h140>>2];
+wire [31:0] TEST_SELECT;
+wire [31:0] PARAM_BASE;
+wire [31:0] REGION_BASE;
+wire [31:0] FPU_PARAM_CFG;
+wire [31:0] TEXT_CONTROL;
+wire [31:0] PAL_RAM_CTRL;
+wire [31:0] TA_ALLOC_CTRL;
 
 wire [23:0] ra_vram_addr_core;
 wire ra_vram_rd_core;
@@ -1271,6 +1255,12 @@ wire tex_vram_req_ack_core;
 
 wire tile_accum_done;
 wire pvr_frame_done;
+
+wire pvr_mirror_clear = tile_accum_done;
+wire pvr_mirror_wr = pvr_mirror_clear || (pvr_reg_update && vram_valid);
+wire [15:0] pvr_mirror_addr = pvr_mirror_clear ? 16'h0018 : pvr_read_offs;
+wire [63:0] pvr_mirror_din = pvr_mirror_clear ? 64'd0 : vram_din;
+wire [1:0] pvr_mirror_word_en = pvr_mirror_clear ? 2'b01 : 2'b11;
 
 reg [23:0] fb_write_sof_latched;
 reg fb_write_frame_active;
@@ -1313,6 +1303,11 @@ pvr pvr (
 	.pvr_wr( pvr_wr ),			// input  pvr_wr
 	.pvr_rd( pvr_rd ),			// input  pvr_rd
 	.pvr_dout( pvr_dout ),		// output [31:0]  pvr_dout
+
+	.pvr_mirror_wr( pvr_mirror_wr ),
+	.pvr_mirror_addr( pvr_mirror_addr ),
+	.pvr_mirror_din( pvr_mirror_din ),
+	.pvr_mirror_word_en( pvr_mirror_word_en ),
 	
 	.sim_ui( 11'd0 ),
 	.sim_vi( 11'd0 ),
@@ -1323,6 +1318,8 @@ pvr pvr (
 	
 	.FB_R_SOF1( FB_R_SOF1 ),
 	.FB_R_SOF2( FB_R_SOF2 ),
+	.FB_W_SOF1( FB_W_SOF1 ),
+	.FB_W_SOF2( FB_W_SOF2 ),
 	
 	.FPU_PARAM_CFG( FPU_PARAM_CFG ),
 	.TEXT_CONTROL(  TEXT_CONTROL ),

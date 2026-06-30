@@ -27,12 +27,13 @@ set_global_assignment -name TIMEQUEST_MULTICORNER_ANALYSIS ON
 set_global_assignment -name OPTIMIZE_POWER_DURING_FITTING OFF
 set_global_assignment -name FINAL_PLACEMENT_OPTIMIZATION AUTOMATICALLY
 set_global_assignment -name FITTER_EFFORT "STANDARD FIT"
-set_global_assignment -name OPTIMIZATION_MODE "HIGH PERFORMANCE EFFORT"
+# The unpipelined TSP perspective dividers cannot meet the 20 MHz target.
+# Keep iteration fits bounded until those paths have register boundaries.
+set_global_assignment -name OPTIMIZATION_MODE BALANCED
 set_global_assignment -name ALLOW_POWER_UP_DONT_CARE ON
 set_global_assignment -name QII_AUTO_PACKED_REGISTERS NORMAL
-set_global_assignment -name ROUTER_LCELL_INSERTION_AND_LOGIC_DUPLICATION ON
 set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC ON
-set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION ON
+set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION OFF
 set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING ON
 set_global_assignment -name OPTIMIZATION_TECHNIQUE SPEED
 set_global_assignment -name MUX_RESTRUCTURE OFF
@@ -41,14 +42,14 @@ set_global_assignment -name AUTO_DELAY_CHAINS_FOR_HIGH_FANOUT_INPUT_PINS ON
 set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC_FOR_AREA ON
 set_global_assignment -name ADV_NETLIST_OPT_SYNTH_WYSIWYG_REMAP ON
 set_global_assignment -name SYNTH_GATED_CLOCK_CONVERSION ON
-set_global_assignment -name PRE_MAPPING_RESYNTHESIS ON
+set_global_assignment -name PRE_MAPPING_RESYNTHESIS OFF
 set_global_assignment -name ROUTER_CLOCKING_TOPOLOGY_ANALYSIS ON
 set_global_assignment -name ECO_OPTIMIZE_TIMING OFF
 set_global_assignment -name PERIPHERY_TO_CORE_PLACEMENT_AND_ROUTING_OPTIMIZATION ON
 set_global_assignment -name PHYSICAL_SYNTHESIS_ASYNCHRONOUS_SIGNAL_PIPELINING ON
 set_global_assignment -name ALM_REGISTER_PACKING_EFFORT MEDIUM
-set_global_assignment -name PLACEMENT_EFFORT_MULTIPLIER 1
-set_global_assignment -name SEED 3
+set_global_assignment -name PLACEMENT_EFFORT_MULTIPLIER 1.0
+set_global_assignment -name SEED 2
 
 source sys/sys.tcl
 set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ARDUINO_IO[*]
@@ -375,7 +376,7 @@ source files.qip
 #set_global_assignment -name SYSTEMVERILOG_FILE rtl/cheatcodes.sv
 set_global_assignment -name LAST_QUARTUS_VERSION "17.0.2 Standard Edition"
 set_global_assignment -name TOP_LEVEL_ENTITY sys_top
-set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL MAXIMUM
+set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
 set_global_assignment -name OPTIMIZE_MULTI_CORNER_TIMING ON
 set_global_assignment -name ENABLE_SIGNALTAP OFF
 set_global_assignment -name USE_SIGNALTAP_FILE stp1.stp
@@ -392,8 +393,12 @@ set_global_assignment -name ALLOW_ANY_ROM_SIZE_FOR_RECOGNITION ON
 set_global_assignment -name ALLOW_ANY_RAM_SIZE_FOR_RECOGNITION ON
 set_global_assignment -name ALLOW_ANY_SHIFT_REGISTER_SIZE_FOR_RECOGNITION ON
 set_global_assignment -name ALLOW_SHIFT_REGISTER_MERGING_ACROSS_HIERARCHIES ALWAYS
-set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
 set_instance_assignment -name MAX_NUMBER_OF_REGISTERS_FROM_UNINFERRED_RAMS 8192 -to *
+
+
+
+
+set_global_assignment -name VERILOG_FILE rtl/pvr/hsr_core.v
 set_global_assignment -name QIP_FILE rtl/pvr/tile_argb_cyc_v_mem.qip
 set_global_assignment -name VERILOG_FILE rtl/pvr/z_buff.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/vram_read_cache.v
@@ -416,6 +421,7 @@ set_global_assignment -name VERILOG_FILE rtl/pvr/span_sorter_row.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/simple_cache.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/shared_plane.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/ra_parser.v
+set_global_assignment -name VERILOG_FILE rtl/pvr/pvr_regs.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/pvr.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/pcache_mem.v
 set_global_assignment -name VERILOG_FILE rtl/pvr/param_buffer.v
@@ -456,5 +462,4 @@ set_global_assignment -name SDC_FILE S32X.sdc
 set_global_assignment -name SYSTEMVERILOG_FILE S32X.sv
 set_global_assignment -name SIGNALTAP_FILE stp1.stp
 set_global_assignment -name QIP_FILE pcache_mem.qip
-
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

@@ -21,34 +21,9 @@ module z_span_32
 );
 
 
-// Stage 0 (capture).
-reg signed [15:0] y_ps_s0;
-
-reg signed [39:0] FDDX_s0;
-reg signed [39:0] FDDY_s0;
-
-reg signed [47:0] small_c_s0;
-
-reg valid_s0;
-
-always @(posedge clock or negedge reset_n)
-if (!reset_n) begin
-	valid_s0 <= 1'b0;
-end
-else begin
-    valid_s0 <= z_span_start;
-
-    if (z_span_start)
-    begin
-        y_ps_s0    <= y_ps_in;
-        FDDX_s0    <= FDDX;
-        FDDY_s0    <= FDDY;
-        small_c_s0 <= small_c;
-    end
-end
-
-
-// Stage 1 (Compute: base(y) = small_c + y*FDDY).
+// Stage 1 (was stage 1 after old stage 0 capture; stage 0 removed).
+// Compute: base(y) = small_c + y*FDDY.
+// FDDX/FDDY/small_c are stable throughout HSR so no capture gate needed.
 reg signed [15:0] y_ps_s1;
 reg signed [39:0] FDDX_s1;
 reg signed [63:0] y_mul_ddy_s1;
@@ -60,11 +35,11 @@ if (!reset_n) begin
 	valid_s1 <= 1'b0;
 end
 else begin
-    valid_s1 <= valid_s0;
-    y_ps_s1 <= y_ps_s0;
-    FDDX_s1 <= FDDX_s0;
-    small_c_s1 <= small_c_s0;
-    y_mul_ddy_s1 <= y_ps_s0 * FDDY_s0;
+    valid_s1 <= z_span_start;
+    y_ps_s1  <= y_ps_in;
+    FDDX_s1  <= FDDX;
+    small_c_s1 <= small_c;
+    y_mul_ddy_s1 <= y_ps_in * FDDY;
 end
 
 

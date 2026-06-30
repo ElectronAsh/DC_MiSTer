@@ -12,7 +12,7 @@
 #include "Vsimtop___024root.h"
 
 constexpr auto FRAC_BITS   = 12;	// 12 is about the max atm.
-constexpr auto Z_FRAC_BITS = 16;	// 17 is about the max atm.
+constexpr auto Z_FRAC_BITS = 17;	// 17 is about the max atm.
 
 #include "imgui.h"
 #include "imgui_impl_win32.h"
@@ -142,7 +142,7 @@ struct DdramEmu {
 	uint32_t burst_remaining = 0;
 };
 
-static constexpr uint32_t DDR_LATENCY_CYCLES = 10;
+static constexpr uint32_t DDR_LATENCY_CYCLES = 0;
 
 static void ddram_tick(
 	DdramEmu &s,
@@ -652,7 +652,7 @@ int load_vram_dump(const char* name) {
 
 	top->rootp->simtop__DOT__pvr__DOT__FPU_SHAD_SCALE = pvr_ptr[0x074 >> 2];
 
-	top->rootp->simtop__DOT__pvr__DOT__FPU_CULL_VAL  = pvr_ptr[0x078 >> 2];
+	//top->rootp->simtop__DOT__pvr__DOT__FPU_CULL_VAL  = pvr_ptr[0x078 >> 2];
 	top->rootp->simtop__DOT__pvr__DOT__FPU_PARAM_CFG = pvr_ptr[0x07C >> 2];
 
 	top->rootp->simtop__DOT__pvr__DOT__ISP_BACKGND_D = pvr_ptr[0x088 >> 2];
@@ -962,7 +962,7 @@ static void test_interp_once(
 	int64_t FZ3 = (int64_t)top->rootp->FZ3_FIXED;
 
 	int64_t C   = (int64_t)top->rootp->BIG_C_z;
-	int64_t IPZ = (int64_t)top->rootp->IP_Z_INTERP;
+	int64_t IPZ = (int64_t)top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__IP_Z_R[0];
 
 	printf("Triangle:\n");
 	printf("  A(%7.3f,%7.3f,%7.3f)\n", ax, ay, az);
@@ -1137,7 +1137,7 @@ void rasterize_triangle_fixed(float x1, float x2, float x3, float x4,
 	float Xhs23 = c2 + (fdx23*core_y_ps) - (fdy23*core_x_ps);
 	float Xhs31 = c3 + (fdx31*core_y_ps) - (fdy31*core_x_ps);
 	float Xhs41 = c4 + (fdx41*core_y_ps) - (fdy41*core_x_ps);
-	//top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTriangle = (Xhs12>=0) && (Xhs23>=0) && (Xhs31>=0) && (Xhs41>=0);
+	//top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTriangle = (Xhs12>=0) && (Xhs23>=0) && (Xhs31>=0) && (Xhs41>=0);
 	*/
 
 	/*
@@ -1874,11 +1874,11 @@ int verilate() {
 			rng_FZ.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FZ2_FIXED));
 			rng_FZ.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FZ3_FIXED));
 			rng_BIG_C.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__BIG_C));
-			rng_FDDX.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDX_Z));
-			rng_FDDY.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_Z));
-			rng_small_c.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_z));
-			rng_interp_col.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__IP_Z[0]));
-			rng_interp_col.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__IP_Z[31]));
+			//rng_FDDX.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDX_Z));
+			//rng_FDDY.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_Z));
+			//rng_small_c.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_z));
+			rng_interp_col.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__IP_Z_R[0]));
+			rng_interp_col.update(sign_extend_48(r.simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__IP_Z_R[31]));
 		}
 
 		/*
@@ -2748,92 +2748,92 @@ int main(int argc, char** argv, char** env) {
 		*/
 
 		ImGui::Begin("PVR Main Regs");
-		ImGui::Text("                  ID: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__ID); 				// R   Device ID
-		ImGui::Text("            REVISION: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__REVISION); 			// R   Revision number
-		ImGui::Text("           SOFTRESET: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SOFTRESET); 			// RW  CORE & TA software reset
-		ImGui::Text("         STARTRENDER: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__STARTRENDER); 		// RW  Drawing start
-		ImGui::Text("              SELECT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TEST_SELECT); 		// RW  Test - writing this register is prohibited.
-		ImGui::Text("          PARAM_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__PARAM_BASE); 		// RW  Base address for ISP regs
-		ImGui::Text("         REGION_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__REGION_BASE); 		// RW  Base address for Region Array
-		ImGui::Text("       SPAN_SORT_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPAN_SORT_CFG); 		// RW  Span Sorter control
-		ImGui::Text("       VO_BORDER_COL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__VO_BORDER_COL); 		// RW  Border area color
-		ImGui::Text("           FB_R_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_R_CTRL); 			// RW  Frame buffer read control
-		ImGui::Text("           FB_W_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_W_CTRL); 			// RW  Frame buffer write control
-		ImGui::Text("     FB_W_LINESTRIDE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_W_LINESTRIDE); 	// RW  Frame buffer line stride
-		ImGui::Text("           FB_R_SOF1: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_R_SOF1); 			// RW  Read start address for field - 1/strip - 1
-		ImGui::Text("           FB_R_SOF2: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_R_SOF2); 			// RW  Read start address for field - 2/strip - 2
-		ImGui::Text("           FB_R_SIZE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_R_SIZE); 			// RW  Frame buffer XY size	
-		ImGui::Text("           FB_W_SOF1: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_W_SOF1); 			// RW  Write start address for field - 1/strip - 1
-		ImGui::Text("           FB_W_SOF2: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_W_SOF2); 			// RW  Write start address for field - 2/strip - 2
-		ImGui::Text("           FB_X_CLIP: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_X_CLIP); 			// RW  Pixel clip X coordinate
-		ImGui::Text("           FB_Y_CLIP: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_Y_CLIP); 			// RW  Pixel clip Y coordinate
+		ImGui::Text("                  ID: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__ID); 				// R   Device ID
+		ImGui::Text("            REVISION: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__REVISION); 			// R   Revision number
+		ImGui::Text("           SOFTRESET: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SOFTRESET); 			// RW  CORE & TA software reset
+		ImGui::Text("         STARTRENDER: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__STARTRENDER); 		// RW  Drawing start
+		ImGui::Text("              SELECT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TEST_SELECT); 		// RW  Test - writing this register is prohibited.
+		ImGui::Text("          PARAM_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__PARAM_BASE); 		// RW  Base address for ISP regs
+		ImGui::Text("         REGION_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__REGION_BASE); 		// RW  Base address for Region Array
+		ImGui::Text("       SPAN_SORT_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPAN_SORT_CFG); 		// RW  Span Sorter control
+		ImGui::Text("       VO_BORDER_COL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__VO_BORDER_COL); 		// RW  Border area color
+		ImGui::Text("           FB_R_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_R_CTRL); 			// RW  Frame buffer read control
+		ImGui::Text("           FB_W_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_W_CTRL); 			// RW  Frame buffer write control
+		ImGui::Text("     FB_W_LINESTRIDE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_W_LINESTRIDE); 	// RW  Frame buffer line stride
+		ImGui::Text("           FB_R_SOF1: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_R_SOF1); 			// RW  Read start address for field - 1/strip - 1
+		ImGui::Text("           FB_R_SOF2: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_R_SOF2); 			// RW  Read start address for field - 2/strip - 2
+		ImGui::Text("           FB_R_SIZE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_R_SIZE); 			// RW  Frame buffer XY size	
+		ImGui::Text("           FB_W_SOF1: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_W_SOF1); 			// RW  Write start address for field - 1/strip - 1
+		ImGui::Text("           FB_W_SOF2: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_W_SOF2); 			// RW  Write start address for field - 2/strip - 2
+		ImGui::Text("           FB_X_CLIP: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_X_CLIP); 			// RW  Pixel clip X coordinate
+		ImGui::Text("           FB_Y_CLIP: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_Y_CLIP); 			// RW  Pixel clip Y coordinate
 
-		ImGui::Text("      FPU_SHAD_SCALE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FPU_SHAD_SCALE); 	// RW  Intensity Volume mode
-		ImGui::Text("        FPU_CULL_VAL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FPU_CULL_VAL); 		// RW  Comparison value for culling
-		ImGui::Text("       FPU_PARAM_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FPU_PARAM_CFG); 		// RW  register read control
-		ImGui::Text("         HALF_OFFSET: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__HALF_OFFSET); 		// RW  Pixel sampling control
-		ImGui::Text("        FPU_PERP_VAL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FPU_PERP_VAL); 		// RW  Comparison value for perpendicular polygons
-		ImGui::Text("       ISP_BACKGND_D: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__ISP_BACKGND_D); 		// RW  Background surface depth
-		ImGui::Text("       ISP_BACKGND_T: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__ISP_BACKGND_T); 		// RW  Background surface tag
+		ImGui::Text("      FPU_SHAD_SCALE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FPU_SHAD_SCALE); 	// RW  Intensity Volume mode
+		ImGui::Text("        FPU_CULL_VAL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FPU_CULL_VAL); 		// RW  Comparison value for culling
+		ImGui::Text("       FPU_PARAM_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FPU_PARAM_CFG); 		// RW  register read control
+		ImGui::Text("         HALF_OFFSET: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__HALF_OFFSET); 		// RW  Pixel sampling control
+		ImGui::Text("        FPU_PERP_VAL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FPU_PERP_VAL); 		// RW  Comparison value for perpendicular polygons
+		ImGui::Text("       ISP_BACKGND_D: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__ISP_BACKGND_D); 		// RW  Background surface depth
+		ImGui::Text("       ISP_BACKGND_T: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__ISP_BACKGND_T); 		// RW  Background surface tag
 
-		ImGui::Text("        ISP_FEED_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__ISP_FEED_CFG); 		// RW  Translucent polygon sort mode
+		ImGui::Text("        ISP_FEED_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__ISP_FEED_CFG); 		// RW  Translucent polygon sort mode
 
-		ImGui::Text("       SDRAM_REFRESH: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SDRAM_REFRESH); 		// RW  Texture memory refresh counter
-		ImGui::Text("       SDRAM_ARB_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SDRAM_ARB_CFG); 		// RW  Texture memory arbiter control
-		ImGui::Text("           SDRAM_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SDRAM_CFG); 			// RW  Texture memory control
+		ImGui::Text("       SDRAM_REFRESH: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SDRAM_REFRESH); 		// RW  Texture memory refresh counter
+		ImGui::Text("       SDRAM_ARB_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SDRAM_ARB_CFG); 		// RW  Texture memory arbiter control
+		ImGui::Text("           SDRAM_CFG: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SDRAM_CFG); 			// RW  Texture memory control
 
-		ImGui::Text("         FOG_COL_RAM: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FOG_COL_RAM); 		// RW  Color for Look Up table Fog
-		ImGui::Text("        FOG_COL_VERT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FOG_COL_VERT); 		// RW  Color for vertex Fog
-		ImGui::Text("         FOG_DENSITY: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FOG_DENSITY); 		// RW  Fog scale value
-		ImGui::Text("       FOG_CLAMP_MAX: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FOG_CLAMP_MAX); 		// RW  Color clamping maximum value
-		ImGui::Text("       FOG_CLAMP_MIN: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FOG_CLAMP_MIN); 		// RW  Color clamping minimum value
-		ImGui::Text("     SPG_TRIGGER_POS: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPG_TRIGGER_POS); 	// RW  External trigger signal HV counter value
-		ImGui::Text("      SPG_HBLANK_INT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPG_HBLANK_INT); 	// RW  H-blank interrupt control	
-		ImGui::Text("      SPG_VBLANK_INT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPG_VBLANK_INT); 	// RW  V-blank interrupt control	
-		ImGui::Text("         SPG_CONTROL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPG_CONTROL); 		// RW  Sync pulse generator control
-		ImGui::Text("          SPG_HBLANK: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPG_HBLANK); 		// RW  H-blank control
-		ImGui::Text("            SPG_LOAD: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPG_LOAD); 			// RW  HV counter load value
-		ImGui::Text("          SPG_VBLANK: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPG_VBLANK); 		// RW  V-blank control
-		ImGui::Text("           SPG_WIDTH: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPG_WIDTH); 			// RW  Sync width control
-		ImGui::Text("        TEXT_CONTROL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TEXT_CONTROL); 		// RW  Texturing control
-		ImGui::Text("          VO_CONTROL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__VO_CONTROL); 		// RW  Video output control
-		ImGui::Text("           VO_STARTX: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__VO_STARTX); 			// RW  Video output start X position
-		ImGui::Text("           VO_STARTY: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__VO_STARTY); 			// RW  Video output start Y position
-		ImGui::Text("          SCALER_CTL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SCALER_CTL); 		// RW  X & Y scaler control
-		ImGui::Text("        PAL_RAM_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__PAL_RAM_CTRL); 		// RW  Palette RAM control
-		ImGui::Text("          SPG_STATUS: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__SPG_STATUS); 		// R   Sync pulse generator status
-		ImGui::Text("        FB_BURSTCTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_BURSTCTRL); 		// RW  Frame buffer burst control
-		ImGui::Text("            FB_C_SOF: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FB_C_SOF); 			// R   Current frame buffer start address
-		ImGui::Text("             Y_COEFF: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__Y_COEFF); 			// RW  Y scaling coefficient
-		ImGui::Text("        PT_ALPHA_REF: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__PT_ALPHA_REF); 		// RW  Alpha value for Punch Through polygon comparison
+		ImGui::Text("         FOG_COL_RAM: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FOG_COL_RAM); 		// RW  Color for Look Up table Fog
+		ImGui::Text("        FOG_COL_VERT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FOG_COL_VERT); 		// RW  Color for vertex Fog
+		ImGui::Text("         FOG_DENSITY: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FOG_DENSITY); 		// RW  Fog scale value
+		ImGui::Text("       FOG_CLAMP_MAX: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FOG_CLAMP_MAX); 		// RW  Color clamping maximum value
+		ImGui::Text("       FOG_CLAMP_MIN: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FOG_CLAMP_MIN); 		// RW  Color clamping minimum value
+		ImGui::Text("     SPG_TRIGGER_POS: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPG_TRIGGER_POS); 	// RW  External trigger signal HV counter value
+		ImGui::Text("      SPG_HBLANK_INT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPG_HBLANK_INT); 	// RW  H-blank interrupt control	
+		ImGui::Text("      SPG_VBLANK_INT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPG_VBLANK_INT); 	// RW  V-blank interrupt control	
+		ImGui::Text("         SPG_CONTROL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPG_CONTROL); 		// RW  Sync pulse generator control
+		ImGui::Text("          SPG_HBLANK: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPG_HBLANK); 		// RW  H-blank control
+		ImGui::Text("            SPG_LOAD: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPG_LOAD); 			// RW  HV counter load value
+		ImGui::Text("          SPG_VBLANK: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPG_VBLANK); 		// RW  V-blank control
+		ImGui::Text("           SPG_WIDTH: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPG_WIDTH); 			// RW  Sync width control
+		ImGui::Text("        TEXT_CONTROL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TEXT_CONTROL); 		// RW  Texturing control
+		ImGui::Text("          VO_CONTROL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__VO_CONTROL); 		// RW  Video output control
+		ImGui::Text("           VO_STARTX: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__VO_STARTX); 			// RW  Video output start X position
+		ImGui::Text("           VO_STARTY: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__VO_STARTY); 			// RW  Video output start Y position
+		ImGui::Text("          SCALER_CTL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SCALER_CTL); 		// RW  X & Y scaler control
+		ImGui::Text("        PAL_RAM_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__PAL_RAM_CTRL); 		// RW  Palette RAM control
+		ImGui::Text("          SPG_STATUS: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__SPG_STATUS); 		// R   Sync pulse generator status
+		ImGui::Text("        FB_BURSTCTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_BURSTCTRL); 		// RW  Frame buffer burst control
+		ImGui::Text("            FB_C_SOF: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FB_C_SOF); 			// R   Current frame buffer start address
+		ImGui::Text("             Y_COEFF: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__Y_COEFF); 			// RW  Y scaling coefficient
+		ImGui::Text("        PT_ALPHA_REF: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__PT_ALPHA_REF); 		// RW  Alpha value for Punch Through polygon comparison
 		ImGui::End();
 
 		ImGui::Separator();
 		ImGui::Begin("TA Regs");
-		ImGui::Text("          TA_OL_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_OL_BASE); 		// RW  Object list write start address
-		ImGui::Text("         TA_ISP_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_ISP_BASE); 		// RW  ISP/TSP register write start address
-		ImGui::Text("         TA_OL_LIMIT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_OL_LIMIT); 		// RW  Start address of next Object Pointer Block
-		ImGui::Text("        TA_ISP_LIMIT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_ISP_LIMIT); 		// RW  Current ISP/TSP register write address
-		ImGui::Text("         TA_NEXT_OPB: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_NEXT_OPB); 		// R   Global Tile clip control
-		ImGui::Text("      TA_ISP_CURRENT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_ISP_CURRENT); 	// R   Current ISP/TSP register write address
-		ImGui::Text("   TA_GLOB_TILE_CLIP: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_GLOB_TILE_CLIP); 	// RW  Global Tile clip control
-		ImGui::Text("       TA_ALLOC_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_ALLOC_CTRL); 		// RW  Object list control
-		ImGui::Text("        TA_LIST_INIT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_LIST_INIT); 		// RW  TA initialization
-		ImGui::Text("     TA_YUV_TEX_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_YUV_TEX_BASE); 	// RW  YUV422 texture write start address
-		ImGui::Text("     TA_YUV_TEX_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_YUV_TEX_CTRL); 	// RW  YUV converter control
-		ImGui::Text("      TA_YUV_TEX_CNT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_YUV_TEX_CNT); 	// R   YUV converter macro block counter value
+		ImGui::Text("          TA_OL_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_OL_BASE); 		// RW  Object list write start address
+		ImGui::Text("         TA_ISP_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_ISP_BASE); 		// RW  ISP/TSP register write start address
+		ImGui::Text("         TA_OL_LIMIT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_OL_LIMIT); 		// RW  Start address of next Object Pointer Block
+		ImGui::Text("        TA_ISP_LIMIT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_ISP_LIMIT); 		// RW  Current ISP/TSP register write address
+		ImGui::Text("         TA_NEXT_OPB: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_NEXT_OPB); 		// R   Global Tile clip control
+		ImGui::Text("      TA_ISP_CURRENT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_ISP_CURRENT); 	// R   Current ISP/TSP register write address
+		ImGui::Text("   TA_GLOB_TILE_CLIP: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_GLOB_TILE_CLIP); 	// RW  Global Tile clip control
+		ImGui::Text("       TA_ALLOC_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_ALLOC_CTRL); 		// RW  Object list control
+		ImGui::Text("        TA_LIST_INIT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_LIST_INIT); 		// RW  TA initialization
+		ImGui::Text("     TA_YUV_TEX_BASE: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_YUV_TEX_BASE); 	// RW  YUV422 texture write start address
+		ImGui::Text("     TA_YUV_TEX_CTRL: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_YUV_TEX_CTRL); 	// RW  YUV converter control
+		ImGui::Text("      TA_YUV_TEX_CNT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_YUV_TEX_CNT); 	// R   YUV converter macro block counter value
 
-		ImGui::Text("        TA_LIST_CONT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_LIST_CONT); 		// RW  TA continuation processing
-		ImGui::Text("    TA_NEXT_OPB_INIT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_NEXT_OPB_INIT); 	// RW  Additional OPB starting address
+		ImGui::Text("        TA_LIST_CONT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_LIST_CONT); 		// RW  TA continuation processing
+		ImGui::Text("    TA_NEXT_OPB_INIT: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_NEXT_OPB_INIT); 	// RW  Additional OPB starting address
 
-		ImGui::Text("     FOG_TABLE_START: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FOG_TABLE_START); 	// RW  Look-up table Fog data
-		ImGui::Text("       FOG_TABLE_END: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__FOG_TABLE_END);
+		ImGui::Text("     FOG_TABLE_START: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FOG_TABLE_START); 	// RW  Look-up table Fog data
+		ImGui::Text("       FOG_TABLE_END: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__FOG_TABLE_END);
 
-		ImGui::Text("TA_OL_POINTERS_START: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_OL_POINTERS_START); // R   TA object List Pointer data
-		ImGui::Text("  TA_OL_POINTERS_END: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__TA_OL_POINTERS_END);
+		ImGui::Text("TA_OL_POINTERS_START: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_OL_POINTERS_START); // R   TA object List Pointer data
+		ImGui::Text("  TA_OL_POINTERS_END: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__TA_OL_POINTERS_END);
 
-		ImGui::Text("   PALETTE_RAM_START: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__PALETTE_RAM_START); 	// RW  Palette RAM
-		ImGui::Text("     PALETTE_RAM_END: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__PALETTE_RAM_END);
+		ImGui::Text("   PALETTE_RAM_START: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__PALETTE_RAM_START); 	// RW  Palette RAM
+		ImGui::Text("     PALETTE_RAM_END: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__pvr_regs_inst__DOT__PALETTE_RAM_END);
 		ImGui::End();
 
 		ImGui::Begin(" RA Parser");
@@ -2985,8 +2985,8 @@ int main(int argc, char** argv, char** env) {
 		//ImGui::Text("   core U.FDDY raw: 0x%016llX",top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__interp_inst_u__DOT__FDDY);
 		ImGui::Separator();
 
-		//ImGui::Text("   core inTriangle: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTriangle);
-		//ImGui::Text("  core inTriangle1: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__inTriangle1);
+		//ImGui::Text("   core inTriangle: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTriangle);
+		//ImGui::Text("  core inTriangle1: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__inTriangle1);
 		//ImGui::Text("          core sgn: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__sgn);
 		//ImGui::Text("          vram_din: 0x%016llX", top->rootp->simtop__DOT__pvr__DOT__vram_din);
 		//ImGui::Text("      isp_vram_din: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__isp_vram_din);
@@ -2997,7 +2997,7 @@ int main(int argc, char** argv, char** env) {
 		
 		/*
 		//ImGui::Text("        sim 1/invW: %f", 1/invW);
-		ImGui::Text("        core inTri: %08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri);
+		ImGui::Text("        core inTri: %08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri);
 		ImGui::Text("         rle state: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__rle_by_tag_inst__DOT__state);
 		//ImGui::Text("      rle emit_ptr: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__rle_by_tag_inst__DOT__emit_ptr);
 		ImGui::Text("         rle_valid: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__rle_by_tag_inst__DOT__rle_valid);
@@ -3008,7 +3008,7 @@ int main(int argc, char** argv, char** env) {
 
 		//ImGui::Text("          core sgn: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__sgn);
 		ImGui::Text("             sim z: %f", invW);
-		ImGui::Text("  core IP_Z_INTERP: %f", (float)((int32_t)top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__IP_Z_INTERP) / (1 << Z_FRAC_BITS));
+		ImGui::Text("  core IP_Z_INTERP: %f", (float)((int32_t)top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__IP_Z_R[0]) / (1 << Z_FRAC_BITS));
 		ImGui::Text("        core z_out: %f", (float)((int32_t)top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__z_out) / (1 << Z_FRAC_BITS));
 		ImGui::Separator();
 		//ImGui::Text("  core W_interp[0]: %f", (float)((int32_t)top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__W_interp[0]) / (1 << Z_FRAC_BITS));
@@ -3058,7 +3058,7 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Separator();
 		ImGui::Text("allow_z_write[31:0]: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__allow_z_write);
 		ImGui::Separator();
-		ImGui::Text("        inTri[31:0]: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri);
+		ImGui::Text("        inTri[31:0]: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri);
 		ImGui::Text(" leading_zeros[4:0]: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__leading_zeros);
 		ImGui::Text("trailing_zeros[4:0]: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__trailing_zeros);
 		*/
@@ -3109,9 +3109,9 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Text("    tex_dst_select: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tex_dst_select);
 		ImGui::Text("            u_flip: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tex_u_flip);
 		ImGui::Text("            v_flip: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tex_v_flip);
-		//ImGui::Text("          base_dx0: 0x%010X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__base_dx0);
-		//ImGui::Text("          base_dx1: 0x%010X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__base_dx1);
-		//ImGui::Text("          base_dx2: 0x%010X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__base_dx2);
+		//ImGui::Text("          base_dx0: 0x%010X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__base_dx0);
+		//ImGui::Text("          base_dx1: 0x%010X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__base_dx1);
+		//ImGui::Text("          base_dx2: 0x%010X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__base_dx2);
 		ImGui::Text("           u_clamp: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tex_u_clamp);
 		ImGui::Text("           v_clamp: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tex_v_clamp);
 		ImGui::Text("     is_quad_array: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__is_quad_array);
@@ -3145,16 +3145,16 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Separator();
 
 		/*
-		ImGui::Text("  y1_mult_overflow: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__y1_mult_overflow);
-		ImGui::Text("  y2_mult_overflow: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__y2_mult_overflow);
-		ImGui::Text("  y3_mult_overflow: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__y3_mult_overflow);
-		ImGui::Text("edge_eval0_overflow: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__edge_eval0_overflow);
-		ImGui::Text("edge_eval1_overflow: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__edge_eval1_overflow);
-		ImGui::Text("edge_eval2_overflow: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__edge_eval2_overflow);
-		ImGui::Text("cross_term_overflow: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri_calc_inst__DOT__cross_term_overflow);
+		ImGui::Text("  y1_mult_overflow: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__y1_mult_overflow);
+		ImGui::Text("  y2_mult_overflow: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__y2_mult_overflow);
+		ImGui::Text("  y3_mult_overflow: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__y3_mult_overflow);
+		ImGui::Text("edge_eval0_overflow: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__edge_eval0_overflow);
+		ImGui::Text("edge_eval1_overflow: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__edge_eval1_overflow);
+		ImGui::Text("edge_eval2_overflow: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__edge_eval2_overflow);
+		ImGui::Text("cross_term_overflow: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri_calc_inst__DOT__cross_term_overflow);
 		*/
 
-		ImGui::Text("        core inTri: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri);
+		ImGui::Text("        core inTri: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri);
 		//ImGui::Text("       IP_G_INTERP: 0x%08X", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__IP_G_INTERP);
 		//ImGui::Text("    vert_a_x_shift: %d", vert_a_x_shift);
 		ImGui::Text("          vert_a_x: 0x%08X %+03.6f", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_x, *(float*)&top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__vert_a_x);
@@ -3691,6 +3691,11 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Text("param prefetch: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__param_window_prefetch_count);
 		ImGui::Text("param fills: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__param_window_fill_count);
 		ImGui::Text("param overlap starts: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__param_window_overlap_start_count);
+		ImGui::Text("ra pfetch rdy !at11: %d", top->rootp->simtop__DOT__pvr__DOT__ra_parser_inst__DOT__ra_prefetch_ready_not_at_11);
+		ImGui::Text(" ra pfetch rdy at11: %d", top->rootp->simtop__DOT__pvr__DOT__ra_parser_inst__DOT__ra_prefetch_ready_at_11);
+		ImGui::Text("    isp st56 cycles: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__isp_state56_cycles);
+		ImGui::Text("    isp st57 cycles: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__isp_state57_cycles);
+		ImGui::Text("        tile count: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tile_count);
 		ImGui::Separator();
 		ImGui::Text("ddr_issue_count: %d", top->rootp->simtop__DOT__vram_read_arbiter_geo__DOT__ddr_issue_count);
 		ImGui::Text("     inflight: %d", top->rootp->simtop__DOT__vram_read_arbiter_geo__DOT__inflight);
@@ -3714,6 +3719,7 @@ int main(int argc, char** argv, char** env) {
 		ImGui::Text("tsp wait next: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_tex_wait_next_count);
 		ImGui::Text("tsp wait >1: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_tex_wait_long_count);
 		ImGui::Text("tsp init skips: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_tex_initial_skip_count);
+		ImGui::Text("tex cache hit skips: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_tex_cache_hit_skip_count);
 		ImGui::Text("empty tile skips: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tsp_empty_tile_skip_count);
 		ImGui::Separator();
 		ImGui::Text("tag pixels: %d", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tag_visible_pixel_count);
@@ -3772,7 +3778,7 @@ int main(int argc, char** argv, char** env) {
 				
 		/*
 		ImGui::Begin("Prim-Tag Viewer");
-		uint32_t inTri = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__inTri;
+		uint32_t inTri = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__hsr_core_inst__DOT__inTri;
 		uint32_t depth_allow = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__z_buff_inst__DOT__depth_allow;
 		uint32_t z_allow = inTri & depth_allow;
 		for (uint8_t i = 0; i < 32; i++) {

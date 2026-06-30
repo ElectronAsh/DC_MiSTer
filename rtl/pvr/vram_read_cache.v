@@ -22,6 +22,10 @@ module vram_read_cache #(
 
     output wire        cache_hit,
 
+    // Combinatorial peek: check if peek_addr is cached without issuing a request.
+    input  wire [21:0] peek_addr,
+    output wire        peek_hit,
+
     output reg  [28:0] DDRAM_ADDR,    // 64-bit WORD address
     output reg         DDRAM_RD,
     output reg  [7:0]  DDRAM_BURSTCNT,
@@ -81,6 +85,26 @@ module vram_read_cache #(
     end
 
     assign cache_hit = hit_now || hot_hit || prefetch_hit_now;
+
+    // Peek: combinatorial hit check against an arbitrary address (no side effects).
+    // peek_addr is a 32-bit WORD address (same format as cache_base / word_addr).
+    wire [31:0] peek_word_addr = {10'd0, peek_addr[21:0]};
+    reg peek_hit_now;
+    integer peek_i;
+    always @(*) begin
+        peek_hit_now = 1'b0;
+        for (peek_i = 0; peek_i < CACHE_LINES; peek_i = peek_i + 1) begin
+            if (!peek_hit_now && cache_valid[peek_i] &&
+                (peek_word_addr >= cache_base[peek_i]) &&
+                (peek_word_addr < (cache_base[peek_i] + LINE_WORDS)))
+                peek_hit_now = 1'b1;
+        end
+        if (!peek_hit_now && prefetch_cache_valid &&
+            (peek_word_addr >= prefetch_cache_base) &&
+            (peek_word_addr < (prefetch_cache_base + LINE_WORDS)))
+            peek_hit_now = 1'b1;
+    end
+    assign peek_hit = peek_hit_now;
 
     // Optional combinational hit path for texture cache. Only assert it for a
     // new request; otherwise a changing address can masquerade as the response
@@ -342,6 +366,10 @@ module vram_read_cache #(
                     hit_pending_prefetch <= 1'b0;
                     hit_pending_way <= hit_way;
                     hit_pending_index <= hit_index;
+                    if (TEX_COMBO_HIT) begin
+                        vram_din_r   <= cache_line[hit_way][hit_index];
+                        vram_valid_r <= 1'b1;
+                    end
                 end else if (!req_active && !hit_pending && !filling && !read_pending) begin
 `ifdef VERILATOR
                     miss_count <= miss_count + 1'b1;

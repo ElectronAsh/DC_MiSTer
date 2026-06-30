@@ -9,7 +9,7 @@ module interp_params #(
 )(
 	input reset_n,
     input clock,
-	
+
     input  wire [5:0] param_id_in,
     input start_interp,
 
@@ -49,7 +49,7 @@ module interp_params #(
     output reg signed [31:0] FDDX,
     output reg signed [31:0] FDDY,
     output reg signed [31:0] small_c,
-	
+
     output reg  [5:0] param_id_out,
     output reg interp_valid
 );
@@ -111,7 +111,6 @@ wire signed [63:0] param_c_tex = param_c_float_fixed * $signed({1'b0, (param_id_
 wire signed [111:0] param_a_uv_persp = param_a_tex * param_a_z_fixed_cap;
 wire signed [111:0] param_b_uv_persp = param_b_tex * param_b_z_fixed_cap;
 wire signed [111:0] param_c_uv_persp = param_c_tex * param_c_z_fixed_cap;
-
 wire signed [47:0] param_a_uv_fixed = param_a_uv_persp >>> Z_FRAC_BITS;
 wire signed [47:0] param_b_uv_fixed = param_b_uv_persp >>> Z_FRAC_BITS;
 wire signed [47:0] param_c_uv_fixed = param_c_uv_persp >>> Z_FRAC_BITS;
@@ -247,7 +246,6 @@ end
 //
 reg signed [63:0] A_num_mult_1_r;
 reg signed [63:0] A_num_mult_2_r;
-
 reg signed [63:0] B_num_mult_1_r;
 reg signed [63:0] B_num_mult_2_r;
 
@@ -303,7 +301,7 @@ end
 
 //
 // ------------------------------------------------------------------------
-// Stage 4 : Pipelined divide
+// Stage 4 : Two parallel pipelined dividers (FDDX and FDDY)
 // ------------------------------------------------------------------------
 //
 localparam DIV_PIPELINE = 6;
@@ -432,10 +430,11 @@ end
 
 //
 // ------------------------------------------------------------------------
-// Valid pipeline
+// Valid pipeline (12 bits) and param_id tracking
 // ------------------------------------------------------------------------
 //
-reg [11:0] valid_pipe;
+localparam VP_DEPTH = 12;
+reg [VP_DEPTH-1:0] valid_pipe;
 
 reg [5:0] param_id_s0;
 reg [5:0] param_id_s1;
@@ -452,35 +451,35 @@ reg [5:0] param_id_s11;
 
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
-	valid_pipe <= 12'd0;
-	interp_valid <= 1'b0;
-	param_id_out <= 6'd0;
-	param_id_s0 <= 6'd0;
-	param_id_s1 <= 6'd0;
-	param_id_s2 <= 6'd0;
-	param_id_s3 <= 6'd0;
-	param_id_s4 <= 6'd0;
-	param_id_s5 <= 6'd0;
-	param_id_s6 <= 6'd0;
-	param_id_s7 <= 6'd0;
-	param_id_s8 <= 6'd0;
-	param_id_s9 <= 6'd0;
-	param_id_s10 <= 6'd0;
-	param_id_s11 <= 6'd0;
+    valid_pipe   <= {VP_DEPTH{1'b0}};
+    interp_valid <= 1'b0;
+    param_id_out <= 6'd0;
+    param_id_s0  <= 6'd0;
+    param_id_s1  <= 6'd0;
+    param_id_s2  <= 6'd0;
+    param_id_s3  <= 6'd0;
+    param_id_s4  <= 6'd0;
+    param_id_s5  <= 6'd0;
+    param_id_s6  <= 6'd0;
+    param_id_s7  <= 6'd0;
+    param_id_s8  <= 6'd0;
+    param_id_s9  <= 6'd0;
+    param_id_s10 <= 6'd0;
+    param_id_s11 <= 6'd0;
 end
 else begin
-    valid_pipe <= {valid_pipe[10:0], start_interp};
-    interp_valid <= valid_pipe[11];
+    valid_pipe <= {valid_pipe[VP_DEPTH-2:0], start_interp};
+    interp_valid <= valid_pipe[VP_DEPTH-1];
     if (start_interp) param_id_s0 <= param_id_in;
-    param_id_s1 <= param_id_s0;
-    param_id_s2 <= param_id_s1;
-    param_id_s3 <= param_id_s2;
-    param_id_s4 <= param_id_s3;
-    param_id_s5 <= param_id_s4;
-    param_id_s6 <= param_id_s5;
-    param_id_s7 <= param_id_s6;
-    param_id_s8 <= param_id_s7;
-    param_id_s9 <= param_id_s8;
+    param_id_s1  <= param_id_s0;
+    param_id_s2  <= param_id_s1;
+    param_id_s3  <= param_id_s2;
+    param_id_s4  <= param_id_s3;
+    param_id_s5  <= param_id_s4;
+    param_id_s6  <= param_id_s5;
+    param_id_s7  <= param_id_s6;
+    param_id_s8  <= param_id_s7;
+    param_id_s9  <= param_id_s8;
     param_id_s10 <= param_id_s9;
     param_id_s11 <= param_id_s10;
     param_id_out <= param_id_s11;
@@ -490,7 +489,7 @@ end
 endmodule
 
 module interp_signed_div_pipe #(
-    parameter integer PIPELINE = 6
+    parameter integer PIPELINE = 4
 )(
     input  wire               clock,
     input  wire signed [55:0] numer,
@@ -520,7 +519,7 @@ lpm_divide #(
     .lpm_drepresentation("SIGNED"),
     .lpm_pipeline(PIPELINE),
     .lpm_type("LPM_DIVIDE"),
-    .lpm_hint("MAXIMIZE_SPEED=6")
+    .lpm_hint("MAXIMIZE_SPEED=4")
 ) lpm_divide_component (
     .clock(clock),
     .clken(1'b1),

@@ -16,7 +16,8 @@ module z_buff #(
 	input z_force_row_write,
 	
 	input [4:0] col_sel,		// x_ps[4:0]
-	input [4:0] row_sel,		// y_ps[4:0]
+	input [4:0] row_sel,		// y_ps[4:0] — controls write address (row_sel_d)
+	input [4:0] row_sel_rd,		// read address (pre-fetched for pipelined spans)
 	
 	input [31:0] inTri,
 	input trig_z_row_write,
@@ -415,7 +416,7 @@ assign z_row_out[29] = z_col_29;
 assign z_row_out[30] = z_col_30;
 assign z_row_out[31] = z_col_31;
 
-wire [4:0] row_sel_mux = (z_clear_busy) ? z_clear_row : row_sel;
+wire [4:0] row_sel_mux = (z_clear_busy) ? z_clear_row : row_sel_rd;
 wire [4:0] row_sel_wr  = (z_clear_busy) ? z_clear_row : row_sel_d;
 
 `ifdef VERILATOR

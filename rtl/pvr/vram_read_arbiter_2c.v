@@ -10,12 +10,12 @@ module vram_read_arbiter_2c #(
     parameter B_CACHE_BITS  = 6,
     parameter B_BURST_WORDS = 32,
 `else
-    parameter A_CACHE_WORDS = 64,
-    parameter A_CACHE_BITS  = 6,
-    parameter A_BURST_WORDS = 32,
-    parameter B_CACHE_WORDS = 64,
-    parameter B_CACHE_BITS  = 6,
-    parameter B_BURST_WORDS = 32,
+    parameter A_CACHE_WORDS = 8,
+    parameter A_CACHE_BITS  = 3,
+    parameter A_BURST_WORDS = 4,
+    parameter B_CACHE_WORDS = 8,
+    parameter B_CACHE_BITS  = 3,
+    parameter B_BURST_WORDS = 4,
 `endif
     parameter WRITE_BURST_WORDS = 8
 ) (
@@ -105,8 +105,10 @@ module vram_read_arbiter_2c #(
     reg [63:0] write_din_hold;
     reg [7:0]  write_be_hold;
 
-    (* noprune *) reg inflight;
-    (* noprune *) reg inflight_owner;
+`ifdef VERILATOR
+    reg inflight;
+    reg inflight_owner;
+`endif
 
     wire [20:0] a_req_delta = {1'b0, a_req_word} - {1'b0, a_cache_base};
     wire [20:0] b_req_delta = {1'b0, b_req_word} - {1'b0, b_cache_base};
@@ -127,6 +129,7 @@ module vram_read_arbiter_2c #(
     wire        b_pend_hit = b_pend_in_cache && b_cache_valid[b_pend_index];
     wire        a_need_fill = a_pend_valid && !a_pend_hit;
     wire        b_need_fill = b_pend_valid && !b_pend_hit;
+    wire        demand_fill_pending = a_need_fill || b_need_fill;
 
     wire [20:0] fill_delta_a = {1'b0, fill_word} - {1'b0, a_cache_base};
     wire [20:0] fill_delta_b = {1'b0, fill_word} - {1'b0, b_cache_base};
@@ -137,24 +140,35 @@ module vram_read_arbiter_2c #(
 
     wire [7:0] c_burstcnt_safe = (c_burstcnt == 8'd0) ? 8'd1 : c_burstcnt;
 
-    assign c_wait = fill_active || DDRAM_BUSY || DDRAM_PAUSE || (write_active && write_cmd_pending);
+    wire write_at_boundary = write_active && write_cmd_pending &&
+                             (write_count >= write_len);
+    wire write_yield_to_read = demand_fill_pending &&
+                               (!write_active || write_at_boundary);
+
+    // The registered DDR write beat can be replaced on the same edge that DDR
+    // accepts it. Demand reads may take the port between write bursts.
+    assign c_wait = fill_active || DDRAM_PAUSE ||
+                    (write_cmd_pending && DDRAM_BUSY) ||
+                    write_yield_to_read;
 
     wire any_busy = a_pend_valid || b_pend_valid || fill_active || write_active || DDRAM_BUSY || DDRAM_PAUSE;
 
+`ifdef VERILATOR
     // Debug stats for ImGui visibility.
-    (* noprune *) reg [31:0] a_req_count;
-    (* noprune *) reg [31:0] b_req_count;
-    (* noprune *) reg [31:0] a_drop_count;
-    (* noprune *) reg [31:0] b_drop_count;
-    (* noprune *) reg [31:0] ddr_issue_count;
-    (* noprune *) reg [31:0] a_resp_count;
-    (* noprune *) reg [31:0] b_resp_count;
-    (* noprune *) reg [31:0] a_cache_hit_count;
-    (* noprune *) reg [31:0] b_cache_hit_count;
-    (* noprune *) reg [31:0] a_cache_miss_count;
-    (* noprune *) reg [31:0] b_cache_miss_count;
-    (* noprune *) reg [31:0] a_refill_count;
-    (* noprune *) reg [31:0] b_refill_count;
+    reg [31:0] a_req_count;
+    reg [31:0] b_req_count;
+    reg [31:0] a_drop_count;
+    reg [31:0] b_drop_count;
+    reg [31:0] ddr_issue_count;
+    reg [31:0] a_resp_count;
+    reg [31:0] b_resp_count;
+    reg [31:0] a_cache_hit_count;
+    reg [31:0] b_cache_hit_count;
+    reg [31:0] a_cache_miss_count;
+    reg [31:0] b_cache_miss_count;
+    reg [31:0] a_refill_count;
+    reg [31:0] b_refill_count;
+`endif
 
     always @(posedge clock or negedge reset_n) begin
         if (!reset_n) begin
@@ -184,8 +198,10 @@ module vram_read_arbiter_2c #(
             fill_word           <= 20'd0;
             fill_count          <= 8'd0;
             fill_len            <= 8'd0;
+`ifdef VERILATOR
             inflight            <= 1'b0;
             inflight_owner      <= OWNER_A;
+`endif
             rr_owner            <= OWNER_A;
             write_active        <= 1'b0;
             write_cmd_pending   <= 1'b0;
@@ -201,6 +217,7 @@ module vram_read_arbiter_2c #(
             b_valid             <= 1'b0;
             a_req_ack           <= 1'b0;
             b_req_ack           <= 1'b0;
+`ifdef VERILATOR
             a_req_count         <= 32'd0;
             b_req_count         <= 32'd0;
             a_drop_count        <= 32'd0;
@@ -214,6 +231,7 @@ module vram_read_arbiter_2c #(
             b_cache_miss_count  <= 32'd0;
             a_refill_count      <= 32'd0;
             b_refill_count      <= 32'd0;
+`endif
         end else begin
             DDRAM_RD       <= 1'b0;
             DDRAM_WE       <= 1'b0;
@@ -224,8 +242,10 @@ module vram_read_arbiter_2c #(
             b_valid        <= 1'b0;
             a_req_ack      <= 1'b0;
             b_req_ack      <= 1'b0;
+`ifdef VERILATOR
             inflight       <= fill_active;
             inflight_owner <= fill_owner;
+`endif
 
             a_wait <= a_pend_valid;
             b_wait <= b_pend_valid;
@@ -244,76 +264,105 @@ module vram_read_arbiter_2c #(
                 DDRAM_DIN <= write_din_hold;
                 DDRAM_BE <= write_be_hold;
                 DDRAM_BURSTCNT <= write_len;
+
                 if (!DDRAM_BUSY && !DDRAM_PAUSE) begin
-                    DDRAM_WE <= 1'b0;
-                    write_cmd_pending <= 1'b0;
-                    if (write_len == 8'd1) begin
-                        write_active <= 1'b0;
-                        write_count <= 8'd0;
+                    if (c_wr && !fill_active && !write_yield_to_read) begin
+                        // Replace the accepted beat immediately. At a burst
+                        // boundary this is the first beat of the next command.
+                        DDRAM_WE <= 1'b1;
+                        DDRAM_DIN <= c_dout;
+                        DDRAM_BE <= c_be;
+                        write_din_hold <= c_dout;
+                        write_be_hold <= c_be;
+                        write_cmd_pending <= 1'b1;
+
+                        if (write_count >= write_len) begin
+                            DDRAM_ADDR <= c_addr;
+                            DDRAM_BURSTCNT <= c_burstcnt_safe;
+                            write_len <= c_burstcnt_safe;
+                            write_count <= 8'd1;
+                        end else begin
+                            DDRAM_BURSTCNT <= write_len;
+                            write_count <= write_count + 8'd1;
+                        end
                     end else begin
-                        write_count <= 8'd1;
+                        write_cmd_pending <= 1'b0;
+                        if (write_count >= write_len) begin
+                            write_active <= 1'b0;
+                            write_count <= 8'd0;
+                        end
                     end
                 end
-            end
-
-            if (c_wr && ((!write_active && !fill_active && !DDRAM_PAUSE) || (write_active && !write_cmd_pending && !c_wait))) begin
+            end else if (c_wr && !fill_active && !DDRAM_PAUSE &&
+                         (write_active || !demand_fill_pending)) begin
+                DDRAM_WE <= 1'b1;
                 DDRAM_DIN <= c_dout;
-                DDRAM_BE  <= c_be;
-                DDRAM_BURSTCNT <= write_active ? write_len : c_burstcnt_safe;
+                DDRAM_BE <= c_be;
+                write_din_hold <= c_dout;
+                write_be_hold <= c_be;
+                write_cmd_pending <= 1'b1;
+
                 if (!write_active) begin
-                    DDRAM_WE <= 1'b1;
                     DDRAM_ADDR <= c_addr;
-                    write_din_hold <= c_dout;
-                    write_be_hold <= c_be;
+                    DDRAM_BURSTCNT <= c_burstcnt_safe;
                     write_len <= c_burstcnt_safe;
+                    write_count <= 8'd1;
                     write_active <= 1'b1;
-                    write_cmd_pending <= 1'b1;
-                    write_count <= 8'd0;
                 end else begin
-                    DDRAM_WE <= 1'b1;
-                    if (write_count == (write_len - 8'd1)) begin
-                        write_active <= 1'b0;
-                        write_cmd_pending <= 1'b0;
-                        write_count <= 8'd0;
-                    end else begin
-                        write_count <= write_count + 8'd1;
-                    end
+                    DDRAM_BURSTCNT <= write_len;
+                    write_count <= write_count + 8'd1;
                 end
             end
 
             // Client hits return immediately from the local stream cache.
             if (a_rd && !a_pend_valid) begin
                 a_req_ack <= 1'b1;
+`ifdef VERILATOR
                 a_req_count <= a_req_count + 1'd1;
+`endif
                 if (a_req_hit) begin
                     a_din <= a_cache[a_req_index];
                     a_valid <= 1'b1;
+`ifdef VERILATOR
                     a_resp_count <= a_resp_count + 1'd1;
                     a_cache_hit_count <= a_cache_hit_count + 1'd1;
+`endif
                 end else begin
                     a_pend_valid <= 1'b1;
                     a_pend_word <= a_req_word;
+`ifdef VERILATOR
                     a_cache_miss_count <= a_cache_miss_count + 1'd1;
+`endif
                 end
             end else if (a_rd && a_pend_valid) begin
+`ifdef VERILATOR
                 a_drop_count <= a_drop_count + 1'd1;
+`endif
             end
 
             if (b_rd && !b_pend_valid) begin
                 b_req_ack <= 1'b1;
+`ifdef VERILATOR
                 b_req_count <= b_req_count + 1'd1;
+`endif
                 if (b_req_hit) begin
                     b_din <= b_cache[b_req_index];
                     b_valid <= 1'b1;
+`ifdef VERILATOR
                     b_resp_count <= b_resp_count + 1'd1;
                     b_cache_hit_count <= b_cache_hit_count + 1'd1;
+`endif
                 end else begin
                     b_pend_valid <= 1'b1;
                     b_pend_word <= b_req_word;
+`ifdef VERILATOR
                     b_cache_miss_count <= b_cache_miss_count + 1'd1;
+`endif
                 end
             end else if (b_rd && b_pend_valid) begin
+`ifdef VERILATOR
                 b_drop_count <= b_drop_count + 1'd1;
+`endif
             end
 
             // A pending request may become valid while a burst for the same port
@@ -322,15 +371,19 @@ module vram_read_arbiter_2c #(
                 a_din <= a_cache[a_pend_index];
                 a_valid <= 1'b1;
                 a_pend_valid <= 1'b0;
+`ifdef VERILATOR
                 a_resp_count <= a_resp_count + 1'd1;
                 a_cache_hit_count <= a_cache_hit_count + 1'd1;
+`endif
             end
             if (b_pend_valid && b_pend_hit) begin
                 b_din <= b_cache[b_pend_index];
                 b_valid <= 1'b1;
                 b_pend_valid <= 1'b0;
+`ifdef VERILATOR
                 b_resp_count <= b_resp_count + 1'd1;
                 b_cache_hit_count <= b_cache_hit_count + 1'd1;
+`endif
             end
 
             // Capture burst data into the owning port cache.
@@ -344,7 +397,9 @@ module vram_read_arbiter_2c #(
                         a_din <= DDRAM_DOUT;
                         a_valid <= 1'b1;
                         a_pend_valid <= 1'b0;
+`ifdef VERILATOR
                         a_resp_count <= a_resp_count + 1'd1;
+`endif
                     end
                 end else begin
                     if (fill_in_b_cache) begin
@@ -355,7 +410,9 @@ module vram_read_arbiter_2c #(
                         b_din <= DDRAM_DOUT;
                         b_valid <= 1'b1;
                         b_pend_valid <= 1'b0;
+`ifdef VERILATOR
                         b_resp_count <= b_resp_count + 1'd1;
+`endif
                     end
                 end
 
@@ -369,7 +426,7 @@ module vram_read_arbiter_2c #(
 
             // Launch the next burst for a pending miss. A miss outside that
             // client's cache window starts a new window at the requested word.
-            if (!fill_active && !write_active && !c_pending && !DDRAM_PAUSE) begin
+            if (!fill_active && !write_active && !DDRAM_PAUSE) begin
                 if (a_need_fill && b_need_fill) begin
                     if (rr_owner) begin
                         if (!a_pend_in_cache) begin
@@ -389,8 +446,10 @@ module vram_read_arbiter_2c #(
                         a_prefetch_valid <= !a_pend_in_cache ? (A_BURST_LEN < A_CACHE_WORDS) : ((a_pend_delta + A_BURST_WORDS) < A_CACHE_WORDS);
                         a_prefetch_word <= a_pend_word + A_BURST_INC;
                         rr_owner <= OWNER_B;
+`ifdef VERILATOR
                         ddr_issue_count <= ddr_issue_count + 1'd1;
                         a_refill_count <= a_refill_count + 1'd1;
+`endif
                     end else begin
                         if (!b_pend_in_cache) begin
                             b_cache_base <= b_pend_word;
@@ -409,8 +468,10 @@ module vram_read_arbiter_2c #(
                         b_prefetch_valid <= !b_pend_in_cache ? (B_BURST_LEN < B_CACHE_WORDS) : ((b_pend_delta + B_BURST_WORDS) < B_CACHE_WORDS);
                         b_prefetch_word <= b_pend_word + B_BURST_INC;
                         rr_owner <= OWNER_A;
+`ifdef VERILATOR
                         ddr_issue_count <= ddr_issue_count + 1'd1;
                         b_refill_count <= b_refill_count + 1'd1;
+`endif
                     end
                 end else if (a_need_fill) begin
                     if (!a_pend_in_cache) begin
@@ -430,8 +491,10 @@ module vram_read_arbiter_2c #(
                     a_prefetch_valid <= !a_pend_in_cache ? (A_BURST_LEN < A_CACHE_WORDS) : ((a_pend_delta + A_BURST_WORDS) < A_CACHE_WORDS);
                     a_prefetch_word <= a_pend_word + A_BURST_INC;
                     rr_owner <= OWNER_B;
+`ifdef VERILATOR
                     ddr_issue_count <= ddr_issue_count + 1'd1;
                     a_refill_count <= a_refill_count + 1'd1;
+`endif
                 end else if (b_need_fill) begin
                     if (!b_pend_in_cache) begin
                         b_cache_base <= b_pend_word;
@@ -450,9 +513,11 @@ module vram_read_arbiter_2c #(
                     b_prefetch_valid <= !b_pend_in_cache ? (B_BURST_LEN < B_CACHE_WORDS) : ((b_pend_delta + B_BURST_WORDS) < B_CACHE_WORDS);
                     b_prefetch_word <= b_pend_word + B_BURST_INC;
                     rr_owner <= OWNER_A;
+`ifdef VERILATOR
                     ddr_issue_count <= ddr_issue_count + 1'd1;
                     b_refill_count <= b_refill_count + 1'd1;
-                end else if (a_prefetch_valid) begin
+`endif
+                end else if (a_prefetch_valid && !c_pending) begin
                     DDRAM_ADDR <= {9'd0, a_prefetch_word};
                     DDRAM_RD <= 1'b1;
                     DDRAM_BURSTCNT <= A_BURST_LEN;
@@ -463,9 +528,11 @@ module vram_read_arbiter_2c #(
                     fill_count <= 8'd0;
                     fill_len <= A_BURST_LEN;
                     a_prefetch_valid <= 1'b0;
+`ifdef VERILATOR
                     ddr_issue_count <= ddr_issue_count + 1'd1;
                     a_refill_count <= a_refill_count + 1'd1;
-                end else if (b_prefetch_valid) begin
+`endif
+                end else if (b_prefetch_valid && !c_pending) begin
                     DDRAM_ADDR <= {9'd0, b_prefetch_word};
                     DDRAM_RD <= 1'b1;
                     DDRAM_BURSTCNT <= B_BURST_LEN;
@@ -476,8 +543,10 @@ module vram_read_arbiter_2c #(
                     fill_count <= 8'd0;
                     fill_len <= B_BURST_LEN;
                     b_prefetch_valid <= 1'b0;
+`ifdef VERILATOR
                     ddr_issue_count <= ddr_issue_count + 1'd1;
                     b_refill_count <= b_refill_count + 1'd1;
+`endif
                 end
             end
         end

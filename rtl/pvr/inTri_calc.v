@@ -25,12 +25,12 @@ module inTri_calc #(
 	output wire [31:0] inTri
 );
 
-// Lite edge mode assumes screen-space coordinates fit comfortably in signed
-// Q19.12. This cuts the edge multipliers from 48-bit input terms to 32-bit
-// input terms in the FPGA build.
+// Lite edge mode uses the Cyclone V native 27x27 DSP width. Q14.12 covers
+// the visible raster with a large guard band; larger off-screen coordinates
+// saturate instead of wrapping.
 `ifdef PVR_LITE_INTRI_SIMPLE_EDGE
-localparam EDGE_COORD_W = 32;
-localparam EDGE_W = 56;
+localparam EDGE_COORD_W = 27;
+localparam EDGE_W = 54;
 `else
 localparam EDGE_COORD_W = 48;
 localparam EDGE_W = 64;
@@ -39,7 +39,16 @@ localparam EDGE_W = 64;
 function automatic signed [EDGE_COORD_W-1:0] edge_coord;
 	input signed [47:0] v;
 begin
+`ifdef PVR_LITE_INTRI_SIMPLE_EDGE
+	if (v[47:EDGE_COORD_W-1] == {(49-EDGE_COORD_W){v[EDGE_COORD_W-1]}})
+		edge_coord = v[EDGE_COORD_W-1:0];
+	else if (v[47])
+		edge_coord = {1'b1, {(EDGE_COORD_W-1){1'b0}}};
+	else
+		edge_coord = {1'b0, {(EDGE_COORD_W-1){1'b1}}};
+`else
 	edge_coord = v[EDGE_COORD_W-1:0];
+`endif
 end
 endfunction
 
@@ -103,10 +112,6 @@ wire signed [EDGE_COORD_W-1:0] dy_bc = fy3 - fy2;
 wire signed [EDGE_COORD_W-1:0] dx_ca = fx1 - fx3;
 wire signed [EDGE_COORD_W-1:0] dy_ca = fy1 - fy3;
 
-// The lite core is over the Cyclone V DSP budget before fitting. Keep three
-// edge products in ALMs so Quartus does not have to rebalance them out of DSPs
-// during placement. These retain the original combinational latency.
-(* multstyle = "logic" *)
 wire signed [(EDGE_COORD_W*2)-1:0] ab_const_product = dx_ab * (y_ps_fixed - fy1);
 wire signed [EDGE_W-1:0] ab_const_term = ab_const_product[EDGE_W-1:0];
 wire signed [EDGE_W-1:0] bc_const_term = edge_mul(dx_bc, y_ps_fixed - fy2);
@@ -133,9 +138,7 @@ wire signed [EDGE_W-1:0] edge_cd_base = cd_const_term - edge_mul(dy_cd, x_base_f
 wire signed [EDGE_W-1:0] edge_da_base = da_const_term - edge_mul(dy_da, x_base_fixed - fx4);
 `endif
 
-(* multstyle = "logic" *)
 wire signed [(EDGE_COORD_W*2)-1:0] tri_area_product_x = dx_ab * (fy3 - fy1);
-(* multstyle = "logic" *)
 wire signed [(EDGE_COORD_W*2)-1:0] tri_area_product_y = dy_ab * (fx3 - fx1);
 wire signed [EDGE_W-1:0] tri_area2 =
 	tri_area_product_x[EDGE_W-1:0] - tri_area_product_y[EDGE_W-1:0];

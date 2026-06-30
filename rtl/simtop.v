@@ -306,6 +306,8 @@ wire [31:0] isp_vram_dout_core;
 wire codebook_wait;
 
 wire tex_cache_hit;
+wire [21:0] tex_peek_addr_core;
+wire        tex_peek_hit_core;
 wire [23:0] tex_vram_addr_core;
 wire tex_vram_wait_core;
 wire tex_vram_rd_core;
@@ -317,16 +319,7 @@ wire pvr_frame_done_core;
 wire fb_wait;
 wire fb_pending;
 wire pvr_trig_pvr_update_unused;
-reg [31:0] pvr_test_select_mirror;
-
-always @(posedge clk or posedge rst) begin
-	if (rst) begin
-		pvr_test_select_mirror <= 32'd0;
-	end
-	else if (pvr_reg_cs && pvr_wr && dm_req_addr[15:0] == 16'h0018) begin
-		pvr_test_select_mirror <= dm_req_wdata;
-	end
-end
+wire [31:0] pvr_test_select_mirror;
 
 pvr pvr (
 	.clock( clk ),					// input  clock
@@ -348,6 +341,11 @@ pvr pvr (
 	.pvr_rd( pvr_rd ),				// input  pvr_rd
 	.pvr_wr( pvr_wr ),				// input  pvr_wr
 	.pvr_dout( pvr_dout ),			// output [31:0]  pvr_dout
+
+	.pvr_mirror_wr( 1'b0 ),
+	.pvr_mirror_addr( 16'd0 ),
+	.pvr_mirror_din( 64'd0 ),
+	.pvr_mirror_word_en( 2'b00 ),
 
 	.TEST_SELECT( pvr_test_select_mirror ),
 
@@ -376,6 +374,8 @@ pvr pvr (
 	.codebook_wait( codebook_wait ),				// output  codebook_wait
 
 	.tex_cache_hit( tex_cache_hit ),				// input  tex_cache_hit
+	.tex_peek_addr( tex_peek_addr_core ),			// output [21:0] tex_peek_addr
+	.tex_peek_hit ( tex_peek_hit_core  ),			// input  tex_peek_hit
 	.tex_vram_addr( tex_vram_addr_core ),			// output [23:0] tex_vram_addr
 	.tex_vram_wait( tex_vram_wait_core ),			// input  input tex_vram_wait
 	.tex_vram_rd( tex_vram_rd_core ),				// output  tex_vram_rd
@@ -493,8 +493,8 @@ localparam TEX_CACHE_ENABLE       = 1'b1;
 
 `ifdef VERILATOR
 vram_read_cache  #(
-	.TEX_COMBO_HIT(0),
-	.CACHE_LINES(2),
+	.TEX_COMBO_HIT(1),
+	.CACHE_LINES(8),
 	.CRITICAL_WORD_FIRST(1),
 	.NEXT_LINE_PREFETCH(TEX_NEXT_LINE_PREFETCH),
 	.HIT_UNDER_MISS(TEX_HIT_UNDER_MISS)
@@ -513,12 +513,14 @@ vram_read_cache  #(
 	.vram_req_ack( tex_vram_req_ack_core ),	// output  vram_req_ack (TO core).
 
 	.cache_hit( tex_cache_hit ),			// output tex_cache_hit.
+	.peek_addr( tex_peek_addr_core ),		// input  [21:0] peek_addr.
+	.peek_hit ( tex_peek_hit_core  ),		// output tex_peek_hit.
 
 	// =========================
 	// MiSTer DDRAM interface
 	// =========================
 	.DDRAM_ADDR( tex_ddram_addr_raw ),		// output [28:0]. 64-bit WORD address.
-	.DDRAM_RD( DDRAM2_RD ),					// output 
+	.DDRAM_RD( DDRAM2_RD ),					// output
 	.DDRAM_BURSTCNT( DDRAM2_BURSTCNT ),		// output [7:0]
 	.DDRAM_DOUT( DDRAM2_DOUT ),				// input [63:0].
 	.DDRAM_DOUT_READY( DDRAM2_DOUT_READY ),	// input 
@@ -529,7 +531,7 @@ generate
 if (TEX_CACHE_ENABLE) begin : g_tex_cache
 vram_read_cache  #(
 	.TEX_COMBO_HIT(0),
-	.CACHE_LINES(2),
+	.CACHE_LINES(8),
 	.CRITICAL_WORD_FIRST(1),
 	.NEXT_LINE_PREFETCH(TEX_NEXT_LINE_PREFETCH),
 	.HIT_UNDER_MISS(TEX_HIT_UNDER_MISS)
@@ -548,12 +550,14 @@ vram_read_cache  #(
 	.vram_req_ack( tex_vram_req_ack_core ),	// output  vram_req_ack (TO core).
 
 	.cache_hit( tex_cache_hit ),			// output tex_cache_hit.
+	.peek_addr( tex_peek_addr_core ),		// input  [21:0] peek_addr.
+	.peek_hit ( tex_peek_hit_core  ),		// output tex_peek_hit.
 
 	// =========================
 	// MiSTer DDRAM interface
 	// =========================
 	.DDRAM_ADDR( tex_ddram_addr_raw ),		// output [28:0]. 64-bit WORD address.
-	.DDRAM_RD( DDRAM2_RD ),					// output 
+	.DDRAM_RD( DDRAM2_RD ),					// output
 	.DDRAM_BURSTCNT( DDRAM2_BURSTCNT ),		// output [7:0]
 	.DDRAM_DOUT( DDRAM2_DOUT ),				// input [63:0].
 	.DDRAM_DOUT_READY( DDRAM2_DOUT_READY ),	// input 
@@ -566,6 +570,7 @@ else begin : g_no_tex_cache
 	assign tex_vram_valid_core = 1'b0;
 	assign tex_vram_req_ack_core = 1'b0;
 	assign tex_cache_hit = 1'b0;
+	assign tex_peek_hit_core = 1'b0;
 	assign tex_ddram_addr_raw = 29'd0;
 	assign DDRAM2_RD = 1'b0;
 	assign DDRAM2_BURSTCNT = 8'd0;

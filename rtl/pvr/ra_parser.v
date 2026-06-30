@@ -67,8 +67,13 @@ module ra_parser (
 	output reg frame_done
 );
 
-// Debug counter
+// Debug counters
 reg [31:0] ra_vram_rd_count;
+`ifdef VERILATOR
+reg [31:0] ra_prefetch_ready_not_at_11;  // ISP prefetch_ready but RA not at state 11
+reg [31:0] ra_prefetch_ready_at_11;      // ISP prefetch_ready AND RA at state 11 (should trigger overlap)
+reg [31:0] ra_prefetch_ready_at_11_idle; // ISP prefetch_ready AND RA at state 11 but isp_idle too
+`endif
 
 wire opb_mode = TA_ALLOC_CTRL[20];
 wire [1:0] pt_opb = TA_ALLOC_CTRL[17:16];
@@ -97,10 +102,17 @@ wire eol = opb_word[28];						// End Of List.
 
 reg [7:0] ol_jump_bytes;
 reg ra_trig_reg;
+reg tile_render_pending;
+reg early_advance_pending;
 
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
 	ra_vram_rd_count <= 32'd0;
+`ifdef VERILATOR
+	ra_prefetch_ready_not_at_11 <= 32'd0;
+	ra_prefetch_ready_at_11 <= 32'd0;
+	ra_prefetch_ready_at_11_idle <= 32'd0;
+`endif
 	ra_state <= 8'd0;
 	render_bg <= 1'b0;
 	next_region <= 24'h00000000;
@@ -112,6 +124,8 @@ if (!reset_n) begin
 	ra_new_tile_start <= 1'b0;
 	tile_prims_done <= 1'b0;
 	ra_trig_reg <= 1'b0;
+	tile_render_pending <= 1'b0;
+	early_advance_pending <= 1'b0;
 	trig_pvr_update <= 1'b0;
 	frame_done <= 1'b0;
 end
@@ -123,11 +137,25 @@ else begin
 	ra_entry_valid <= 1'b0;
 	render_poly <= 1'b0;
 
+`ifdef VERILATOR
+	if (isp_prefetch_ready) begin
+		if (ra_state == 8'd11)
+			ra_prefetch_ready_at_11 <= ra_prefetch_ready_at_11 + 1'b1;
+		else
+			ra_prefetch_ready_not_at_11 <= ra_prefetch_ready_not_at_11 + 1'b1;
+	end
+`endif
+
 	render_to_tile <= 1'b0;
 	tile_prims_done <= 1'b0;
 
 	ra_vram_rd <= 1'b0;
 	ra_vram_wr <= 1'b0;
+
+	// Global handler: tile_accum_done can arrive while RA has early-advanced
+	// past state 13. Clear tile_render_pending whenever it fires.
+	if (tile_accum_done && early_advance_pending)
+		tile_render_pending <= 1'b0;
 
 	if (ra_vram_rd) ra_vram_rd_count <= ra_vram_rd_count + 1'b1;
 	if (ra_trig) ra_trig_reg <= 1'b1;
@@ -229,12 +257,21 @@ else begin
 	end
 	
 	8: begin
-		ra_vram_addr       <= ra_vram_addr + 4;
-		next_region        <= ra_vram_addr + 4;
-		ra_entry_valid     <= 1'b1;
-		type_cnt           <= 3'd0;
-		ra_new_tile_start  <= 1'b1;
-		ra_state           <= 8'd9;
+		if (early_advance_pending && !tile_accum_done) begin
+			// Pre-read is done but tile_accum_done hasn't fired yet.
+			// Wait here — firing ra_new_tile_start before tile_accum_done
+			// would start a Z-clear while TSP is still reading the Z buffer.
+		end
+		else begin
+			ra_vram_addr        <= ra_vram_addr + 4;
+			next_region         <= ra_vram_addr + 4;
+			ra_entry_valid      <= 1'b1;
+			type_cnt            <= 3'd0;
+			ra_new_tile_start   <= 1'b1;
+			tile_render_pending <= 1'b0;
+			early_advance_pending <= 1'b0;
+			ra_state            <= 8'd9;
+		end
 	end
 	
 	9: begin
@@ -248,6 +285,7 @@ else begin
 			poly_addr       <= (PARAM_BASE&24'hf00000)+{ISP_BACKGND_T[23:3],2'b00};
 			type_cnt        <= 3'd0;
 			render_poly     <= 1'b1;
+			tile_render_pending <= 1'b1;
 			ra_state        <= 8'd100;	// Wait for BACKGROUND Poly to be drawn.
 		end
 		else begin
@@ -267,9 +305,14 @@ else begin
 			//2: if (!ra_op_mod[31] && om_opb>0) begin ra_vram_addr <= ra_op_mod[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<om_opb)*4; ra_state <= 8'd10; end // Modifier Vol, for Opaque/Punch-through
 			3: if (tl_poly_en && (!ra_trans[31]  &&  t_opb>0)) begin ra_vram_addr <= ra_trans[23:0];  ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<t_opb )*4; ra_state <= 8'd10; end // Alpha between 0.0 and 1.0.
 			//4: if (!ra_tr_mod[31] && tm_opb>0) begin ra_vram_addr <= ra_tr_mod[23:0]; ra_vram_rd <= 1'b1; ol_jump_bytes <= (4<<tm_opb)*4; ra_state <= 8'd10; end // Modifier Vol, for Transparent.
-			5: if (isp_idle) begin
-				render_to_tile <= 1'b1;	// Flush a pending background-only tile, or take the cheap empty fast path.
-				ra_state <= 8'd13;
+			5: begin
+				if (!tile_render_pending) begin
+					ra_state <= 8'd14;
+				end
+				else if (isp_idle) begin
+					render_to_tile <= 1'b1;
+					ra_state <= 8'd13;
+				end
 			end
 			default: ;
 			endcase
@@ -297,6 +340,7 @@ else begin
 			end
 			else if (isp_idle || isp_prefetch_ready) begin				// Register the Triangle Strip in the ISP.
 				render_poly <= 1'b1;
+				tile_render_pending <= 1'b1;
 				ra_state <= ra_state + 8'd1;
 			end
 		end
@@ -304,6 +348,7 @@ else begin
 			poly_addr <= (PARAM_BASE&24'hf00000)+{opb_word[20:0], 2'b00};
 			if (isp_idle || isp_prefetch_ready) begin
 				render_poly <= 1'b1;
+				tile_render_pending <= 1'b1;
 				ra_state <= ra_state + 8'd1;
 			end
 		end
@@ -311,12 +356,16 @@ else begin
 			poly_addr <= (PARAM_BASE&24'hf00000)+{opb_word[20:0], 2'b00};
 			if (isp_idle || isp_prefetch_ready) begin
 				render_poly <= 1'b1;
+				tile_render_pending <= 1'b1;
 				ra_state <= ra_state + 8'd1;
 			end
 		end
 		else if (opb_word[31:29]==3'b111) begin		// Pointer Block Link.
 			if (eol) begin							// Is it the End of the OBJECT List for the current Prim type? opb_word[28].[31:28]==F.
-				if (isp_idle) begin
+				if (!tile_render_pending) begin
+					ra_state <= 8'd9;
+				end
+				else if (isp_idle) begin
 					render_to_tile <= 1'b1;			// If so, render the final pixels in the ISP Tag buffer into the Tile,
 					ra_state <= 8'd13;				// wait for tile_accum_done, then check the next primitive TYPE in the current Region Array block.
 				end
@@ -352,20 +401,28 @@ else begin
 	end
 	
 
-	13: if (tile_accum_done) begin
-		/*if ((type_cnt-1)==3 && opb_word[31:29]!=3'b111) begin	// Translucent, and NOT a Link Pointer.
-			ra_state <= 8'd120;									// We just finished Blending a translucent poly with the Framebuffer.
-		end
-		else*/ begin
+	13: begin
+		if (tile_accum_done) begin
+			tile_render_pending <= 1'b0;
 			ra_state <= (type_cnt == 3'd6) ? 8'd14 : 8'd9;	// Final type-5 flush completes the tile.
+		end
+		else if (isp_prefetch_ready && type_cnt == 3'd6) begin
+			// ISP is at state 56/57 (TSP processing tile pixels). Pre-read the next
+			// region array now so RA reaches state 8 before tile_accum_done fires,
+			// reducing ISP idle time after the Z-clear completes.
+			// Only early-advance on the final type flush (type_cnt==6); earlier
+			// flushes must return to state 9 to process remaining primitive types.
+			early_advance_pending <= 1'b1;
+			ra_state <= 8'd14;
 		end
 	end
 	
-	14: if (isp_idle) begin			// All primitive TYPES within this Tile have been accepted by the ISP/TSP banks.
+	14: if (isp_idle || early_advance_pending) begin	// All prim TYPES for this tile done; proceed when ISP is idle or during early advance.
 		tile_prims_done <= 1'b1;
 
 		if (ra_cont_last) begin
 			frame_done <= 1'b1;
+			early_advance_pending <= 1'b0;
 			ra_state <= 8'd15;
 		end
 		else begin

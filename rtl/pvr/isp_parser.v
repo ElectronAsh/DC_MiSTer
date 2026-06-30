@@ -10,7 +10,7 @@ parameter FIXED_W = 48;
 
 module isp_parser #(
 	parameter [7:0] FRAC_BITS = 8'd12,
-	parameter [7:0] Z_FRAC_BITS = 8'd16,
+	parameter [7:0] Z_FRAC_BITS = 8'd17,
 	parameter [7:0] FRAC_DIFF = Z_FRAC_BITS - FRAC_BITS,
 	parameter PIXEL_CENTER_SAMPLE = 1'b1,
 	parameter ENABLE_TEXTURE_PIPELINE = 1'b1,
@@ -53,6 +53,8 @@ module isp_parser #(
 	input wire codebook_wait,
 
 	input  wire        tex_cache_hit,
+	output wire [21:0] tex_peek_addr,
+	input  wire        tex_peek_hit,
 	output wire [23:0] tex_vram_addr,
 	input tex_vram_wait,
 	output reg tex_vram_rd,
@@ -139,6 +141,7 @@ module isp_parser #(
 assign tex_vram_addr = tex_vram_req_word_addr <<2;	// Output the latched texture WORD request as a BYTE address.
 													// Each Texture word is actually read as 64-bit wide, but we only shift <<2.
 													// It's complicated. lol
+assign tex_peek_addr = tsp_tex_word_addr;			// Peek address: word address for cache pre-check.
 
 // OL Word bit decodes...
 wire [5:0] strip_mask = {	// For Triangle Strips only.
@@ -307,6 +310,11 @@ reg [31:0] tsp_tex_initial_skip_count;
 reg [31:0] tsp_tex_addr_change_wait_count;
 reg [31:0] tsp_tex_valid_addr_mismatch_count;
 reg [31:0] tsp_tex_rd_codebook_mode_count;
+reg [31:0] tsp_tex_cache_hit_skip_count;
+reg [31:0] isp_state56_cycles;
+reg [31:0] isp_state57_cycles;
+reg [31:0] tile_count;
+reg [8:0]  isp_state_prev;
 reg tag_run_active;
 reg [11:0] tag_run_tag;
 reg [15:0] tag_run_len;
@@ -331,9 +339,6 @@ reg [5:0] active_tilex;
 reg [5:0] active_tiley;
 reg isp_z_bank;
 reg tsp_z_bank;
-reg [31:0] tag_row_occupied_0;
-reg [31:0] tag_row_occupied_1;
-wire [31:0] tsp_tag_row_occupied = tsp_z_bank ? tag_row_occupied_1 : tag_row_occupied_0;
 reg tsp_ready_bank;
 reg [5:0] tsp_ready_tilex;
 reg [5:0] tsp_ready_tiley;
@@ -375,17 +380,9 @@ wire tsp_issue_cmd = (tsp_state == 9'd53) &&
 					 !tsp_texture_needs_fetch &&
 					 !tsp_pipeline_stall;
 
-reg signed [47:0] tile_z_min;
-reg signed [47:0] tile_z_max;
-integer z_i;
-reg zpipe_valid;
-reg zpipe_flush;
 reg z_params_ready;
 reg z_params_hsr_ready;
 reg z_params_hsr_ready_d1;
-reg z_params_hsr_ready_d2;
-reg [3:0] z_span_pending;
-reg [1:0] inTri_pixel_group;
 
 localparam signed [47:0] Z_MAX_INIT = 48'sh7fffffffffff;
 localparam signed [47:0] Z_MIN_INIT = -48'sh800000000000;
@@ -495,6 +492,7 @@ endtask
 `endif
 
 reg [5:0] param_id_in;
+reg [5:0] param_id_last;
 reg start_interp;
 
 wire [5:0] param_id_out;
@@ -522,6 +520,10 @@ if (!reset_n) begin
 	param_window_prefetch_count <= 32'd0;
 	param_window_fill_count <= 32'd0;
 	param_window_overlap_start_count <= 32'd0;
+	isp_state56_cycles <= 32'd0;
+	isp_state57_cycles <= 32'd0;
+	tile_count <= 32'd0;
+	isp_state_prev <= 9'd0;
 `endif
 	param_window_valid <= {PARAM_WINDOW_WORDS{1'b0}};
 	param_window_base <= 24'd0;
@@ -556,6 +558,7 @@ if (!reset_n) begin
 	tsp_tex_addr_change_wait_count <= 32'd0;
 	tsp_tex_valid_addr_mismatch_count <= 32'd0;
 	tsp_tex_rd_codebook_mode_count <= 32'd0;
+	tsp_tex_cache_hit_skip_count <= 32'd0;
 	tsp_empty_tile_skip_count <= 32'd0;
 	tsp_empty_row_skip_count <= 32'd0;
 	tag_run_active <= 1'b0;
@@ -590,8 +593,6 @@ if (!reset_n) begin
 	active_tiley <= 6'd0;
 	isp_z_bank <= 1'b0;
 	tsp_z_bank <= 1'b0;
-	tag_row_occupied_0 <= 32'd0;
-	tag_row_occupied_1 <= 32'd0;
 	tsp_ready_bank <= 1'b0;
 	tsp_ready_tilex <= 6'd0;
 	tsp_ready_tiley <= 6'd0;
@@ -612,9 +613,9 @@ if (!reset_n) begin
 	//trig_z_row_write <= 1'b0;
 	tile_accum_done <= 1'b0;
 	param_id_in <= 6'd11;
+	param_id_last <= 6'd10;
 	start_interp <= 1'b0;
 	interp_params_ready <= 1'b0;
-	any_tags_written <= 1'b0;
 	tsp_pix_wr <= 1'b0;
 	tsp_pix_adv <= 1'b0;
 	tsp_issue_accept = 1'b0;
@@ -624,27 +625,19 @@ if (!reset_n) begin
 `ifdef VERILATOR
 	tsp_tex_wait_len <= 8'd0;
 `endif
-	tile_z_min <= Z_MAX_INIT;
-	tile_z_max <= Z_MIN_INIT;
 `ifdef VERILATOR
 	total_tri_count <= 32'd0;
 	total_vis_count <= 32'd0;
 `endif
-	zpipe_valid <= 1'b0;
-	zpipe_flush <= 1'b0;
 	z_params_valid <= 1'b0;
 	z_params_ready <= 1'b0;
 	z_params_hsr_ready <= 1'b0;
 	z_params_hsr_ready_d1 <= 1'b0;
-	z_params_hsr_ready_d2 <= 1'b0;
-	z_span_pending <= 4'd0;
-	inTri_pixel_group <= 2'd0;
 end
 else begin
 	cb_cache_clear <= 1'b0;
 
 	z_params_hsr_ready_d1 <= z_param_result_valid;
-	z_params_hsr_ready_d2 <= z_params_hsr_ready_d1;
 	if (z_params_hsr_ready_d1) z_params_hsr_ready <= 1'b1;
 
 	start_interp <= 1'b0;
@@ -673,6 +666,10 @@ else begin
 `ifdef VERILATOR
 	if (isp_vram_rd) isp_vram_rd_count <= isp_vram_rd_count + 1'd1;
 	if (tex_vram_rd) tex_vram_rd_count <= tex_vram_rd_count + 1'd1;
+	if (isp_state == 9'd56) isp_state56_cycles <= isp_state56_cycles + 1'd1;
+	if (isp_state == 9'd57) isp_state57_cycles <= isp_state57_cycles + 1'd1;
+	if (isp_state == 9'd57 && isp_state_prev != 9'd57) tile_count <= tile_count + 1'd1;
+	isp_state_prev <= isp_state;
 `endif
 
 	pcache_write <= 1'b0;
@@ -683,14 +680,8 @@ else begin
 	tsp_pix_adv <= 1'b0;
 	tsp_issue_accept = 1'b0;
 
-	case ({z_span_start, z_span_valid})
-		2'b10: z_span_pending <= z_span_pending + 4'd1;
-		2'b01: z_span_pending <= z_span_pending - 4'd1;
-		default: ;
-	endcase
-
-	if (param_id_in < 6'd11) begin
-		start_interp <= (param_id_in < 6'd10);
+	if (param_id_in <= param_id_last) begin
+		start_interp <= (param_id_in < param_id_last);
 		param_id_in <= param_id_in + 1;
 		/*
 		if (start_interp) begin
@@ -715,12 +706,6 @@ else begin
 		//cb_cache_clear <= 1'b1;	// Using some lower bits of the texture address bits from the TCW as the "Tag" now. No need to clear before each Tile.
 		clear_z <= !ra_cont_zclear_n;
 		prim_tag <= 12'd1;
-		tile_z_min <= Z_MAX_INIT;
-		tile_z_max <= Z_MIN_INIT;
-		if (isp_z_bank)
-			tag_row_occupied_1 <= 32'd0;
-		else
-			tag_row_occupied_0 <= 32'd0;
 	end
 
 	if (isp_vram_valid && param_ext_req_window_hit) begin
@@ -1166,7 +1151,6 @@ else begin
 				interp_params_ready <= 1'b0;
 			end
 
-			any_tags_written <= 1'b0;
 			param_id_in <= 6'd11;
 
 			pcache_write_pending <= 1'b0;
@@ -1178,18 +1162,11 @@ else begin
 				vert_c_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);
 				vert_d_z <= (ISP_BACKGND_D & 32'hFFFFFFF0);
 			end
-			x_ps <= tilex_start;	// No speed-up possible with x_ps for Tag buffer writes, since a full ROW (span) gets written at every cycle.
-			y_ps <= tiley_start + {6'd0, hsr_start_row};
-			inTri_pixel_group <= 2'd0;
-			zpipe_valid <= 1'b0;
-			zpipe_flush <= 1'b0;
 			if (!(is_quad_array && quad_second_half)) begin
 				z_params_ready <= 1'b0;
 				z_params_hsr_ready <= 1'b0;
 				z_params_hsr_ready_d1 <= 1'b0;
-				z_params_hsr_ready_d2 <= 1'b0;
-			end
-			z_span_pending <= 4'd0;
+						end
 			isp_state <= 9'd49;			// "Draw" the triangle! (register spans to the TAG buffer).
 		end
 		
@@ -1276,26 +1253,16 @@ else begin
 			param_id_in <= 6'd11;
 			//interp_params_ready <= 1'b0;
 			pcache_write_pending <= 1'b0;
-			x_ps <= tilex_start;
-			y_ps <= tiley_start + {6'd0, hsr_start_row};
-			inTri_pixel_group <= 2'd0;
-			zpipe_valid <= 1'b0;
-			zpipe_flush <= 1'b0;
-			z_span_pending <= 4'd0;
 			if (is_quad_array && quad_second_half) begin
-				// Store the first triangle's completed planes under the second
-				// triangle's tag. The same planes cover the complete quad.
-				pcache_write <= 1'b1;
-				pcache_write_0 <= !isp_z_bank;
-				pcache_write_1 <=  isp_z_bank;
+				// The second half reuses the first half's planes. Defer the
+				// cache write until this triangle is known to be visible.
 				isp_state <= 9'd50;
 			end
 			else begin
 				z_params_ready <= 1'b0;
 				z_params_hsr_ready <= 1'b0;
 				z_params_hsr_ready_d1 <= 1'b0;
-				z_params_hsr_ready_d2 <= 1'b0;
-				isp_state <= 9'd200;
+							isp_state <= 9'd200;
 			end
 		end
 
@@ -1311,92 +1278,77 @@ else begin
 		end
 
 		202: begin
-			// The registered start_interp pulse is seen by interp_params next
-			// cycle, when param_id_in is already ID 0.
+			// ISP setup only needs the Z plane. UV and colour planes are
+			// launched after HSR confirms that this triangle wrote tags.
 			param_id_in <= 6'd0;
+			param_id_last <= 6'd0;
 			start_interp <= 1'b1;
-			//interp_params_ready <= 1'b0;
-			pcache_write_pending <= 1'b1;
+			pcache_write_pending <= 1'b0;
 			isp_state <= 9'd50;
 		end
-		// Pipelined Tag/Z write: read row N, then write row N-1 (dual-port RAMs).
-		50: if (!z_clear_busy) begin
-			// Commit from this primitive's final pipeline token. A sticky ready
-			// flag can still be high from an earlier launch and write stale UVs.
+		// HSR row scan — delegated to hsr_core; wait here for hsr_done.
+		50: if (hsr_done) begin
+`ifdef VERILATOR
+			total_tri_count <= total_tri_count + 1;	// Total *processed* (incoming) Triangles.
+`endif
+			// Latch which bank holds the completed tile before the ISP
+			// flips back to the opposite write/clear bank.
+			tsp_ready_bank <= isp_z_bank;
+			tsp_ready_tilex <= active_tilex;
+			tsp_ready_tiley <= active_tiley;
+			tsp_ready_type_cnt <= type_cnt;
+			tsp_ready_has_tags <= (prim_tag != 12'd1);
+
+			if (render_bg || any_tags_written) begin
+				if (is_quad_array && quad_second_half) begin
+					// The first half already produced the projective planes.
+					// Write them under this half's tag only when it is visible.
+					pcache_write <= 1'b1;
+					pcache_write_0 <= !isp_z_bank;
+					pcache_write_1 <=  isp_z_bank;
+					isp_state <= 9'd204;
+				end
+				else begin
+					// TSP phase: UV, base colour, and optional offset colour.
+					param_id_in <= 6'd1;
+					param_id_last <= isp_inst[24] ? 6'd10 : 6'd6;
+					start_interp <= 1'b1;
+					interp_params_ready <= 1'b0;
+					pcache_write_pending <= 1'b1;
+					isp_state <= 9'd203;
+				end
+			end
+			else begin
+				isp_state <= 9'd48;	// Whole PRIM written to Z/Tag buffer! (if any pixels are visible in Tile) - Load the next PRIM.
+			end
+		end
+
+		203: begin
+			// Wait for the final TSP coefficient before committing this tag's
+			// parameter-cache entry.
 			if (pcache_write_pending && interp_param_result_valid) begin
 				pcache_write <= 1'b1;
 				pcache_write_0 <= !isp_z_bank;
 				pcache_write_1 <=  isp_z_bank;
 				interp_params_ready <= 1'b0;
 				pcache_write_pending <= 1'b0;
+				isp_state <= 9'd204;
 			end
+		end
 
-			if (z_span_write_valid) begin
-				if (z_inTri_write) any_tags_written <= 1'b1;
-				if ((z_inTri_write & (depth_allow | {32{render_bg}})) != 32'd0) begin
-					// z_buff writes the previous pipelined row. Mark this row
-					// and the preceding one so TSP row skipping cannot miss a
-					// valid row due to that one-cycle row pipeline.
-					if (isp_z_bank) begin
-						tag_row_occupied_1[z_span_y_write[4:0]] <= 1'b1;
-						if (z_span_y_write[4:0] != 5'd0) tag_row_occupied_1[z_span_y_write[4:0] - 5'd1] <= 1'b1;
-					end
-					else begin
-						tag_row_occupied_0[z_span_y_write[4:0]] <= 1'b1;
-						if (z_span_y_write[4:0] != 5'd0) tag_row_occupied_0[z_span_y_write[4:0] - 5'd1] <= 1'b1;
-					end
-				end
-				if (!z_write_disable) begin
-					for (z_i = 0; z_i < 32; z_i = z_i + 1) begin
-						if (z_inTri_write[z_i] && depth_allow[z_i]) begin
-							if (IP_Z_R[z_i] < tile_z_min) tile_z_min <= IP_Z_R[z_i];
-							if (IP_Z_R[z_i] > tile_z_max) tile_z_max <= IP_Z_R[z_i];
-						end
-					end
-				end
+		204: begin
+			// pcache_write is sampled by param_buffer on this edge, before the
+			// tag advances.
+			prim_tag <= prim_tag + 1'b1;
+			if (render_bg) begin
+				poly_drawn <= 1'b1;
+				isp_state <= 9'd0;
 			end
-
-			if (z_params_hsr_ready && !zpipe_flush) begin
-				zpipe_valid <= 1'b1;
-				if (INTRI_PIXELS_PER_CYCLE <= 8 && inTri_pixel_group != 2'd3) begin
-					inTri_pixel_group <= inTri_pixel_group + 2'd1;
-				end
-				else begin
-					inTri_pixel_group <= 2'd0;
-					if (y_ps[4:0] >= hsr_end_row) begin
-						zpipe_flush <= 1'b1;
-					end
-					else begin
-						y_ps[4:0] <= y_ps[4:0] + 5'd1;
-					end
-				end
-			end
-
-			if (zpipe_flush && (z_span_pending == 4'd0) && !z_span_valid && !pcache_write_pending) begin
+			else begin
 `ifdef VERILATOR
-				total_tri_count <= total_tri_count + 1;	// Total *processed* (incoming) Triangles.
+				total_vis_count <= total_vis_count + 1'b1;
 `endif
-				if (render_bg) begin
-					prim_tag <= prim_tag + 1;	// Background uses tag 1; keep it visible to later render_to_tile passes.
-					poly_drawn <= 1'b1;		// Background poly drawn,
-					isp_state <= 9'd0;		// jump back.
-				end
-				else begin
-					if (any_tags_written) begin
-						prim_tag <= prim_tag + 1;				// Increment prim_tag (per-tile).
-`ifdef VERILATOR
-						total_vis_count <= total_vis_count + 1;	// Total *visible* Triangles (per-frame).
-`endif
-					end
-					// Latch which bank holds the completed tile before the ISP
-					// flips back to the opposite write/clear bank.
-					tsp_ready_bank <= isp_z_bank;
-					tsp_ready_tilex <= active_tilex;
-					tsp_ready_tiley <= active_tiley;
-					tsp_ready_type_cnt <= type_cnt;
-					tsp_ready_has_tags <= (prim_tag != 12'd1);
-					isp_state <= 9'd48;	// Whole PRIM written to Z/Tag buffer! (if any pixels are visible in Tile) - Load the next PRIM.
-				end
+				isp_state <= 9'd48;
 			end
 		end
 		
@@ -1441,11 +1393,14 @@ else begin
 					if (tsp_tex_word_addr_old != tsp_tex_word_addr) begin	// Has texel OFFSET addr changed?...
 						tsp_tex_word_addr_old <= tsp_tex_word_addr;
 						//if (!tex_vram_wait) begin		// <- This was causing corrupted tiles, because we only check this ONCE, when the Texture offset changes.
-							if (!tex_cache_hit) begin
+							if (!tex_cache_hit) begin	// tex_cache_hit: only skip if old addr still matches cache
 								tex_vram_req_word_addr <= tsp_tex_word_addr;
 								tex_vram_rd <= 1'b1;	// Read a Texel WORD...
 								isp_state <= 9'd52;		// Wait for tex_vram_valid
 							end
+`ifdef VERILATOR
+							else if (tex_peek_hit) tsp_tex_cache_hit_skip_count <= tsp_tex_cache_hit_skip_count + 1'b1;
+`endif
 						//end
 					end
 					//else isp_state <= 9'd53;	// Textured (non-VQ), but the TEXEL addr hasn't changed, write the pixel anyway.
@@ -1547,10 +1502,6 @@ else begin
 				clear_z_next_bank <= 1'b1;
 				clear_z_next_tags_only <= 1'b1;
 				clear_z_next_seen_busy <= 1'b0;
-				if (tsp_ready_bank)
-					tag_row_occupied_1 <= 32'd0;
-				else
-					tag_row_occupied_0 <= 32'd0;
 				prim_tag <= 12'd1;
 				deferred_tile_started <= 1'b0;
 				isp_state <= 9'd56;
@@ -1658,7 +1609,7 @@ else begin
 				// row's prim_tag_out/params.
 				tsp_row_settle <= 1'b0;
 			end
-			else if (1'b0 && !tsp_tag_row_occupied[tsp_y_ps[4:0]]) begin
+			else if (1'b0 && !tsp_tag_row_occupied_w[tsp_y_ps[4:0]]) begin
 `ifdef VERILATOR
 				tsp_empty_row_skip_count <= tsp_empty_row_skip_count + 1'b1;
 `endif
@@ -1696,15 +1647,14 @@ else begin
 			end
 			else if (prim_tag_out != prim_tag_out_prev) begin
 				prim_tag_out_prev <= prim_tag_out;
-				tsp_param_wait <= 2'd2;
+				tsp_param_wait <= 2'd1;
 `ifdef VERILATOR
 				tag_switch_stall_count <= tag_switch_stall_count + 1'b1;
 `endif
 			end
 			else if (tsp_param_wait != 2'd0) begin
-				// prim_tag_out comes from the Z/tag RAM and then addresses the
-				// synchronous param RAM. Give the selected param bank time to
-				// catch up before issuing this tag's first pixel.
+				// prim_tag_out (combinatorial from z_buff col mux) addresses the
+				// synchronous param RAM; only 1 cycle is needed before params are valid.
 				tsp_param_wait <= tsp_param_wait - 2'd1;
 			end
 			else begin
@@ -1898,8 +1848,6 @@ else begin
 `endif
 end
 
-reg any_tags_written;
-
 wire [10:0] tilex_start = {active_tilex, 5'b00000};
 wire [10:0] tiley_start = {active_tiley, 5'b00000};
 
@@ -2010,8 +1958,8 @@ reg signed [47:0] FY3_sub_FY1;
 reg signed [47:0] FX2_sub_FX1;
 reg signed [47:0] FX3_sub_FX1;
 
-reg signed [55:0] C_mult_1;		// Needs to be wider than 48-bit.
-reg signed [55:0] C_mult_2;		// Needs to be wider than 48-bit.
+reg signed [55:0] C_mult_1;
+reg signed [55:0] C_mult_2;
 reg signed [39:0] BIG_C;		// Might be OK as 48-bit?
 
 always @(posedge clock) begin
@@ -2463,127 +2411,15 @@ wire signed [63:0] f_area = ((FX1_FIXED-FX3_FIXED) * (FY2_FIXED-FY3_FIXED) -
 wire sgn = f_area[63];
 */
 
-inTri_calc #(
-	.PIXEL_CENTER_SAMPLE(PIXEL_CENTER_SAMPLE),
-	.FRAC_BITS   (FRAC_BITS),
-	.Z_FRAC_BITS (Z_FRAC_BITS),
-	.INTRI_PIXELS_PER_CYCLE(INTRI_PIXELS_PER_CYCLE)
-)
-inTri_calc_inst (
-	.FX1_FIXED( FX1_FIXED_R ), .FX2_FIXED( FX2_FIXED_R ), .FX3_FIXED( FX3_FIXED_R ), .FX4_FIXED( FX4_FIXED_R ),	// input signed [47:0]
-	.FY1_FIXED( FY1_FIXED_R ), .FY2_FIXED( FY2_FIXED_R ), .FY3_FIXED( FY3_FIXED_R ), .FY4_FIXED( FY4_FIXED_R ),	// input signed [47:0]	
-		
-	.x_ps( x_ps ),	// input [10:0]
-	.y_ps( y_ps ),	// input [10:0]
-	.pixel_group( inTri_pixel_group ),
-	
-	.is_quad( is_quad_array ),
-	
-	.inTri( inTri )	// output [31:0]  inTri
-);
-(*keep*)wire [31:0] inTri;
-
 // Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
 reg signed [47:0] FDDX_Z;
 reg signed [47:0] FDDY_Z;
 reg signed [47:0] small_c_z;
 reg  z_params_valid;
 
-wire signed [15:0] z_span_y_in = $signed({5'd0, y_ps});
-wire signed [15:0] z_span_x_in = $signed({5'd0, x_ps});
-wire signed [63:0] z_span_x_mul = z_span_x_in * $signed(FDDX_Z[39:0]);
-wire signed [47:0] z_span_small_c = small_c_z + z_span_x_mul;
-wire z_span_start = (isp_state == 9'd50) && !z_clear_busy && z_params_hsr_ready && !zpipe_flush;
-wire z_span_valid;
-wire signed [15:0] z_span_y_out;
-wire signed [47:0] z_span_col [0:31];
-
-z_span_32 #(
-	.Z_FRAC_BITS( Z_FRAC_BITS )
-)
-z_span_32_inst (
-	.clock( clock ),
-	.reset_n( reset_n ),
-	.z_span_start( z_span_start ),
-	.y_ps_in( z_span_y_in ),
-	.FDDX( FDDX_Z[39:0] ),
-	.FDDY( FDDY_Z[39:0] ),
-	.small_c( z_span_small_c ),
-	.z_span_valid( z_span_valid ),
-	.y_ps_out( z_span_y_out ),
-	.z_col( z_span_col )
-);
-
-reg [31:0] z_inTri_s0;
-reg [31:0] z_inTri_s1;
-reg [31:0] z_inTri_s2;
-reg [31:0] z_inTri_s3;
-reg [31:0] z_inTri_s4;
-wire [31:0] z_inTri_at_span = z_inTri_s4;
-wire [31:0] z_inTri_to_zbuff = z_span_valid ? z_inTri_at_span : 32'd0;
-
-always @(posedge clock or negedge reset_n) begin
-	if (!reset_n) begin
-		z_inTri_s0 <= 32'd0;
-		z_inTri_s1 <= 32'd0;
-		z_inTri_s2 <= 32'd0;
-		z_inTri_s3 <= 32'd0;
-		z_inTri_s4 <= 32'd0;
-	end
-	else begin
-		z_inTri_s0 <= z_span_start ? (render_bg ? 32'hffffffff : inTri) : 32'd0;
-		z_inTri_s1 <= z_inTri_s0;
-		z_inTri_s2 <= z_inTri_s1;
-		z_inTri_s3 <= z_inTri_s2;
-		z_inTri_s4 <= z_inTri_s3;
-	end
-end
-
-reg z_span_write_valid;
-reg signed [15:0] z_span_y_write;
-reg [31:0] z_inTri_write;
-
-// z_buff pipelines write controls by one cycle. Delay the span Z row to match.
-reg signed [47:0] IP_Z_R [0:31];
-integer ip_z_i;
-always @(posedge clock or negedge reset_n) begin
-	if (!reset_n) begin
-		z_span_write_valid <= 1'b0;
-		z_span_y_write <= 16'sd0;
-		z_inTri_write <= 32'd0;
-		for (ip_z_i = 0; ip_z_i < 32; ip_z_i = ip_z_i + 1) IP_Z_R[ip_z_i] <= 48'sd0;
-	end
-	else begin
-		z_span_write_valid <= z_span_valid;
-		z_span_y_write <= z_span_y_out;
-		z_inTri_write <= z_span_valid ? z_inTri_at_span : 32'd0;
-		for (ip_z_i = 0; ip_z_i < 32; ip_z_i = ip_z_i + 1) IP_Z_R[ip_z_i] <= z_span_col[ip_z_i];
-	end
-end
-wire signed [47:0] IP_Z [0:31];
-genvar ip_z_alias_i;
-generate
-	for (ip_z_alias_i = 0; ip_z_alias_i < 32; ip_z_alias_i = ip_z_alias_i + 1) begin : g_ip_z_alias
-		assign IP_Z[ip_z_alias_i] = IP_Z_R[ip_z_alias_i];
-	end
-endgenerate
-wire signed [47:0] IP_Z_INTERP = IP_Z_R[0];
-
-
-/* reicast offline-renderer...
-        if (render_mode == RM_PUNCHTHROUGH)
-            mode = 6; // TODO: FIXME
-        else if (render_mode == RM_TRANSLUCENT)
-            mode = 3; // TODO: FIXME
-        else if (render_mode == RM_MODIFIER)
-            mode = 6;
-*/
-
-wire [2:0] depth_comp_in = depth_comp;
-
+wire z_clear_busy;
 wire z_clear_busy_0;
 wire z_clear_busy_1;
-wire z_clear_busy = z_clear_busy_0 | z_clear_busy_1;
 wire isp_z_clear_busy = isp_z_bank ? z_clear_busy_1 : z_clear_busy_0;
 wire clear_z_target_busy = clear_z_target_bank ? z_clear_busy_1 : z_clear_busy_0;
 
@@ -2594,81 +2430,101 @@ wire [11:0] prim_tag_out_0;
 wire [11:0] prim_tag_out_1;
 wire [11:0] prim_tag_out = tsp_z_bank ? prim_tag_out_1 : prim_tag_out_0;
 
-wire trig_z_row_write = z_span_valid;
-wire [4:0] z_write_row_sel = z_span_valid ? z_span_y_out[4:0] : y_ps[4:0];
+wire        any_tags_written;
+wire [31:0] tag_row_occupied_0;
+wire [31:0] tag_row_occupied_1;
+wire [31:0] tsp_tag_row_occupied_w = tsp_z_bank ? tag_row_occupied_1 : tag_row_occupied_0;
+wire signed [47:0] tile_z_min;
+wire signed [47:0] tile_z_max;
 
-wire [31:0] depth_allow_0;
-wire [31:0] depth_allow_1;
-wire [31:0] depth_allow = isp_z_bank ? depth_allow_1 : depth_allow_0;
 wire clear_z_bank_0 = (clear_z & !isp_z_bank) | (clear_z_next_bank & !clear_z_target_bank);
 wire clear_z_bank_1 = (clear_z &  isp_z_bank) | (clear_z_next_bank &  clear_z_target_bank);
 wire clear_tags_only_bank_0 = clear_z_next_bank & clear_z_next_tags_only & !clear_z_target_bank & !clear_z;
 wire clear_tags_only_bank_1 = clear_z_next_bank & clear_z_next_tags_only &  clear_z_target_bank & !clear_z;
 
-//wire [59:0] z_row_out [0:31];
+// clear_tag_row_occ_*: replicate the two places isp_parser previously zeroed
+// tag_row_occupied directly.
+// Condition 1: ra_new_tile_start path (clear_z fires, !clear_tags_only).
+// Condition 2: state-57 deferred-tile path, when TSP frees up and we
+//              move back to state 56 to wait for z_clear.
+wire tsp_deferred_tile_done = (isp_state == 9'd57) && deferred_tile_started && !tsp_busy;
+wire clear_tag_row_occ_0 = (!isp_z_bank && clear_z_bank_0 && !clear_tags_only_bank_0) ||
+                            (!tsp_ready_bank && tsp_deferred_tile_done);
+wire clear_tag_row_occ_1 = ( isp_z_bank && clear_z_bank_1 && !clear_tags_only_bank_1) ||
+                            ( tsp_ready_bank && tsp_deferred_tile_done);
 
-z_buff #(
-	.ENABLE_DEPTH_COMPARE(ENABLE_DEPTH_COMPARE)
-) z_buff_inst_0(
-	.clock( clock ),
-	.reset_n( reset_n ),
-	.debug_bank( 1'b0 ),
+// hsr_start: pulse one cycle before entering state 50, so hsr_core
+// initialises its scan on the first clock of state 50.
+wire hsr_start = ((isp_state == 9'd49) && (is_quad_array && quad_second_half)) ||
+                 (isp_state == 9'd202);
+wire hsr_done;
 
-	.clear_z( clear_z_bank_0 ),
-	.clear_tags_only( clear_tags_only_bank_0 ),
-	.z_clear_busy( z_clear_busy_0 ),
+hsr_core #(
+	.FRAC_BITS            (FRAC_BITS),
+	.Z_FRAC_BITS          (Z_FRAC_BITS),
+	.FRAC_DIFF            (FRAC_DIFF),
+	.PIXEL_CENTER_SAMPLE  (PIXEL_CENTER_SAMPLE),
+	.ENABLE_DEPTH_COMPARE (ENABLE_DEPTH_COMPARE),
+	.INTRI_PIXELS_PER_CYCLE(INTRI_PIXELS_PER_CYCLE)
+) hsr_core_inst (
+	.clock       ( clock ),
+	.reset_n     ( reset_n ),
 
-	.col_sel( rle_busy ? rle_col_sel : ((tsp_busy && !tsp_z_bank) ? tsp_x_ps[4:0] : x_ps[4:0]) ),		// input [4:0] col_sel
-	.row_sel( rle_busy ? rle_row_sel : ((tsp_busy && !tsp_z_bank) ? tsp_y_ps[4:0] : z_write_row_sel) ),		// input [4:0] row_sel
+	.hsr_start   ( hsr_start ),
+	.hsr_done    ( hsr_done ),
 
-	.inTri( z_inTri_to_zbuff ),			// input [31:0]  inTri
-	.trig_z_row_write( trig_z_row_write & !isp_z_bank ),
+	.FX1_FIXED_R ( FX1_FIXED_R ), .FX2_FIXED_R ( FX2_FIXED_R ),
+	.FX3_FIXED_R ( FX3_FIXED_R ), .FX4_FIXED_R ( FX4_FIXED_R ),
+	.FY1_FIXED_R ( FY1_FIXED_R ), .FY2_FIXED_R ( FY2_FIXED_R ),
+	.FY3_FIXED_R ( FY3_FIXED_R ), .FY4_FIXED_R ( FY4_FIXED_R ),
+	.is_quad     ( is_quad_array ),
 
-	.z_write_disable( z_write_disable & !isp_z_bank ),
+	.tilex_start     ( tilex_start ),
+	.tiley_start     ( tiley_start ),
+	.hsr_start_row   ( hsr_start_row ),
+	.hsr_end_row     ( hsr_end_row ),
 
-	.depth_comp_in( depth_comp_in ),		// input [2:0]  depth_comp_in
+	.z_params_hsr_ready ( z_params_hsr_ready ),
+	.FDDX_Z  ( FDDX_Z ),
+	.FDDY_Z  ( FDDY_Z ),
+	.small_c_z ( small_c_z ),
 
-	.tag_in( prim_tag ),					// input [11:0] prim_tag_in
+	.depth_comp      ( depth_comp ),
+	.z_write_disable ( z_write_disable ),
+	.render_bg       ( render_bg ),
 
-	.z_in_cols ( IP_Z_R ),					// input signed [47:0] z_in_cols [0:31]
+	.isp_z_bank ( isp_z_bank ),
+	.prim_tag   ( prim_tag ),
 
-	.z_out( z_out_0 ),						// output signed  [47:0]  z_out
-	.prim_tag_out( prim_tag_out_0 ),		// output [11:0]  prim_tag_out
+	.clear_z_bank_0        ( clear_z_bank_0 ),
+	.clear_z_bank_1        ( clear_z_bank_1 ),
+	.clear_tags_only_bank_0( clear_tags_only_bank_0 ),
+	.clear_tags_only_bank_1( clear_tags_only_bank_1 ),
+	.clear_tag_row_occ_0   ( clear_tag_row_occ_0 ),
+	.clear_tag_row_occ_1   ( clear_tag_row_occ_1 ),
 
-	//.z_row_out( z_row_out )),	// output wire [59:0] z_row_out [0:31],
+	.tsp_busy    ( tsp_busy ),
+	.tsp_z_bank  ( tsp_z_bank ),
+	.tsp_x_ps    ( tsp_x_ps[4:0] ),
+	.tsp_y_ps    ( tsp_y_ps[4:0] ),
+	.rle_busy    ( rle_busy ),
+	.rle_col_sel ( rle_col_sel ),
+	.rle_row_sel ( rle_row_sel ),
 
-	.depth_allow( depth_allow_0 )
-);
+	.any_tags_written   ( any_tags_written ),
+	.tag_row_occupied_0 ( tag_row_occupied_0 ),
+	.tag_row_occupied_1 ( tag_row_occupied_1 ),
+	.tile_z_min         ( tile_z_min ),
+	.tile_z_max         ( tile_z_max ),
 
-z_buff #(
-	.ENABLE_DEPTH_COMPARE(ENABLE_DEPTH_COMPARE)
-) z_buff_inst_1(
-	.clock( clock ),
-	.reset_n( reset_n ),
-	.debug_bank( 1'b1 ),
+	.z_clear_busy   ( z_clear_busy ),
+	.z_clear_busy_0 ( z_clear_busy_0 ),
+	.z_clear_busy_1 ( z_clear_busy_1 ),
 
-	.clear_z( clear_z_bank_1 ),
-	.clear_tags_only( clear_tags_only_bank_1 ),
-	.z_clear_busy( z_clear_busy_1 ),
-
-	.col_sel( rle_busy ? rle_col_sel : ((tsp_busy && tsp_z_bank) ? tsp_x_ps[4:0] : x_ps[4:0]) ),
-	.row_sel( rle_busy ? rle_row_sel : ((tsp_busy && tsp_z_bank) ? tsp_y_ps[4:0] : z_write_row_sel) ),
-
-	.inTri( z_inTri_to_zbuff ),
-	.trig_z_row_write( trig_z_row_write & isp_z_bank ),
-
-	.z_write_disable( z_write_disable & isp_z_bank ),
-
-	.depth_comp_in( depth_comp_in ),
-
-	.tag_in( prim_tag ),
-
-	.z_in_cols ( IP_Z_R ),
-
-	.z_out( z_out_1 ),
-	.prim_tag_out( prim_tag_out_1 ),
-
-	.depth_allow( depth_allow_1 )
+	.z_out_0       ( z_out_0 ),
+	.z_out_1       ( z_out_1 ),
+	.prim_tag_out_0( prim_tag_out_0 ),
+	.prim_tag_out_1( prim_tag_out_1 )
 );
 
 /*

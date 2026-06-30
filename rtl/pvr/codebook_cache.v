@@ -36,18 +36,20 @@ reg [SLOT_BITS-1:0]   fill_slot;
 reg [BASE_WIDTH-1:0]  fill_base;
 reg [8:0] word_index;
 
-(*noprune*) reg [31:0] cb_base_hit_count;
-(*noprune*) reg [31:0] cb_base_miss_count;
-(*noprune*) reg [31:0] cb_fill_count;
-(*noprune*) reg [31:0] cb_evict_count;
-(*noprune*) reg [31:0] cb_slot0_hit_count;
-(*noprune*) reg [31:0] cb_slot1_hit_count;
-(*noprune*) reg [31:0] cb_slot2_hit_count;
-(*noprune*) reg [31:0] cb_slot3_hit_count;
-(*noprune*) reg [31:0] cb_slot4_hit_count;
-(*noprune*) reg [31:0] cb_slot5_hit_count;
-(*noprune*) reg [31:0] cb_slot6_hit_count;
-(*noprune*) reg [31:0] cb_slot7_hit_count;
+`ifdef VERILATOR
+reg [31:0] cb_base_hit_count;
+reg [31:0] cb_base_miss_count;
+reg [31:0] cb_fill_count;
+reg [31:0] cb_evict_count;
+reg [31:0] cb_slot0_hit_count;
+reg [31:0] cb_slot1_hit_count;
+reg [31:0] cb_slot2_hit_count;
+reg [31:0] cb_slot3_hit_count;
+reg [31:0] cb_slot4_hit_count;
+reg [31:0] cb_slot5_hit_count;
+reg [31:0] cb_slot6_hit_count;
+reg [31:0] cb_slot7_hit_count;
+`endif
 
 reg hit_now;
 reg [SLOT_BITS-1:0] hit_slot;
@@ -105,6 +107,7 @@ if (!reset_n) begin
     fill_base <= {BASE_WIDTH{1'b0}};
     word_index <= 9'd256;
     cache_hit <= 1'b0;
+`ifdef VERILATOR
     cb_base_hit_count <= 32'd0;
     cb_base_miss_count <= 32'd0;
     cb_fill_count <= 32'd0;
@@ -117,6 +120,7 @@ if (!reset_n) begin
     cb_slot5_hit_count <= 32'd0;
     cb_slot6_hit_count <= 32'd0;
     cb_slot7_hit_count <= 32'd0;
+`endif
     for (i = 0; i < CACHE_SLOTS; i = i + 1) begin
         base_tags[i] <= {BASE_WIDTH{1'b0}};
     end
@@ -126,6 +130,7 @@ else begin
 
 	cache_hit <= hit_now;
 
+`ifdef VERILATOR
     if (cache_read && !codebook_wait) begin
         if (hit_now) begin
             cb_base_hit_count <= cb_base_hit_count + 32'd1;
@@ -144,12 +149,15 @@ else begin
             cb_base_miss_count <= cb_base_miss_count + 32'd1;
         end
     end
+`endif
 
     if (start_fill) begin
         fill_slot <= replace_slot;
         fill_base <= codebook_base;
+`ifdef VERILATOR
         cb_fill_count <= cb_fill_count + 32'd1;
         if (cache_valid[replace_slot]) cb_evict_count <= cb_evict_count + 32'd1;
+`endif
         cache_valid[replace_slot] <= 1'b0;
         replace_slot <= replace_slot + {{(SLOT_BITS-1){1'b0}}, 1'b1};
         word_index <= 9'd0;    // Trigger a codebook read from VRAM

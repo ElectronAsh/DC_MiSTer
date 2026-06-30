@@ -167,7 +167,6 @@ wire [2:0] tex_u_size = tsp_inst_out[5:3];
 wire [2:0] tex_v_size = tsp_inst_out[2:0];
 
 // Texture Control Word...
-(*noprune*)reg [31:0] tcw_word;
 wire mip_map = tcw_word_out[31];
 wire vq_comp = tcw_word_out[30];
 wire [2:0] pix_fmt = tcw_word_out[29:27];
@@ -489,6 +488,7 @@ if (ENABLE_TILE_ARGB_BUFFER) begin : g_tile_argb_writeback
 		.argb_buf_out( argb_buf_out ),
 
 		.tile_wb( tile_wb ),
+		.tile_final( type_cnt == 3'd6 ),
 		.wb_done( wb_done ),
 		.wb_busy( tile_wb_busy ),
 

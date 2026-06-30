@@ -1380,14 +1380,16 @@ scanlines #(0) VGA_scanlines
 */
 // TESTING - Bypass scanlines for now, to save logic...
 wire [23:0] vga_data_sl = de_emu ? {r_out, g_out, b_out} : 24'd0;
-wire vga_hs_sl = hs_fix;
-wire vga_vs_sl = vs_fix;
+//wire vga_hs_sl = hs_fix;
+//wire vga_vs_sl = vs_fix;
+wire vga_hs_sl = 1'b1;
+wire vga_vs_sl = 1'b1;
 wire vga_de_sl = de_emu;
 wire vga_ce_sl = ce_pix;
 
-
 wire [23:0] vga_data_osd;
 wire        vga_vs_osd, vga_hs_osd;
+/*
 osd vga_osd
 (
 	.clk_sys(clk_sys),
@@ -1406,14 +1408,19 @@ osd vga_osd
 	.dout(vga_data_osd),
 	.hs_out(vga_hs_osd),
 	.vs_out(vga_vs_osd)
-);
+);*/
+assign vga_data_osd = vga_data_sl;
+assign vga_hs_osd   = vga_hs_sl;
+assign vga_vs_osd   = vga_vs_sl;
 
 
-wire vga_cs_osd;
-csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
+//wire vga_cs_osd;
+//csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
+wire vga_cs_osd = 1'b0;
 
 `ifndef MISTER_DUAL_SDRAM
 	wire VGA_DISABLE;
+	/*
 	wire [23:0] vgas_o;
 	wire vgas_hs, vgas_vs, vgas_cs;
 	vga_out vga_scaler_out
@@ -1429,9 +1436,11 @@ csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 		.vsync_o(vgas_vs),
 		.csync_o(vgas_cs)
 	);
+	*/
 
 	wire [23:0] vga_o, vga_o_t;
 	wire vga_hs, vga_vs, vga_cs, vga_hs_t, vga_vs_t, vga_cs_t;
+	/*
 	vga_out vga_out
 	(
 		.clk(clk_vid),
@@ -1445,7 +1454,9 @@ csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 		.vsync_o(vga_vs_t),
 		.csync_o(vga_cs_t)
 	);
+	*/
 
+/*
 `ifndef MISTER_DISABLE_YC
 	reg         pal_en;
 	reg         yc_en;
@@ -1484,6 +1495,7 @@ csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 	assign VGA_R  = (VGA_EN | SW[3]) ? 6'bZZZZZZ :   (vga_fb | vga_scaler) ? vgas_o[23:18]                               : VGA_DISABLE ? 6'd0 : vga_o[23:18];
 	assign VGA_G  = (VGA_EN | SW[3]) ? 6'bZZZZZZ :   (vga_fb | vga_scaler) ? vgas_o[15:10]                               : VGA_DISABLE ? 6'd0 : vga_o[15:10];
 	assign VGA_B  = (VGA_EN | SW[3]) ? 6'bZZZZZZ :   (vga_fb | vga_scaler) ? vgas_o[7:2]                                 : VGA_DISABLE ? 6'd0 : vga_o[7:2]  ;
+*/
 `endif
 
 
@@ -1703,6 +1715,7 @@ wire [13:0] fb_stride;
 reg  [1:0] sl_r;
 wire [1:0] sl = sl_r;
 always @(posedge clk_sys) sl_r <= FB_EN ? 2'b00 : scanlines;
+
 
 wire [23:0] FB_R_SOF1;
 wire        fb_disp_half;

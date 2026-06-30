@@ -2919,10 +2919,9 @@ BEGIN
 				CASE o_vmode(2 DOWNTO 0) IS
 					WHEN "000" => -- Nearest
 						IF MASK(MASK_NEAREST)='1' THEN
-							o_r<=o_v_poly_pix.r;
-							o_g<=o_v_poly_pix.g;
-							o_b<=o_v_poly_pix.b;
-						END IF;
+							o_r<=o_v_bil_pix.r;
+							o_g<=o_v_bil_pix.g;
+							o_b<=o_v_bil_pix.b;						END IF;
 					WHEN "001" | "010" => -- Bilinear | Sharp Bilinear
 						IF MASK(MASK_BILINEAR)='1' OR
 							 MASK(MASK_SHARP_BILINEAR)='1' THEN
@@ -2932,16 +2931,16 @@ BEGIN
 						END IF;
 					WHEN "011" => -- BiCubic
 						IF MASK(MASK_BICUBIC)='1' THEN
-							o_r<=o_v_bic_pix.r;
-							o_g<=o_v_bic_pix.g;
-							o_b<=o_v_bic_pix.b;
+							o_r<=o_v_bil_pix.r;
+							o_g<=o_v_bil_pix.g;
+							o_b<=o_v_bil_pix.b;
 						END IF;
 
 					WHEN OTHERS => -- Polyphase
 						IF MASK(MASK_POLY)='1' THEN
-							o_r<=o_v_poly_pix.r;
-							o_g<=o_v_poly_pix.g;
-							o_b<=o_v_poly_pix.b;
+							o_r<=o_v_bil_pix.r;
+							o_g<=o_v_bil_pix.g;
+							o_b<=o_v_bil_pix.b;
 						END IF;
 				END CASE;
 

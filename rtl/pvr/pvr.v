@@ -6,14 +6,12 @@
 // Enable one-line per-tile render stats with +define+PVR_TILE_STATS_PRINTS.
 // `define PVR_TILE_STATS_PRINTS
 
-`define PVR_LITE_INTERP
-`define PVR_LITE_INTRI_SIMPLE_EDGE
-`define PVR_LITE_INTRI_TRI_ONLY
+`include "pvr_defines.v"
 
 module pvr #(
 	parameter PIXEL_CENTER_SAMPLE = 1'b0,
 	parameter FRAC_BITS   = 8'd12,	// 12 is about the max atm.
-	parameter Z_FRAC_BITS = 8'd16,	// 17 is about the max atm.
+	parameter Z_FRAC_BITS = 8'd17,	// 17 is about the max atm.
 	// Z_FRAC_BITS needs to be >= FRAC_BITS. (above about 18, and some HUD text on HOTD2 Gargoyle gets mirrored?)
 	parameter FRAC_DIFF = (Z_FRAC_BITS-FRAC_BITS),
 
@@ -23,7 +21,7 @@ module pvr #(
 	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b0,
 	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1,
 	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1,
-	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 8
+	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 32
 `else
 	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b1,
 	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b1,
@@ -52,22 +50,29 @@ module pvr #(
 	input [31:0] pvr_din,
 	input pvr_rd,
 	input pvr_wr,
-	output reg [31:0] pvr_dout,
+	output wire [31:0] pvr_dout,
+
+	input wire        pvr_mirror_wr,
+	input wire [15:0] pvr_mirror_addr,
+	input wire [63:0] pvr_mirror_din,
+	input wire  [1:0] pvr_mirror_word_en,
 	
 	input wire [10:0] sim_ui,
 	input wire [10:0] sim_vi,
 	
-	input [31:0] TEST_SELECT,
-	input [31:0] PARAM_BASE,
-	input [31:0] REGION_BASE,
+	output wire [31:0] TEST_SELECT,
+	output wire [31:0] PARAM_BASE,
+	output wire [31:0] REGION_BASE,
 	
-	input [31:0] FB_R_SOF1,
-	input [31:0] FB_R_SOF2,
+	output wire [31:0] FB_R_SOF1,
+	output wire [31:0] FB_R_SOF2,
+	output wire [31:0] FB_W_SOF1,
+	output wire [31:0] FB_W_SOF2,
 	
-	input [31:0] FPU_PARAM_CFG,
-	input [31:0] TEXT_CONTROL,
-	input [31:0] PAL_RAM_CTRL,
-	input [31:0] TA_ALLOC_CTRL,
+	output wire [31:0] FPU_PARAM_CFG,
+	output wire [31:0] TEXT_CONTROL,
+	output wire [31:0] PAL_RAM_CTRL,
+	output wire [31:0] TA_ALLOC_CTRL,
 	
 	input ta_fifo_wr,
 
@@ -95,6 +100,8 @@ module pvr #(
 	output wire codebook_wait,
 
 	input  wire        tex_cache_hit,
+	output wire [21:0] tex_peek_addr,   // combinatorial peek address for pre-check
+	input  wire        tex_peek_hit,    // combinatorial peek hit result
 	output wire [23:0] tex_vram_addr,	// output  tex_vram_addr (BYTE address!)
 	input tex_vram_wait,				// input  input tex_vram_wait,
 	output wire tex_vram_rd,			// output  tex_vram_rd
@@ -118,7 +125,9 @@ module pvr #(
 );
 
 
-// Main regs...
+`ifdef PVR_INLINE_REGISTER_BANK
+// Legacy inline register bank retained temporarily for reference.
+// The active implementation is pvr_regs_inst below.
 parameter ID_addr                 = 16'h0000; reg [31:0] ID;				// R   Device ID
 parameter REVISION_addr           = 16'h0004; reg [31:0] REVISION;			// R   Revision number
 parameter SOFTRESET_addr          = 16'h0008; reg [31:0] SOFTRESET;			// RW  CORE & TA software reset
@@ -429,6 +438,53 @@ always @(posedge clock) begin
 		default: ;
 	endcase
 end
+`endif
+
+wire [31:0] pal_dout;
+
+wire [31:0] FPU_SHAD_SCALE;
+wire [31:0] ISP_BACKGND_D;
+wire [31:0] ISP_BACKGND_T;
+
+pvr_regs  pvr_regs_inst (
+	.clock(clock),
+	.reset_n(reset_n),
+
+	.pvr_reg_cs(pvr_reg_cs),
+	.pvr_addr(pvr_addr),
+	.pvr_din(pvr_din),
+	.pvr_wr(pvr_wr),
+	.pvr_dout(pvr_dout),
+	.pal_dout(pal_dout),
+
+	.mirror_wr(pvr_mirror_wr),
+	.mirror_addr(pvr_mirror_addr),
+	.mirror_din(pvr_mirror_din),
+	.mirror_word_en(pvr_mirror_word_en),
+
+	.TEST_SELECT(TEST_SELECT),
+	.PARAM_BASE(PARAM_BASE),
+	.REGION_BASE(REGION_BASE),
+	.FB_R_SOF1(FB_R_SOF1),
+	.FB_R_SOF2(FB_R_SOF2),
+	.FB_W_SOF1(FB_W_SOF1),
+	.FB_W_SOF2(FB_W_SOF2),
+	.FPU_PARAM_CFG(FPU_PARAM_CFG),
+	.TEXT_CONTROL(TEXT_CONTROL),
+	.PAL_RAM_CTRL(PAL_RAM_CTRL),
+	.TA_ALLOC_CTRL(TA_ALLOC_CTRL),
+
+	.FPU_SHAD_SCALE(FPU_SHAD_SCALE),
+	.ISP_BACKGND_D(ISP_BACKGND_D),
+	.ISP_BACKGND_T(ISP_BACKGND_T)
+);
+
+reg [31:0] dbg_cycle;
+always @(posedge clock or negedge reset_n)
+if (!reset_n)
+	dbg_cycle <= 32'd0;
+else
+	dbg_cycle <= dbg_cycle + 32'd1;
 
 wire render_bg;
 
@@ -521,18 +577,42 @@ ra_parser  ra_parser_inst (
 	.tile_prims_done( tile_prims_done ),	// output tile_prims_done
 	
 	.tile_accum_done( tile_accum_done ),	// input  tile_accum_done
-	.frame_done( frame_done )
+	.frame_done( ra_frame_done )
 );
 
 
 wire tile_prims_done;
 wire poly_drawn;
+wire ra_frame_done;
 wire isp_tile_accum_done;
 wire tile_wb_req = isp_tile_accum_done;
 wire tile_wb_done;
 wire tile_wb_busy;
 
 assign tile_accum_done = tile_wb_done;
+
+reg frame_done_pending;
+reg frame_done_r;
+
+assign frame_done = frame_done_r;
+
+always @(posedge clock or negedge reset_n) begin
+	if (!reset_n) begin
+		frame_done_pending <= 1'b0;
+		frame_done_r <= 1'b0;
+	end
+	else begin
+		frame_done_r <= 1'b0;
+
+		if (ra_frame_done)
+			frame_done_pending <= 1'b1;
+
+		if ((frame_done_pending || ra_frame_done) && !tile_wb_busy) begin
+			frame_done_pending <= 1'b0;
+			frame_done_r <= 1'b1;
+		end
+	end
+end
 
 wire isp_entry_valid;
 
@@ -542,8 +622,6 @@ wire [31:0] isp_vram_din = (isp_vram_addr[22]) ? isp_vram_din64[63:32] : isp_vra
 
 wire [8:0] isp_state;
 wire [7:0] cache_ddr_burstcnt;
-wire [31:0] pal_dout;
-
 wire tsp_pipe_flush;
 wire tsp_read_codebook;
 wire tsp_cb_cache_clear;
@@ -639,6 +717,8 @@ isp_parser #(
 	.codebook_wait( codebook_wait ),			// output  codebook_wait
 
 	.tex_cache_hit( tex_cache_hit ),			// input  tex_cache_hit
+	.tex_peek_addr( tex_peek_addr ),			// output [21:0] tex_peek_addr
+	.tex_peek_hit ( tex_peek_hit  ),			// input  tex_peek_hit
 	.tex_vram_addr( tex_vram_addr ),			// output [23:0] tex_vram_addr
 	.tex_vram_wait( tex_vram_wait ),			// input tex_vram_wait
 	.tex_vram_rd( tex_vram_rd ),				// output  tex_vram_rd
@@ -819,34 +899,6 @@ assign fb_writedata = tsp_tile_fb_writedata;
 assign fb_burstcnt = tsp_tile_fb_burstcnt;
 assign fb_we = tsp_tile_fb_we;
 assign fb_pending = tile_wb_busy;
-
-(* keep *) reg [31:0] dbg_tsp_pix_valid_count;
-(* keep *) reg [31:0] dbg_fb_we_count;
-(* keep *) reg [31:0] dbg_tile_wb_req_count;
-(* keep *) reg [31:0] dbg_tile_wb_done_count;
-(* keep *) reg [22:0] dbg_last_fb_addr;
-(* keep *) reg [63:0] dbg_last_fb_writedata;
-
-always @(posedge clock or negedge reset_n) begin
-	if (!reset_n) begin
-		dbg_tsp_pix_valid_count <= 32'd0;
-		dbg_fb_we_count <= 32'd0;
-		dbg_tile_wb_req_count <= 32'd0;
-		dbg_tile_wb_done_count <= 32'd0;
-		dbg_last_fb_addr <= 23'd0;
-		dbg_last_fb_writedata <= 64'd0;
-	end
-	else begin
-		if (tsp_pix_valid) dbg_tsp_pix_valid_count <= dbg_tsp_pix_valid_count + 32'd1;
-		if (fb_we && !fb_wait) begin
-			dbg_fb_we_count <= dbg_fb_we_count + 32'd1;
-			dbg_last_fb_addr <= fb_addr;
-			dbg_last_fb_writedata <= fb_writedata;
-		end
-		if (tile_wb_req) dbg_tile_wb_req_count <= dbg_tile_wb_req_count + 32'd1;
-		if (tile_wb_done) dbg_tile_wb_done_count <= dbg_tile_wb_done_count + 32'd1;
-	end
-end
 
 `ifdef VERILATOR
 `ifdef PVR_TILE_STATS_PRINTS
