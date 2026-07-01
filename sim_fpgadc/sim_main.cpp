@@ -79,8 +79,8 @@ struct ParamWriteSnapshot {
 	uint64_t fddy_u = 0;
 	uint64_t fddx_v = 0;
 	uint64_t fddy_v = 0;
-	uint64_t small_c_u = 0;
-	uint64_t small_c_v = 0;
+	uint64_t tile_start_u = 0;
+	uint64_t tile_start_v = 0;
 };
 
 struct TspIssueSnapshot {
@@ -99,8 +99,8 @@ struct TspIssueSnapshot {
 	uint64_t fddy_u = 0;
 	uint64_t fddx_v = 0;
 	uint64_t fddy_v = 0;
-	uint64_t small_c_u = 0;
-	uint64_t small_c_v = 0;
+	uint64_t tile_start_u = 0;
+	uint64_t tile_start_v = 0;
 	ParamWriteSnapshot param_write;
 };
 
@@ -1742,8 +1742,8 @@ int verilate() {
 			snapshot.fddy_u = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_U;
 			snapshot.fddx_v = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDX_V;
 			snapshot.fddy_v = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_V;
-			snapshot.small_c_u = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_u;
-			snapshot.small_c_v = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_v;
+			snapshot.tile_start_u = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tile_start_u;
+			snapshot.tile_start_v = top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tile_start_v;
 		}
 
 		// Capture the parameter RAM outputs in the same combinational phase in
@@ -1764,8 +1764,8 @@ int verilate() {
 			last_tsp_issue.fddy_u = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__FDDY_U;
 			last_tsp_issue.fddx_v = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__FDDX_V;
 			last_tsp_issue.fddy_v = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__FDDY_V;
-			last_tsp_issue.small_c_u = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__small_c_u;
-			last_tsp_issue.small_c_v = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__small_c_v;
+			last_tsp_issue.tile_start_u = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__tile_start_u;
+			last_tsp_issue.tile_start_v = top->rootp->simtop__DOT__pvr__DOT__tsp_top__DOT__tile_start_v;
 			last_tsp_issue.param_write =
 				param_write_snapshots[last_tsp_issue.bank][last_tsp_issue.tag & 1023];
 		}
@@ -3233,8 +3233,8 @@ int main(int argc, char** argv, char** env) {
 		show_q17_48("FDDY_U", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_U);
 		show_q17_48("FDDX_V", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDX_V);
 		show_q17_48("FDDY_V", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__FDDY_V);
-		show_q17_48("small_c_u", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_u);
-		show_q17_48("small_c_v", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__small_c_v);
+		show_q17_48("tile_start_u", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tile_start_u);
+		show_q17_48("tile_start_v", top->rootp->simtop__DOT__pvr__DOT__isp_parser_inst__DOT__tile_start_v);
 
 		ImGui::Separator();
 		ImGui::Text("Last issued TSP sample");
@@ -3255,8 +3255,8 @@ int main(int argc, char** argv, char** env) {
 			show_q17_48("FDDY_U", last_tsp_issue.fddy_u);
 			show_q17_48("FDDX_V", last_tsp_issue.fddx_v);
 			show_q17_48("FDDY_V", last_tsp_issue.fddy_v);
-			show_q17_48("small_c_u", last_tsp_issue.small_c_u);
-			show_q17_48("small_c_v", last_tsp_issue.small_c_v);
+			show_q17_48("tile_start_u", last_tsp_issue.tile_start_u);
+			show_q17_48("tile_start_v", last_tsp_issue.tile_start_v);
 
 			const ParamWriteSnapshot &source = last_tsp_issue.param_write;
 			if (source.valid) {
@@ -3266,8 +3266,8 @@ int main(int argc, char** argv, char** env) {
 					((source.fddy_u & mask48) == (last_tsp_issue.fddy_u & mask48)) &&
 					((source.fddx_v & mask48) == (last_tsp_issue.fddx_v & mask48)) &&
 					((source.fddy_v & mask48) == (last_tsp_issue.fddy_v & mask48)) &&
-					((source.small_c_u & mask48) == (last_tsp_issue.small_c_u & mask48)) &&
-					((source.small_c_v & mask48) == (last_tsp_issue.small_c_v & mask48));
+					((source.tile_start_u & mask48) == (last_tsp_issue.tile_start_u & mask48)) &&
+					((source.tile_start_v & mask48) == (last_tsp_issue.tile_start_v & mask48));
 				const bool tile_match =
 					(source.tile_x == last_tsp_issue.tile_x) &&
 					(source.tile_y == last_tsp_issue.tile_y);

@@ -105,8 +105,8 @@ module isp_parser #(
 	output wire signed [31:0] tsp_FDDX_BASE_G, tsp_FDDY_BASE_G, tsp_c_BASE_G,
 	output wire signed [31:0] tsp_FDDX_BASE_B, tsp_FDDY_BASE_B, tsp_c_BASE_B,
 
-	output wire signed [47:0] tsp_FDDX_U, tsp_FDDY_U, tsp_small_c_u,
-	output wire signed [47:0] tsp_FDDX_V, tsp_FDDY_V, tsp_small_c_v,
+	output wire signed [47:0] tsp_FDDX_U, tsp_FDDY_U, tsp_tile_start_u,
+	output wire signed [47:0] tsp_FDDX_V, tsp_FDDY_V, tsp_tile_start_v,
 
 	output wire signed [31:0] tsp_FDDX_OFFS_A, tsp_FDDY_OFFS_A, tsp_c_OFFS_A,
 	output wire signed [31:0] tsp_FDDX_OFFS_R, tsp_FDDY_OFFS_R, tsp_c_OFFS_R,
@@ -139,9 +139,9 @@ module isp_parser #(
 );
 
 assign tex_vram_addr = tex_vram_req_word_addr <<2;	// Output the latched texture WORD request as a BYTE address.
-													// Each Texture word is actually read as 64-bit wide, but we only shift <<2.
-													// It's complicated. lol
-assign tex_peek_addr = tsp_tex_word_addr;			// Peek address: word address for cache pre-check.
+																	// Each Texture word is actually read as 64-bit wide, but we only shift <<2.
+																	// It's complicated. lol
+assign tex_peek_addr = tsp_tex_word_addr;				// Peek address: word address for cache pre-check.
 
 // OL Word bit decodes...
 wire [5:0] strip_mask = {	// For Triangle Strips only.
@@ -1960,7 +1960,7 @@ reg signed [47:0] FX3_sub_FX1;
 
 reg signed [55:0] C_mult_1;
 reg signed [55:0] C_mult_2;
-reg signed [43:0] BIG_C;
+reg signed [47:0] BIG_C;
 
 always @(posedge clock) begin
 	FX1_FIXED_R <= FX1_FIXED; FY1_FIXED_R <= FY1_FIXED; FZ1_FIXED_R <= FZ1_FIXED;
@@ -1993,7 +1993,7 @@ always @(posedge clock) begin
 	BIG_C <= BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
 end
 */
-wire signed [43:0] BIG_C_shifted = BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
+wire signed [47:0] BIG_C_shifted = BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
 always @(posedge clock) BIG_C <= BIG_C_shifted;
 
 // From the Sega Bible PDF, page 204..
@@ -2018,7 +2018,7 @@ wire [10:0] tex_v_size_full = (8 << tsp_inst[2:0]);
 
 wire signed [31:0] FDDX_COL;
 wire signed [31:0] FDDY_COL;
-wire signed [31:0] small_c_COL;
+wire signed [47:0] tile_start_COL;
 
 generate
 if (ENABLE_TEXTURE_PARAMS || ENABLE_GOURAUD_PARAMS || ENABLE_OFFSET_PARAMS) begin : g_param_interp
@@ -2042,7 +2042,12 @@ interp_params_inst (
 	.FX3_sub_FX1( FX3_sub_FX1 ),	// input signed [47:0] FX3_sub_FX1
 	.FX1( FX1_FIXED ),				// input signed [47:0] FX1. Fixed-point X coord for Vertex A.
 	.FY1( FY1_FIXED ),				// input signed [47:0] FY1. Fixed-point Y coord for Vertex A.
-	
+
+	// Tile corner in the same Q-FRAC_BITS space: tile_px = active_tilex*32.
+	// Zero-extend to 48 bits before shifting to avoid Verilog truncation.
+	.tile_x_fp( $signed({{36{1'b0}}, active_tilex, 5'd0}) <<< FRAC_BITS ),
+	.tile_y_fp( $signed({{36{1'b0}}, active_tiley, 5'd0}) <<< FRAC_BITS ),
+
 	// Now in Z_FRAC_BITS format...
 	.BIG_C( BIG_C ),				// input signed [63:0] BIG_C
 
@@ -2071,8 +2076,8 @@ interp_params_inst (
 
     .FDDX( FDDX_COL ),					// output [31:0]  FDDX.
     .FDDY( FDDY_COL ),					// output [31:0]  FDDY.
-    .small_c( small_c_COL ),			// output [31:0]  small_c.
-	
+    .tile_start( tile_start_COL ),		// output [47:0]  tile_start.
+
     .param_id_out( param_id_out ),	// output [5:0]  param_id_out.
     .interp_valid( interp_valid )		// output  interp_valid.
 );
@@ -2080,7 +2085,7 @@ end
 else begin : g_no_param_interp
 	assign FDDX_COL = 32'd0;
 	assign FDDY_COL = 32'd0;
-	assign small_c_COL = 32'd0;
+	assign tile_start_COL = 48'd0;
 end
 endgenerate
 
@@ -2100,8 +2105,8 @@ reg signed [31:0] c_BASE_R;
 reg signed [31:0] c_BASE_G;
 reg signed [31:0] c_BASE_B;
 
-reg signed [47:0] FDDX_U, FDDY_U, small_c_u;
-reg signed [47:0] FDDX_V, FDDY_V, small_c_v;
+reg signed [47:0] FDDX_U, FDDY_U, tile_start_u;
+reg signed [47:0] FDDX_V, FDDY_V, tile_start_v;
 
 reg signed [31:0] FDDX_OFFS_A;
 reg signed [31:0] FDDX_OFFS_R;
@@ -2121,23 +2126,23 @@ reg signed [31:0] c_OFFS_B;
 always @(posedge clock)
 if (interp_valid) begin
 	case (param_id_out)
-		0:  begin FDDX_Z <= FDDX_COL; FDDY_Z <= FDDY_COL; small_c_z <= small_c_COL; end
+		0:  begin FDDX_Z <= FDDX_COL; FDDY_Z <= FDDY_COL; tile_start_z <= tile_start_COL; end
 
 		// Texture UV...
-		1:  begin FDDX_U <= FDDX_COL; FDDY_U <= FDDY_COL; small_c_u <= small_c_COL; end
-		2:  begin FDDX_V <= FDDX_COL; FDDY_V <= FDDY_COL; small_c_v <= small_c_COL; end
+		1:  begin FDDX_U <= FDDX_COL; FDDY_U <= FDDY_COL; tile_start_u <= tile_start_COL; end
+		2:  begin FDDX_V <= FDDX_COL; FDDY_V <= FDDY_COL; tile_start_v <= tile_start_COL; end
 
 		// Base colour ARGB...
-		3:  begin FDDX_BASE_A <= FDDX_COL; FDDY_BASE_A <= FDDY_COL; c_BASE_A <= small_c_COL; end
-		4:  begin FDDX_BASE_R <= FDDX_COL; FDDY_BASE_R <= FDDY_COL; c_BASE_R <= small_c_COL; end
-		5:  begin FDDX_BASE_G <= FDDX_COL; FDDY_BASE_G <= FDDY_COL; c_BASE_G <= small_c_COL; end
-		6:  begin FDDX_BASE_B <= FDDX_COL; FDDY_BASE_B <= FDDY_COL; c_BASE_B <= small_c_COL; end
-		
+		3:  begin FDDX_BASE_A <= FDDX_COL; FDDY_BASE_A <= FDDY_COL; c_BASE_A <= tile_start_COL; end
+		4:  begin FDDX_BASE_R <= FDDX_COL; FDDY_BASE_R <= FDDY_COL; c_BASE_R <= tile_start_COL; end
+		5:  begin FDDX_BASE_G <= FDDX_COL; FDDY_BASE_G <= FDDY_COL; c_BASE_G <= tile_start_COL; end
+		6:  begin FDDX_BASE_B <= FDDX_COL; FDDY_BASE_B <= FDDY_COL; c_BASE_B <= tile_start_COL; end
+
 		// Offset colour ARGB...
-		7:  begin FDDX_OFFS_A <= FDDX_COL; FDDY_OFFS_A <= FDDY_COL; c_OFFS_A <= small_c_COL; end
-		8:  begin FDDX_OFFS_R <= FDDX_COL; FDDY_OFFS_R <= FDDY_COL; c_OFFS_R <= small_c_COL; end
-		9:  begin FDDX_OFFS_G <= FDDX_COL; FDDY_OFFS_G <= FDDY_COL; c_OFFS_G <= small_c_COL; end
-		10: begin FDDX_OFFS_B <= FDDX_COL; FDDY_OFFS_B <= FDDY_COL; c_OFFS_B <= small_c_COL; end
+		7:  begin FDDX_OFFS_A <= FDDX_COL; FDDY_OFFS_A <= FDDY_COL; c_OFFS_A <= tile_start_COL; end
+		8:  begin FDDX_OFFS_R <= FDDX_COL; FDDY_OFFS_R <= FDDY_COL; c_OFFS_R <= tile_start_COL; end
+		9:  begin FDDX_OFFS_G <= FDDX_COL; FDDY_OFFS_G <= FDDY_COL; c_OFFS_G <= tile_start_COL; end
+		10: begin FDDX_OFFS_B <= FDDX_COL; FDDY_OFFS_B <= FDDY_COL; c_OFFS_B <= tile_start_COL; end
 		default:;
 	endcase
 end
@@ -2291,10 +2296,10 @@ wire signed [47:0] FDDY_U_out_0;
 wire signed [47:0] FDDY_U_out_1;
 assign FDDY_U_out = tsp_z_bank ? FDDY_U_out_1 : FDDY_U_out_0;
 
-wire signed [47:0] small_c_u_out;
-wire signed [47:0] small_c_u_out_0;
-wire signed [47:0] small_c_u_out_1;
-assign small_c_u_out = tsp_z_bank ? small_c_u_out_1 : small_c_u_out_0;
+wire signed [47:0] tile_start_u_out;
+wire signed [47:0] tile_start_u_out_0;
+wire signed [47:0] tile_start_u_out_1;
+assign tile_start_u_out = tsp_z_bank ? tile_start_u_out_1 : tile_start_u_out_0;
 
 wire signed [47:0] FDDX_V_out;
 wire signed [47:0] FDDX_V_out_0;
@@ -2306,10 +2311,10 @@ wire signed [47:0] FDDY_V_out_0;
 wire signed [47:0] FDDY_V_out_1;
 assign FDDY_V_out = tsp_z_bank ? FDDY_V_out_1 : FDDY_V_out_0;
 
-wire signed [47:0] small_c_v_out;
-wire signed [47:0] small_c_v_out_0;
-wire signed [47:0] small_c_v_out_1;
-assign small_c_v_out = tsp_z_bank ? small_c_v_out_1 : small_c_v_out_0;
+wire signed [47:0] tile_start_v_out;
+wire signed [47:0] tile_start_v_out_0;
+wire signed [47:0] tile_start_v_out_1;
+assign tile_start_v_out = tsp_z_bank ? tile_start_v_out_1 : tile_start_v_out_0;
 
 wire [11:0] prim_tag_mux_0 = (tsp_busy && !tsp_z_bank) ? prim_tag_out : prim_tag;
 wire [11:0] prim_tag_mux_1 = (tsp_busy &&  tsp_z_bank) ? prim_tag_out : prim_tag;
@@ -2334,8 +2339,8 @@ param_buffer #(
 	.FDDX_BASE_G(FDDX_BASE_G), .FDDY_BASE_G(FDDY_BASE_G), .c_BASE_G(c_BASE_G),	// input signed [31:0]
 	.FDDX_BASE_B(FDDX_BASE_B), .FDDY_BASE_B(FDDY_BASE_B), .c_BASE_B(c_BASE_B),	// input signed [31:0]
 
-	.FDDX_U(FDDX_U), .FDDY_U(FDDY_U), .small_c_u(small_c_u),	// input signed [47:0]
-	.FDDX_V(FDDX_V), .FDDY_V(FDDY_V), .small_c_v(small_c_v),	// input signed [47:0]
+	.FDDX_U(FDDX_U), .FDDY_U(FDDY_U), .tile_start_u(tile_start_u),	// input signed [47:0]
+	.FDDX_V(FDDX_V), .FDDY_V(FDDY_V), .tile_start_v(tile_start_v),	// input signed [47:0]
 	
 	.FDDX_OFFS_A(FDDX_OFFS_A), .FDDY_OFFS_A(FDDY_OFFS_A), .c_OFFS_A(c_OFFS_A),	// input signed [31:0]
 	.FDDX_OFFS_R(FDDX_OFFS_R), .FDDY_OFFS_R(FDDY_OFFS_R), .c_OFFS_R(c_OFFS_R),	// input signed [31:0]
@@ -2350,8 +2355,8 @@ param_buffer #(
 	.FDDX_BASE_G_out(FDDX_BASE_G_out_0), .FDDY_BASE_G_out(FDDY_BASE_G_out_0), .c_BASE_G_out(c_BASE_G_out_0),	// output signed [31:0]
 	.FDDX_BASE_B_out(FDDX_BASE_B_out_0), .FDDY_BASE_B_out(FDDY_BASE_B_out_0), .c_BASE_B_out(c_BASE_B_out_0),	// output signed [31:0]
 
-	.FDDX_U_out(FDDX_U_out_0), .FDDY_U_out(FDDY_U_out_0), .small_c_u_out(small_c_u_out_0),	// output signed [47:0]
-	.FDDX_V_out(FDDX_V_out_0), .FDDY_V_out(FDDY_V_out_0), .small_c_v_out(small_c_v_out_0),	// output signed [47:0]
+	.FDDX_U_out(FDDX_U_out_0), .FDDY_U_out(FDDY_U_out_0), .tile_start_u_out(tile_start_u_out_0),	// output signed [47:0]
+	.FDDX_V_out(FDDX_V_out_0), .FDDY_V_out(FDDY_V_out_0), .tile_start_v_out(tile_start_v_out_0),	// output signed [47:0]
 	
 	.FDDX_OFFS_A_out(FDDX_OFFS_A_out_0), .FDDY_OFFS_A_out(FDDY_OFFS_A_out_0), .c_OFFS_A_out(c_OFFS_A_out_0),	// output signed [31:0]
 	.FDDX_OFFS_R_out(FDDX_OFFS_R_out_0), .FDDY_OFFS_R_out(FDDY_OFFS_R_out_0), .c_OFFS_R_out(c_OFFS_R_out_0),	// output signed [31:0]
@@ -2379,8 +2384,8 @@ param_buffer #(
 	.FDDX_BASE_G(FDDX_BASE_G), .FDDY_BASE_G(FDDY_BASE_G), .c_BASE_G(c_BASE_G),	// input signed [31:0]
 	.FDDX_BASE_B(FDDX_BASE_B), .FDDY_BASE_B(FDDY_BASE_B), .c_BASE_B(c_BASE_B),	// input signed [31:0]
 
-	.FDDX_U(FDDX_U), .FDDY_U(FDDY_U), .small_c_u(small_c_u),	// input signed [47:0]
-	.FDDX_V(FDDX_V), .FDDY_V(FDDY_V), .small_c_v(small_c_v),	// input signed [47:0]
+	.FDDX_U(FDDX_U), .FDDY_U(FDDY_U), .tile_start_u(tile_start_u),	// input signed [47:0]
+	.FDDX_V(FDDX_V), .FDDY_V(FDDY_V), .tile_start_v(tile_start_v),	// input signed [47:0]
 	
 	.FDDX_OFFS_A(FDDX_OFFS_A), .FDDY_OFFS_A(FDDY_OFFS_A), .c_OFFS_A(c_OFFS_A),	// input signed [31:0]
 	.FDDX_OFFS_R(FDDX_OFFS_R), .FDDY_OFFS_R(FDDY_OFFS_R), .c_OFFS_R(c_OFFS_R),	// input signed [31:0]
@@ -2395,8 +2400,8 @@ param_buffer #(
 	.FDDX_BASE_G_out(FDDX_BASE_G_out_1), .FDDY_BASE_G_out(FDDY_BASE_G_out_1), .c_BASE_G_out(c_BASE_G_out_1),	// output signed [31:0]
 	.FDDX_BASE_B_out(FDDX_BASE_B_out_1), .FDDY_BASE_B_out(FDDY_BASE_B_out_1), .c_BASE_B_out(c_BASE_B_out_1),	// output signed [31:0]
 
-	.FDDX_U_out(FDDX_U_out_1), .FDDY_U_out(FDDY_U_out_1), .small_c_u_out(small_c_u_out_1),	// output signed [47:0]
-	.FDDX_V_out(FDDX_V_out_1), .FDDY_V_out(FDDY_V_out_1), .small_c_v_out(small_c_v_out_1),	// output signed [47:0]
+	.FDDX_U_out(FDDX_U_out_1), .FDDY_U_out(FDDY_U_out_1), .tile_start_u_out(tile_start_u_out_1),	// output signed [47:0]
+	.FDDX_V_out(FDDX_V_out_1), .FDDY_V_out(FDDY_V_out_1), .tile_start_v_out(tile_start_v_out_1),	// output signed [47:0]
 	
 	.FDDX_OFFS_A_out(FDDX_OFFS_A_out_1), .FDDY_OFFS_A_out(FDDY_OFFS_A_out_1), .c_OFFS_A_out(c_OFFS_A_out_1),	// output signed [31:0]
 	.FDDX_OFFS_R_out(FDDX_OFFS_R_out_1), .FDDY_OFFS_R_out(FDDY_OFFS_R_out_1), .c_OFFS_R_out(c_OFFS_R_out_1),	// output signed [31:0]
@@ -2414,7 +2419,7 @@ wire sgn = f_area[63];
 // Z.Setup(x1,x2,x3, y1,y2,y3, z1,z2,z3);
 reg signed [47:0] FDDX_Z;
 reg signed [47:0] FDDY_Z;
-reg signed [47:0] small_c_z;
+reg signed [47:0] tile_start_z;
 reg  z_params_valid;
 
 wire z_clear_busy;
@@ -2487,7 +2492,7 @@ hsr_core #(
 	.z_params_hsr_ready ( z_params_hsr_ready ),
 	.FDDX_Z  ( FDDX_Z ),
 	.FDDY_Z  ( FDDY_Z ),
-	.small_c_z ( small_c_z ),
+	.tile_start_z ( tile_start_z ),
 
 	.depth_comp      ( depth_comp ),
 	.z_write_disable ( z_write_disable ),
@@ -2705,8 +2710,8 @@ assign tsp_FDDX_BASE_R = FDDX_BASE_R_out; assign tsp_FDDY_BASE_R = FDDY_BASE_R_o
 assign tsp_FDDX_BASE_G = FDDX_BASE_G_out; assign tsp_FDDY_BASE_G = FDDY_BASE_G_out; assign tsp_c_BASE_G = c_BASE_G_out;
 assign tsp_FDDX_BASE_B = FDDX_BASE_B_out; assign tsp_FDDY_BASE_B = FDDY_BASE_B_out; assign tsp_c_BASE_B = c_BASE_B_out;
 
-assign tsp_FDDX_U = FDDX_U_out; assign tsp_FDDY_U = FDDY_U_out; assign tsp_small_c_u = small_c_u_out;
-assign tsp_FDDX_V = FDDX_V_out; assign tsp_FDDY_V = FDDY_V_out; assign tsp_small_c_v = small_c_v_out;
+assign tsp_FDDX_U = FDDX_U_out; assign tsp_FDDY_U = FDDY_U_out; assign tsp_tile_start_u = tile_start_u_out;
+assign tsp_FDDX_V = FDDX_V_out; assign tsp_FDDY_V = FDDY_V_out; assign tsp_tile_start_v = tile_start_v_out;
 
 assign tsp_FDDX_OFFS_A = FDDX_OFFS_A_out; assign tsp_FDDY_OFFS_A = FDDY_OFFS_A_out; assign tsp_c_OFFS_A = c_OFFS_A_out;
 assign tsp_FDDX_OFFS_R = FDDX_OFFS_R_out; assign tsp_FDDY_OFFS_R = FDDY_OFFS_R_out; assign tsp_c_OFFS_R = c_OFFS_R_out;

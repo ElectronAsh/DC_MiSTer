@@ -45,8 +45,8 @@ module tsp #(
 	input signed [31:0] FDDX_BASE_G, FDDY_BASE_G, c_BASE_G,
 	input signed [31:0] FDDX_BASE_B, FDDY_BASE_B, c_BASE_B,
 
-	input signed [47:0] FDDX_U, FDDY_U, small_c_u,
-	input signed [47:0] FDDX_V, FDDY_V, small_c_v,
+	input signed [47:0] FDDX_U, FDDY_U, tile_start_u,
+	input signed [47:0] FDDX_V, FDDY_V, tile_start_v,
 	
 	input signed [31:0] FDDX_OFFS_A, FDDY_OFFS_A, c_OFFS_A,
 	input signed [31:0] FDDX_OFFS_R, FDDY_OFFS_R, c_OFFS_R,
@@ -177,16 +177,19 @@ wire [20:0] tex_word_addr = tcw_word_out[20:0];		// 64-bit WORD address! (but on
 // Definitely need to use the signed version of x_ps and y_ps, to get correct colours!
 wire signed [11:0] x_ps_signed = $signed({1'b0, x_ps});
 wire signed [11:0] y_ps_signed = $signed({1'b0, y_ps});
+// Tile-relative offsets (0..31) for UV interpolation with tile_start anchor.
+wire signed [5:0] x_tile_off = $signed({1'b0, x_ps[4:0]});
+wire signed [5:0] y_tile_off = $signed({1'b0, y_ps[4:0]});
 
 wire [31:0] interp_base_col;
 wire [31:0] interp_offs_col;
 
 generate
 	if (ENABLE_GOURAUD_SHADE) begin : g_gouraud_shade
-		wire signed [31:0] BASE_A_INTERP = ((x_ps_signed * FDDX_BASE_A) + (y_ps_signed * FDDY_BASE_A) + c_BASE_A);
-		wire signed [31:0] BASE_R_INTERP = ((x_ps_signed * FDDX_BASE_R) + (y_ps_signed * FDDY_BASE_R) + c_BASE_R);
-		wire signed [31:0] BASE_G_INTERP = ((x_ps_signed * FDDX_BASE_G) + (y_ps_signed * FDDY_BASE_G) + c_BASE_G);
-		wire signed [31:0] BASE_B_INTERP = ((x_ps_signed * FDDX_BASE_B) + (y_ps_signed * FDDY_BASE_B) + c_BASE_B);
+		wire signed [31:0] BASE_A_INTERP = ((x_tile_off * FDDX_BASE_A) + (y_tile_off * FDDY_BASE_A) + c_BASE_A);
+		wire signed [31:0] BASE_R_INTERP = ((x_tile_off * FDDX_BASE_R) + (y_tile_off * FDDY_BASE_R) + c_BASE_R);
+		wire signed [31:0] BASE_G_INTERP = ((x_tile_off * FDDX_BASE_G) + (y_tile_off * FDDY_BASE_G) + c_BASE_G);
+		wire signed [31:0] BASE_B_INTERP = ((x_tile_off * FDDX_BASE_B) + (y_tile_off * FDDY_BASE_B) + c_BASE_B);
 		assign interp_base_col = {clamp255(BASE_A_INTERP, Z_FRAC_BITS), clamp255(BASE_R_INTERP, Z_FRAC_BITS), clamp255(BASE_G_INTERP, Z_FRAC_BITS), clamp255(BASE_B_INTERP, Z_FRAC_BITS)};
 	end
 	else begin : g_flat_shade
@@ -194,10 +197,10 @@ generate
 	end
 
 	if (ENABLE_OFFSET_SHADE) begin : g_offset_shade
-		wire signed [31:0] OFFS_A_INTERP = ((x_ps_signed * FDDX_OFFS_A) + (y_ps_signed * FDDY_OFFS_A) + c_OFFS_A);
-		wire signed [31:0] OFFS_R_INTERP = ((x_ps_signed * FDDX_OFFS_R) + (y_ps_signed * FDDY_OFFS_R) + c_OFFS_R);
-		wire signed [31:0] OFFS_G_INTERP = ((x_ps_signed * FDDX_OFFS_G) + (y_ps_signed * FDDY_OFFS_G) + c_OFFS_G);
-		wire signed [31:0] OFFS_B_INTERP = ((x_ps_signed * FDDX_OFFS_B) + (y_ps_signed * FDDY_OFFS_B) + c_OFFS_B);
+		wire signed [31:0] OFFS_A_INTERP = ((x_tile_off * FDDX_OFFS_A) + (y_tile_off * FDDY_OFFS_A) + c_OFFS_A);
+		wire signed [31:0] OFFS_R_INTERP = ((x_tile_off * FDDX_OFFS_R) + (y_tile_off * FDDY_OFFS_R) + c_OFFS_R);
+		wire signed [31:0] OFFS_G_INTERP = ((x_tile_off * FDDX_OFFS_G) + (y_tile_off * FDDY_OFFS_G) + c_OFFS_G);
+		wire signed [31:0] OFFS_B_INTERP = ((x_tile_off * FDDX_OFFS_B) + (y_tile_off * FDDY_OFFS_B) + c_OFFS_B);
 		assign interp_offs_col = {clamp255(OFFS_A_INTERP, Z_FRAC_BITS), clamp255(OFFS_R_INTERP, Z_FRAC_BITS), clamp255(OFFS_G_INTERP, Z_FRAC_BITS), clamp255(OFFS_B_INTERP, Z_FRAC_BITS)};
 	end
 	else begin : g_no_offset_shade
@@ -214,16 +217,18 @@ wire [9:0] v_flipped;
 wire [10:0] tex_u_size_full = (8 << tex_u_size);
 wire [10:0] tex_v_size_full = (8 << tex_v_size);
 
-wire signed [63:0] x_ps_mult_fddx_u = (x_ps_signed * FDDX_U);
-wire signed [63:0] y_ps_mult_fddy_u = (y_ps_signed * FDDY_U);
-wire signed [63:0] IP_U_INTERP = x_ps_mult_fddx_u + y_ps_mult_fddy_u + small_c_u;
+// UV interp with tile_start anchor: use 6-bit tile-relative offsets (0..31)
+// so multiplies are narrower than full-screen x_ps_signed.
+wire signed [63:0] x_off_mult_fddx_u = (x_tile_off * FDDX_U);
+wire signed [63:0] y_off_mult_fddy_u = (y_tile_off * FDDY_U);
+wire signed [63:0] IP_U_INTERP = x_off_mult_fddx_u + y_off_mult_fddy_u + tile_start_u;
 wire signed [47:0] IP_U_PERSP_NUM = IP_U_INTERP <<< Z_FRAC_BITS;
 wire signed [31:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;				// Reduced result from 48-bit.
 wire signed [9:0] u_div_z = IP_U_PERSP >>> Z_FRAC_BITS;
 
-wire signed [63:0] x_ps_mult_fddx_v = (x_ps_signed * FDDX_V);
-wire signed [63:0] y_ps_mult_fddy_v = (y_ps_signed * FDDY_V);
-wire signed [63:0] IP_V_INTERP = x_ps_mult_fddx_v + y_ps_mult_fddy_v + small_c_v;
+wire signed [63:0] x_off_mult_fddx_v = (x_tile_off * FDDX_V);
+wire signed [63:0] y_off_mult_fddy_v = (y_tile_off * FDDY_V);
+wire signed [63:0] IP_V_INTERP = x_off_mult_fddx_v + y_off_mult_fddy_v + tile_start_v;
 wire signed [47:0] IP_V_PERSP_NUM = IP_V_INTERP <<< Z_FRAC_BITS;
 wire signed [31:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;				// Reduced result from 48-bit.
 wire signed [9:0] v_div_z = IP_V_PERSP >>> Z_FRAC_BITS;
@@ -248,17 +253,17 @@ generate
 		wire [10:0] tex_u_size_full = (8 << tex_u_size);
 		wire [10:0] tex_v_size_full = (8 << tex_v_size);
 
-		// Texture U/V interp and perspective divide.
-		wire signed [63:0] x_ps_mult_fddx_u = (x_ps_signed * FDDX_U);
-		wire signed [63:0] y_ps_mult_fddy_u = (y_ps_signed * FDDY_U);
-		wire signed [63:0] IP_U_INTERP = x_ps_mult_fddx_u + y_ps_mult_fddy_u + small_c_u;
+		// Texture U/V interp with tile_start anchor: 6-bit tile-relative offsets.
+		wire signed [63:0] x_off_mult_fddx_u = (x_tile_off * FDDX_U);
+		wire signed [63:0] y_off_mult_fddy_u = (y_tile_off * FDDY_U);
+		wire signed [63:0] IP_U_INTERP = x_off_mult_fddx_u + y_off_mult_fddy_u + tile_start_u;
 		wire signed [47:0] IP_U_PERSP_NUM = IP_U_INTERP <<< Z_FRAC_BITS;
 		wire signed [31:0] IP_U_PERSP = IP_U_PERSP_NUM / z_out;	// Reduced from 48-bit.
 		wire signed [9:0] u_div_z = IP_U_PERSP >>> Z_FRAC_BITS;
 
-		wire signed [63:0] x_ps_mult_fddx_v = (x_ps_signed * FDDX_V);
-		wire signed [63:0] y_ps_mult_fddy_v = (y_ps_signed * FDDY_V);
-		wire signed [63:0] IP_V_INTERP = x_ps_mult_fddx_v + y_ps_mult_fddy_v + small_c_v;
+		wire signed [63:0] x_off_mult_fddx_v = (x_tile_off * FDDX_V);
+		wire signed [63:0] y_off_mult_fddy_v = (y_tile_off * FDDY_V);
+		wire signed [63:0] IP_V_INTERP = x_off_mult_fddx_v + y_off_mult_fddy_v + tile_start_v;
 		wire signed [47:0] IP_V_PERSP_NUM = IP_V_INTERP <<< Z_FRAC_BITS;
 		wire signed [31:0] IP_V_PERSP = IP_V_PERSP_NUM / z_out;	// Reduced from 48-bit.
 		wire signed [9:0] v_div_z = IP_V_PERSP >>> Z_FRAC_BITS;

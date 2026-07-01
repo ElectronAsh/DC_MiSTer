@@ -21,7 +21,7 @@ module interp_params #(
     input signed [47:0] FX1,
     input signed [47:0] FY1,
 
-    input signed [43:0] BIG_C,
+    input signed [47:0] BIG_C,
 
     input wire [31:0] param_a_z,
     input wire [31:0] param_b_z,
@@ -46,9 +46,14 @@ module interp_params #(
     input wire [10:0] tex_u_size,
     input wire [10:0] tex_v_size,
 
+    // Tile corner in the same Q-FRAC_BITS fixed-point as FX1/FY1.
+    // tile_start = param_a + ddx*(tile_x_fp - FX1) + ddy*(tile_y_fp - FY1)
+    input signed [47:0] tile_x_fp,
+    input signed [47:0] tile_y_fp,
+
     output reg signed [31:0] FDDX,
     output reg signed [31:0] FDDY,
-    output reg signed [31:0] small_c,
+    output reg signed [47:0] tile_start,
 
     output reg  [5:0] param_id_out,
     output reg interp_valid
@@ -160,7 +165,7 @@ reg signed [47:0] FX3_sub_FX1_cap;
 reg signed [47:0] FX1_cap;
 reg signed [47:0] FY1_cap;
 
-reg signed [43:0] BIG_C_cap;
+reg signed [47:0] BIG_C_cap;
 
 reg signed [47:0] param_a_cap;
 reg signed [47:0] param_b_cap;
@@ -174,7 +179,7 @@ if (!reset_n) begin
         FX3_sub_FX1_cap <= 48'sd0;
         FX1_cap <= 48'sd0;
         FY1_cap <= 48'sd0;
-        BIG_C_cap <= 44'sd0;
+        BIG_C_cap <= 48'sd0;
         param_a_cap <= 48'sd0;
         param_b_cap <= 48'sd0;
         param_c_cap <= 48'sd0;
@@ -224,7 +229,7 @@ reg signed [47:0] FX2_sub_FX1_s1;
 reg signed [47:0] FX3_sub_FX1_s1;
 
 (* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
-reg signed [43:0] BIG_C_s1;
+reg signed [47:0] BIG_C_s1;
 
 always @(posedge clock) begin
     param_b_sub_param_a_r <= param_b_cap - param_a_cap;
@@ -254,7 +259,7 @@ reg signed [47:0] FY1_s2;
 reg signed [47:0] param_a_s2;
 
 (* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
-reg signed [43:0] BIG_C_s2;
+reg signed [47:0] BIG_C_s2;
 
 always @(posedge clock) begin
     A_num_mult_1_r <= param_c_sub_param_a_r * (FY2_sub_FY1_s1 <<< FRAC_DIFF);
@@ -280,7 +285,7 @@ reg signed [47:0] FY1_s3;
 reg signed [47:0] param_a_s3;
 
 (* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
-reg signed [43:0] BIG_C_s3;
+reg signed [47:0] BIG_C_s3;
 
 always @(posedge clock) begin
     A_num_r <= (A_num_mult_1_r - A_num_mult_2_r) >>> Z_FRAC_BITS;
@@ -302,7 +307,7 @@ localparam DIV_PIPELINE = 6;
 wire signed [55:0] A_num_num = $signed({{17{A_num_r[47]}}, A_num_r}) <<< Z_FRAC_BITS;
 wire signed [55:0] B_num_num = $signed({{17{B_num_r[47]}}, B_num_r}) <<< Z_FRAC_BITS;
 
-(* preserve, dont_merge *) reg signed [43:0] BIG_C_div;
+(* preserve, dont_merge *) reg signed [47:0] BIG_C_div;
 
 always @(posedge clock) begin
     BIG_C_div <= BIG_C_s2;
@@ -335,45 +340,62 @@ reg signed [47:0] FX1_s4;
 reg signed [47:0] FY1_s4;
 reg signed [47:0] param_a_s4;
 
+// Pipeline tile coordinates alongside FX1/FY1 through the divider delay.
+reg signed [47:0] tile_x_div_s1, tile_x_div_s2, tile_x_div_s3, tile_x_div_s4, tile_x_div_s5;
+reg signed [47:0] tile_y_div_s1, tile_y_div_s2, tile_y_div_s3, tile_y_div_s4, tile_y_div_s5;
 reg signed [47:0] FX1_div_s1, FX1_div_s2, FX1_div_s3, FX1_div_s4, FX1_div_s5;
 reg signed [47:0] FY1_div_s1, FY1_div_s2, FY1_div_s3, FY1_div_s4, FY1_div_s5;
 reg signed [47:0] param_a_div_s1, param_a_div_s2, param_a_div_s3, param_a_div_s4, param_a_div_s5;
 
 always @(posedge clock) begin
     FX1_s4     <= FX1_s3;
-    FX1_div_s1 <= FX1_s4;     FX1_div_s2 <= FX1_div_s1; FX1_div_s3 <= FX1_div_s2;
-    FX1_div_s4 <= FX1_div_s3; FX1_div_s5 <= FX1_div_s4;
+    FX1_div_s1 <= FX1_s4;      FX1_div_s2 <= FX1_div_s1; FX1_div_s3 <= FX1_div_s2;
+    FX1_div_s4 <= FX1_div_s3;  FX1_div_s5 <= FX1_div_s4;
 
     FY1_s4     <= FY1_s3;
-    FY1_div_s1 <= FY1_s4;     FY1_div_s2 <= FY1_div_s1; FY1_div_s3 <= FY1_div_s2;
-    FY1_div_s4 <= FY1_div_s3; FY1_div_s5 <= FY1_div_s4;
+    FY1_div_s1 <= FY1_s4;      FY1_div_s2 <= FY1_div_s1; FY1_div_s3 <= FY1_div_s2;
+    FY1_div_s4 <= FY1_div_s3;  FY1_div_s5 <= FY1_div_s4;
 
     param_a_s4     <= param_a_s3;
-    param_a_div_s1 <= param_a_s4;     param_a_div_s2 <= param_a_div_s1; param_a_div_s3 <= param_a_div_s2;
-    param_a_div_s4 <= param_a_div_s3; param_a_div_s5 <= param_a_div_s4;
+    param_a_div_s1 <= param_a_s4;      param_a_div_s2 <= param_a_div_s1; param_a_div_s3 <= param_a_div_s2;
+    param_a_div_s4 <= param_a_div_s3;  param_a_div_s5 <= param_a_div_s4;
+
+    // tile coordinates captured at stage 0 alongside FX1/FY1; pipeline them
+    // through the same 5-stage delay so they arrive aligned with FDDX_r/FDDY_r.
+    tile_x_div_s1 <= tile_x_fp; tile_x_div_s2 <= tile_x_div_s1; tile_x_div_s3 <= tile_x_div_s2;
+    tile_x_div_s4 <= tile_x_div_s3; tile_x_div_s5 <= tile_x_div_s4;
+
+    tile_y_div_s1 <= tile_y_fp; tile_y_div_s2 <= tile_y_div_s1; tile_y_div_s3 <= tile_y_div_s2;
+    tile_y_div_s4 <= tile_y_div_s3; tile_y_div_s5 <= tile_y_div_s4;
 end
 
 //
 // ------------------------------------------------------------------------
-// Stage 5 : ddx*fx1 and ddy*fy1
+// Stage 5 : ddx*(tile_x - FX1) and ddy*(tile_y - FY1)
+// Anchors the interpolation constant at the tile corner instead of vertex 1,
+// so the TSP can step from tile_start with small (0..31) offsets.
 // ------------------------------------------------------------------------
 //
-wire signed [47:0] FX1_z = FX1_div_s5 <<< FRAC_DIFF;
-wire signed [47:0] FY1_z = FY1_div_s5 <<< FRAC_DIFF;
+wire signed [47:0] FX1_z        = FX1_div_s5   <<< FRAC_DIFF;
+wire signed [47:0] FY1_z        = FY1_div_s5   <<< FRAC_DIFF;
+wire signed [47:0] tile_x_z     = tile_x_div_s5 <<< FRAC_DIFF;
+wire signed [47:0] tile_y_z     = tile_y_div_s5 <<< FRAC_DIFF;
+wire signed [47:0] dx_tile_fx1  = tile_x_z - FX1_z;
+wire signed [47:0] dy_tile_fy1  = tile_y_z - FY1_z;
 
-reg signed [63:0] ddx_fx1_mult_r;
-reg signed [63:0] ddy_fy1_mult_r;
+reg signed [63:0] ddx_dtile_mult_r;
+reg signed [63:0] ddy_dtile_mult_r;
 
-reg signed [47:0] ddx_fx1_r;
-reg signed [47:0] ddy_fy1_r;
+reg signed [47:0] ddx_dtile_r;
+reg signed [47:0] ddy_dtile_r;
 
 reg signed [31:0] FDDX_s5;
 reg signed [31:0] FDDY_s5;
 reg signed [47:0] param_a_s5;
 
 always @(posedge clock) begin
-    ddx_fx1_mult_r <= FDDX_r * FX1_z;
-    ddy_fy1_mult_r <= FDDY_r * FY1_z;
+    ddx_dtile_mult_r <= FDDX_r * dx_tile_fx1;
+    ddy_dtile_mult_r <= FDDY_r * dy_tile_fy1;
     FDDX_s5 <= FDDX_r;
     FDDY_s5 <= FDDY_r;
     param_a_s5 <= param_a_div_s5;
@@ -384,8 +406,8 @@ reg signed [31:0] FDDY_s6;
 reg signed [47:0] param_a_s6;
 
 always @(posedge clock) begin
-    ddx_fx1_r <= ddx_fx1_mult_r >>> Z_FRAC_BITS;
-    ddy_fy1_r <= ddy_fy1_mult_r >>> Z_FRAC_BITS;
+    ddx_dtile_r <= ddx_dtile_mult_r >>> Z_FRAC_BITS;
+    ddy_dtile_r <= ddy_dtile_mult_r >>> Z_FRAC_BITS;
     FDDX_s6 <= FDDX_s5;
     FDDY_s6 <= FDDY_s5;
     param_a_s6 <= param_a_s5;
@@ -394,12 +416,13 @@ end
 //
 // ------------------------------------------------------------------------
 // Stage 6 : Output
+// tile_start = param_a + ddx*(tile_x - FX1) + ddy*(tile_y - FY1)
 // ------------------------------------------------------------------------
 //
 always @(posedge clock) begin
     FDDX <= FDDX_s6;
     FDDY <= FDDY_s6;
-    small_c <= param_a_s6 - ddx_fx1_r - ddy_fy1_r;
+    tile_start <= param_a_s6 + ddx_dtile_r + ddy_dtile_r;
 end
 
 //
@@ -466,12 +489,12 @@ module interp_signed_div_pipe #(
 )(
     input  wire               clock,
     input  wire signed [55:0] numer,
-    input  wire signed [43:0] denom,
+    input  wire signed [47:0] denom,
     output wire signed [55:0] quotient
 );
 
 wire signed [55:0] numer_safe = (denom == 0) ? 56'sd0 : numer;
-wire signed [43:0] denom_safe = (denom == 0) ? 44'sd1 : denom;
+wire signed [47:0] denom_safe = (denom == 0) ? 48'sd1 : denom;
 
 `ifdef VERILATOR
 reg signed [55:0] quotient_pipe [0:PIPELINE-1];

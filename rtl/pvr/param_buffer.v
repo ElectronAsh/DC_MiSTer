@@ -26,8 +26,8 @@ module param_buffer #(
 	input signed [31:0] FDDX_BASE_G, FDDY_BASE_G, c_BASE_G,
 	input signed [31:0] FDDX_BASE_B, FDDY_BASE_B, c_BASE_B,
 
-	input signed [47:0] FDDX_U, FDDY_U, small_c_u,
-	input signed [47:0] FDDX_V, FDDY_V, small_c_v,
+	input signed [47:0] FDDX_U, FDDY_U, tile_start_u,
+	input signed [47:0] FDDX_V, FDDY_V, tile_start_v,
 	
 	input signed [31:0] FDDX_OFFS_A, FDDY_OFFS_A, c_OFFS_A,
 	input signed [31:0] FDDX_OFFS_R, FDDY_OFFS_R, c_OFFS_R,
@@ -43,8 +43,8 @@ module param_buffer #(
 	output wire [31:0] FDDX_BASE_G_out, FDDY_BASE_G_out, c_BASE_G_out,
 	output wire [31:0] FDDX_BASE_B_out, FDDY_BASE_B_out, c_BASE_B_out,
 
-	output wire [47:0] FDDX_U_out, FDDY_U_out, small_c_u_out,
-	output wire [47:0] FDDX_V_out, FDDY_V_out, small_c_v_out,
+	output wire [47:0] FDDX_U_out, FDDY_U_out, tile_start_u_out,
+	output wire [47:0] FDDX_V_out, FDDY_V_out, tile_start_v_out,
 	
 	output wire [31:0] FDDX_OFFS_A_out, FDDY_OFFS_A_out, c_OFFS_A_out,
 	output wire [31:0] FDDX_OFFS_R_out, FDDY_OFFS_R_out, c_OFFS_R_out,
@@ -84,14 +84,14 @@ generate
 	if (ENABLE_TEXTURE_PARAMS) begin : g_texture_params
 		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDX_U    (.addr(prim_tag), .clk(clock), .din(FDDX_U),    .we(pcache_write), .dout(FDDX_U_out));
 		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDY_U    (.addr(prim_tag), .clk(clock), .din(FDDY_U),    .we(pcache_write), .dout(FDDY_U_out));
-		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_small_c_u (.addr(prim_tag), .clk(clock), .din(small_c_u), .we(pcache_write), .dout(small_c_u_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_tile_start_u (.addr(prim_tag), .clk(clock), .din(tile_start_u), .we(pcache_write), .dout(tile_start_u_out));
 		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDX_V    (.addr(prim_tag), .clk(clock), .din(FDDX_V),    .we(pcache_write), .dout(FDDX_V_out));
 		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_FDDY_V    (.addr(prim_tag), .clk(clock), .din(FDDY_V),    .we(pcache_write), .dout(FDDY_V_out));
-		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_small_c_v (.addr(prim_tag), .clk(clock), .din(small_c_v), .we(pcache_write), .dout(small_c_v_out));
+		pcache_mem #(.DATA_WIDTH(48), .DEPTH(ENTRIES)) pcache_mem_tile_start_v (.addr(prim_tag), .clk(clock), .din(tile_start_v), .we(pcache_write), .dout(tile_start_v_out));
 	end
 	else begin : g_no_texture_params
-		assign FDDX_U_out = 48'd0; assign FDDY_U_out = 48'd0; assign small_c_u_out = 48'd0;
-		assign FDDX_V_out = 48'd0; assign FDDY_V_out = 48'd0; assign small_c_v_out = 48'd0;
+		assign FDDX_U_out = 48'd0; assign FDDY_U_out = 48'd0; assign tile_start_u_out = 48'd0;
+		assign FDDX_V_out = 48'd0; assign FDDY_V_out = 48'd0; assign tile_start_v_out = 48'd0;
 	end
 
 	if (ENABLE_OFFSET_PARAMS) begin : g_offset_params

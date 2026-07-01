@@ -17,11 +17,11 @@ module pvr #(
 
 `ifndef VERILATOR
 	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b1,
-	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b1,
+	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b0,
 	parameter PVR_ENABLE_OFFSET_SHADE     = 1'b0,
 	parameter PVR_ENABLE_DEPTH_COMPARE    = 1'b1,
 	parameter PVR_ENABLE_TILE_ARGB_BUFFER = 1'b1,
-	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 32
+	parameter PVR_INTRI_PIXELS_PER_CYCLE  = 8
 `else
 	parameter PVR_ENABLE_TEXTURE_PIPELINE = 1'b1,
 	parameter PVR_ENABLE_GOURAUD_SHADE    = 1'b1,
@@ -633,8 +633,8 @@ wire signed [31:0] tsp_FDDX_BASE_A, tsp_FDDY_BASE_A, tsp_c_BASE_A;
 wire signed [31:0] tsp_FDDX_BASE_R, tsp_FDDY_BASE_R, tsp_c_BASE_R;
 wire signed [31:0] tsp_FDDX_BASE_G, tsp_FDDY_BASE_G, tsp_c_BASE_G;
 wire signed [31:0] tsp_FDDX_BASE_B, tsp_FDDY_BASE_B, tsp_c_BASE_B;
-wire signed [47:0] tsp_FDDX_U, tsp_FDDY_U, tsp_small_c_u;
-wire signed [47:0] tsp_FDDX_V, tsp_FDDY_V, tsp_small_c_v;
+wire signed [47:0] tsp_FDDX_U, tsp_FDDY_U, tsp_tile_start_u;
+wire signed [47:0] tsp_FDDX_V, tsp_FDDY_V, tsp_tile_start_v;
 wire signed [31:0] tsp_FDDX_OFFS_A, tsp_FDDY_OFFS_A, tsp_c_OFFS_A;
 wire signed [31:0] tsp_FDDX_OFFS_R, tsp_FDDY_OFFS_R, tsp_c_OFFS_R;
 wire signed [31:0] tsp_FDDX_OFFS_G, tsp_FDDY_OFFS_G, tsp_c_OFFS_G;
@@ -763,8 +763,8 @@ isp_parser #(
 	.tsp_FDDX_BASE_R( tsp_FDDX_BASE_R ), .tsp_FDDY_BASE_R( tsp_FDDY_BASE_R ), .tsp_c_BASE_R( tsp_c_BASE_R ),
 	.tsp_FDDX_BASE_G( tsp_FDDX_BASE_G ), .tsp_FDDY_BASE_G( tsp_FDDY_BASE_G ), .tsp_c_BASE_G( tsp_c_BASE_G ),
 	.tsp_FDDX_BASE_B( tsp_FDDX_BASE_B ), .tsp_FDDY_BASE_B( tsp_FDDY_BASE_B ), .tsp_c_BASE_B( tsp_c_BASE_B ),
-	.tsp_FDDX_U( tsp_FDDX_U ), .tsp_FDDY_U( tsp_FDDY_U ), .tsp_small_c_u( tsp_small_c_u ),
-	.tsp_FDDX_V( tsp_FDDX_V ), .tsp_FDDY_V( tsp_FDDY_V ), .tsp_small_c_v( tsp_small_c_v ),
+	.tsp_FDDX_U( tsp_FDDX_U ), .tsp_FDDY_U( tsp_FDDY_U ), .tsp_tile_start_u( tsp_tile_start_u ),
+	.tsp_FDDX_V( tsp_FDDX_V ), .tsp_FDDY_V( tsp_FDDY_V ), .tsp_tile_start_v( tsp_tile_start_v ),
 	.tsp_FDDX_OFFS_A( tsp_FDDX_OFFS_A ), .tsp_FDDY_OFFS_A( tsp_FDDY_OFFS_A ), .tsp_c_OFFS_A( tsp_c_OFFS_A ),
 	.tsp_FDDX_OFFS_R( tsp_FDDX_OFFS_R ), .tsp_FDDY_OFFS_R( tsp_FDDY_OFFS_R ), .tsp_c_OFFS_R( tsp_c_OFFS_R ),
 	.tsp_FDDX_OFFS_G( tsp_FDDX_OFFS_G ), .tsp_FDDY_OFFS_G( tsp_FDDY_OFFS_G ), .tsp_c_OFFS_G( tsp_c_OFFS_G ),
@@ -832,8 +832,8 @@ tsp_top (
 	.FDDX_BASE_G     ( tsp_FDDX_BASE_G ), .FDDY_BASE_G( tsp_FDDY_BASE_G ), .c_BASE_G( tsp_c_BASE_G ),
 	.FDDX_BASE_B     ( tsp_FDDX_BASE_B ), .FDDY_BASE_B( tsp_FDDY_BASE_B ), .c_BASE_B( tsp_c_BASE_B ),
 
-	.FDDX_U          ( tsp_FDDX_U ), .FDDY_U( tsp_FDDY_U ), .small_c_u( tsp_small_c_u ),
-	.FDDX_V          ( tsp_FDDX_V ), .FDDY_V( tsp_FDDY_V ), .small_c_v( tsp_small_c_v ),
+	.FDDX_U          ( tsp_FDDX_U ), .FDDY_U( tsp_FDDY_U ), .tile_start_u( tsp_tile_start_u ),
+	.FDDX_V          ( tsp_FDDX_V ), .FDDY_V( tsp_FDDY_V ), .tile_start_v( tsp_tile_start_v ),
 
 	.FDDX_OFFS_A     ( tsp_FDDX_OFFS_A ), .FDDY_OFFS_A( tsp_FDDY_OFFS_A ), .c_OFFS_A( tsp_c_OFFS_A ),
 	.FDDX_OFFS_R     ( tsp_FDDX_OFFS_R ), .FDDY_OFFS_R( tsp_FDDY_OFFS_R ), .c_OFFS_R( tsp_c_OFFS_R ),

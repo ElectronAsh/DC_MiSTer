@@ -48,7 +48,7 @@ module hsr_core #(
     input  wire        z_params_hsr_ready,
     input  wire signed [47:0] FDDX_Z,
     input  wire signed [47:0] FDDY_Z,
-    input  wire signed [47:0] small_c_z,  // Z at absolute pixel (0,0): Z0 - FX1*FDDX - FY1*FDDY
+    input  wire signed [47:0] tile_start_z,  // Z at absolute pixel (0,0): Z0 - FX1*FDDX - FY1*FDDY
 
     // ── Depth compare / write control ────────────────────────────────────────
     input  wire [2:0]  depth_comp,
@@ -131,21 +131,20 @@ inTri_calc #(
 // ─────────────────────────────────────────────────────────────────────────────
 // Z accumulator: replaces z_span_32 pipeline with a running row_base register.
 //
+// tile_start_z is Z at the tile corner (tilex_start, tiley_start).
 // On z_params_hsr_ready, compute the initial row base for y=hsr_start_row:
-//   row_base = small_c_z + x_ps*FDDX_Z + y_ps*FDDY_Z
+//   row_base = tile_start_z + (y_ps - tiley_start)*FDDY_Z
+//            = tile_start_z + hsr_start_row*FDDY_Z
+// x_ps == tilex_start at this point, so the x term is zero.
 // Each subsequent dispatch cycle: row_base += FDDY_Z (pure adder, no multiplier).
 //
 // IP_Z[c] = row_base + c*FDDX_Z  is computed combinatorially each dispatch cycle.
-// This gives 1-cycle-per-span throughput; the write completes one cycle later via
-// z_buff's internal trig_z_row_write_d register — same "write row N on cycle N+1"
-// contract as before, but without the 3-stage pipeline drain.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Init computes row_base for the first row combinatorially from registered values.
-wire signed [63:0] z_init_x_mul  = $signed({5'd0, x_ps}) * $signed(FDDX_Z[39:0]);
-wire signed [47:0] z_init_x_base = small_c_z + z_init_x_mul;
-wire signed [63:0] z_init_y_mul  = $signed({5'd0, y_ps}) * $signed(FDDY_Z[39:0]);
-wire signed [47:0] z_init_row_base = z_init_x_base + z_init_y_mul;
+// row offset = y_ps - tiley_start = hsr_start_row (5-bit, 0..31)
+wire signed [6:0]  z_init_row_off = $signed({1'b0, y_ps[4:0]});
+wire signed [63:0] z_init_y_mul   = z_init_row_off * $signed(FDDY_Z[39:0]);
+wire signed [47:0] z_init_row_base = tile_start_z + z_init_y_mul;
 
 // row_base: stable from one cycle after z_params_hsr_ready until hsr_done.
 reg signed [47:0] row_base;

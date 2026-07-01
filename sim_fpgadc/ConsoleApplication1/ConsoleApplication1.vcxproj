@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build" ToolsVersion="15.0">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -174,26 +174,6 @@
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\out\obj_dir\Vsimtop.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1__DepSet_h33a7dd7b__0__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1__DepSet_h37324824__0.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1__DepSet_h37324824__0__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__DepSet_h0058d5db__0.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__DepSet_h0058d5db__0__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__DepSet_hea814184__0.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__DepSet_hea814184__0__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop__ConstPool_0.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop__Syms.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h305f3046__0.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h305f3046__0__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h3a8afb71__0.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h3a8afb71__0__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h3a8afb71__1.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop___024unit__DepSet_h7e859b80__0__Slow.cpp" />
-    <ClCompile Include="..\out\obj_dir\Vsimtop___024unit__Slow.cpp" />
     <ClCompile Include="..\sim_main.cpp" />
     <ClCompile Include="c:\linux_temp\imgui\imgui.cpp" />
     <ClCompile Include="c:\linux_temp\imgui\imgui_demo.cpp" />
@@ -208,13 +188,6 @@
     <ClCompile Include="..\EasyBMP.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\out\obj_dir\Vsimtop.h" />
-    <ClInclude Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1.h" />
-    <ClInclude Include="..\out\obj_dir\Vsimtop_z_buff__Ez1.h" />
-    <ClInclude Include="..\out\obj_dir\Vsimtop__pch.h" />
-    <ClInclude Include="..\out\obj_dir\Vsimtop__Syms.h" />
-    <ClInclude Include="..\out\obj_dir\Vsimtop___024root.h" />
-    <ClInclude Include="..\out\obj_dir\Vsimtop___024unit.h" />
     <ClInclude Include="c:\linux_temp\imgui\imconfig.h" />
     <ClInclude Include="c:\linux_temp\imgui\imgui.h" />
     <ClInclude Include="c:\linux_temp\imgui\imgui_internal.h" />
@@ -247,4 +220,35 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+  <ItemGroup>
+    <ClCompile Include="..\out\obj_dir\Vsimtop.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop__ConstPool_0.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop__Syms.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h305f3046__0.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h305f3046__0__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h3a8afb71__0.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h3a8afb71__0__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__DepSet_h3a8afb71__1.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop___024root__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop___024unit__DepSet_h7e859b80__0__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop___024unit__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1__DepSet_h33a7dd7b__0__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1__DepSet_h37324824__0.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1__DepSet_h37324824__0__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__DepSet_h0058d5db__0.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__DepSet_h0058d5db__0__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__DepSet_hea814184__0.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__DepSet_hea814184__0__Slow.cpp" />
+    <ClCompile Include="..\out\obj_dir\Vsimtop_z_buff__Ez1__Slow.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\out\obj_dir\Vsimtop.h" />
+    <ClInclude Include="..\out\obj_dir\Vsimtop__Syms.h" />
+    <ClInclude Include="..\out\obj_dir\Vsimtop___024root.h" />
+    <ClInclude Include="..\out\obj_dir\Vsimtop___024unit.h" />
+    <ClInclude Include="..\out\obj_dir\Vsimtop__pch.h" />
+    <ClInclude Include="..\out\obj_dir\Vsimtop_param_buffer__Ez1_EBz1_ECz1.h" />
+    <ClInclude Include="..\out\obj_dir\Vsimtop_z_buff__Ez1.h" />
+  </ItemGroup>
 </Project>
