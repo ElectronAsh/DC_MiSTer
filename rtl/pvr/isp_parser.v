@@ -1960,7 +1960,7 @@ reg signed [47:0] FX3_sub_FX1;
 
 reg signed [55:0] C_mult_1;
 reg signed [55:0] C_mult_2;
-reg signed [39:0] BIG_C;		// Might be OK as 48-bit?
+reg signed [43:0] BIG_C;
 
 always @(posedge clock) begin
 	FX1_FIXED_R <= FX1_FIXED; FY1_FIXED_R <= FY1_FIXED; FZ1_FIXED_R <= FZ1_FIXED;
@@ -1993,7 +1993,7 @@ always @(posedge clock) begin
 	BIG_C <= BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
 end
 */
-wire signed [39:0] BIG_C_shifted = BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
+wire signed [43:0] BIG_C_shifted = BIG_C_raw >>> (FRAC_BITS-FRAC_DIFF);
 always @(posedge clock) BIG_C <= BIG_C_shifted;
 
 // From the Sega Bible PDF, page 204..

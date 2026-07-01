@@ -21,7 +21,7 @@ module interp_params #(
     input signed [47:0] FX1,
     input signed [47:0] FY1,
 
-    input signed [39:0] BIG_C,
+    input signed [43:0] BIG_C,
 
     input wire [31:0] param_a_z,
     input wire [31:0] param_b_z,
@@ -160,7 +160,7 @@ reg signed [47:0] FX3_sub_FX1_cap;
 reg signed [47:0] FX1_cap;
 reg signed [47:0] FY1_cap;
 
-reg signed [39:0] BIG_C_cap;
+reg signed [43:0] BIG_C_cap;
 
 reg signed [47:0] param_a_cap;
 reg signed [47:0] param_b_cap;
@@ -174,7 +174,7 @@ if (!reset_n) begin
         FX3_sub_FX1_cap <= 48'sd0;
         FX1_cap <= 48'sd0;
         FY1_cap <= 48'sd0;
-        BIG_C_cap <= 40'sd0;
+        BIG_C_cap <= 44'sd0;
         param_a_cap <= 48'sd0;
         param_b_cap <= 48'sd0;
         param_c_cap <= 48'sd0;
@@ -224,7 +224,7 @@ reg signed [47:0] FX2_sub_FX1_s1;
 reg signed [47:0] FX3_sub_FX1_s1;
 
 (* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
-reg signed [39:0] BIG_C_s1;
+reg signed [43:0] BIG_C_s1;
 
 always @(posedge clock) begin
     param_b_sub_param_a_r <= param_b_cap - param_a_cap;
@@ -254,7 +254,7 @@ reg signed [47:0] FY1_s2;
 reg signed [47:0] param_a_s2;
 
 (* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
-reg signed [39:0] BIG_C_s2;
+reg signed [43:0] BIG_C_s2;
 
 always @(posedge clock) begin
     A_num_mult_1_r <= param_c_sub_param_a_r * (FY2_sub_FY1_s1 <<< FRAC_DIFF);
@@ -280,7 +280,7 @@ reg signed [47:0] FY1_s3;
 reg signed [47:0] param_a_s3;
 
 (* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
-reg signed [39:0] BIG_C_s3;
+reg signed [43:0] BIG_C_s3;
 
 always @(posedge clock) begin
     A_num_r <= (A_num_mult_1_r - A_num_mult_2_r) >>> Z_FRAC_BITS;
@@ -291,14 +291,6 @@ always @(posedge clock) begin
     BIG_C_s3 <= BIG_C_s2;
 end
 
-(* preserve, dont_merge *) reg signed [39:0] BIG_C_div;
-
-always @(posedge clock) begin
-    // A_num_r is produced from stage 2 on the same edge that BIG_C_s3 is
-    // produced. Register stage 2 here so the divider sees matching tokens.
-    BIG_C_div <= BIG_C_s2;
-end
-
 //
 // ------------------------------------------------------------------------
 // Stage 4 : Two parallel pipelined dividers (FDDX and FDDY)
@@ -306,31 +298,15 @@ end
 //
 localparam DIV_PIPELINE = 6;
 
-reg signed [47:0] FX1_s4;
-reg signed [47:0] FY1_s4;
-reg signed [47:0] param_a_s4;
-
-reg signed [47:0] FX1_div_s1;
-reg signed [47:0] FX1_div_s2;
-reg signed [47:0] FX1_div_s3;
-reg signed [47:0] FX1_div_s4;
-reg signed [47:0] FX1_div_s5;
-
-reg signed [47:0] FY1_div_s1;
-reg signed [47:0] FY1_div_s2;
-reg signed [47:0] FY1_div_s3;
-reg signed [47:0] FY1_div_s4;
-reg signed [47:0] FY1_div_s5;
-
-reg signed [47:0] param_a_div_s1;
-reg signed [47:0] param_a_div_s2;
-reg signed [47:0] param_a_div_s3;
-reg signed [47:0] param_a_div_s4;
-reg signed [47:0] param_a_div_s5;
-
 // Ideally needs to be at least 56 bits here, else things go screwy, especially the extra large polys on Daytona Bhind.
 wire signed [55:0] A_num_num = $signed({{17{A_num_r[47]}}, A_num_r}) <<< Z_FRAC_BITS;
 wire signed [55:0] B_num_num = $signed({{17{B_num_r[47]}}, B_num_r}) <<< Z_FRAC_BITS;
+
+(* preserve, dont_merge *) reg signed [43:0] BIG_C_div;
+
+always @(posedge clock) begin
+    BIG_C_div <= BIG_C_s2;
+end
 
 wire signed [55:0] FDDX_div;
 wire signed [55:0] FDDY_div;
@@ -355,28 +331,26 @@ interp_signed_div_pipe #(
     .quotient(FDDY_div)
 );
 
+reg signed [47:0] FX1_s4;
+reg signed [47:0] FY1_s4;
+reg signed [47:0] param_a_s4;
+
+reg signed [47:0] FX1_div_s1, FX1_div_s2, FX1_div_s3, FX1_div_s4, FX1_div_s5;
+reg signed [47:0] FY1_div_s1, FY1_div_s2, FY1_div_s3, FY1_div_s4, FY1_div_s5;
+reg signed [47:0] param_a_div_s1, param_a_div_s2, param_a_div_s3, param_a_div_s4, param_a_div_s5;
+
 always @(posedge clock) begin
-    FX1_s4 <= FX1_s3;
-    FY1_s4 <= FY1_s3;
-    param_a_s4 <= param_a_s3;
+    FX1_s4     <= FX1_s3;
+    FX1_div_s1 <= FX1_s4;     FX1_div_s2 <= FX1_div_s1; FX1_div_s3 <= FX1_div_s2;
+    FX1_div_s4 <= FX1_div_s3; FX1_div_s5 <= FX1_div_s4;
 
-    FX1_div_s1 <= FX1_s4;
-    FX1_div_s2 <= FX1_div_s1;
-    FX1_div_s3 <= FX1_div_s2;
-    FX1_div_s4 <= FX1_div_s3;
-    FX1_div_s5 <= FX1_div_s4;
+    FY1_s4     <= FY1_s3;
+    FY1_div_s1 <= FY1_s4;     FY1_div_s2 <= FY1_div_s1; FY1_div_s3 <= FY1_div_s2;
+    FY1_div_s4 <= FY1_div_s3; FY1_div_s5 <= FY1_div_s4;
 
-    FY1_div_s1 <= FY1_s4;
-    FY1_div_s2 <= FY1_div_s1;
-    FY1_div_s3 <= FY1_div_s2;
-    FY1_div_s4 <= FY1_div_s3;
-    FY1_div_s5 <= FY1_div_s4;
-
-    param_a_div_s1 <= param_a_s4;
-    param_a_div_s2 <= param_a_div_s1;
-    param_a_div_s3 <= param_a_div_s2;
-    param_a_div_s4 <= param_a_div_s3;
-    param_a_div_s5 <= param_a_div_s4;
+    param_a_s4     <= param_a_s3;
+    param_a_div_s1 <= param_a_s4;     param_a_div_s2 <= param_a_div_s1; param_a_div_s3 <= param_a_div_s2;
+    param_a_div_s4 <= param_a_div_s3; param_a_div_s5 <= param_a_div_s4;
 end
 
 //
@@ -448,7 +422,6 @@ reg [5:0] param_id_s8;
 reg [5:0] param_id_s9;
 reg [5:0] param_id_s10;
 reg [5:0] param_id_s11;
-
 always @(posedge clock or negedge reset_n)
 if (!reset_n) begin
     valid_pipe   <= {VP_DEPTH{1'b0}};
@@ -493,12 +466,12 @@ module interp_signed_div_pipe #(
 )(
     input  wire               clock,
     input  wire signed [55:0] numer,
-    input  wire signed [39:0] denom,
+    input  wire signed [43:0] denom,
     output wire signed [55:0] quotient
 );
 
 wire signed [55:0] numer_safe = (denom == 0) ? 56'sd0 : numer;
-wire signed [39:0] denom_safe = (denom == 0) ? 40'sd1 : denom;
+wire signed [43:0] denom_safe = (denom == 0) ? 44'sd1 : denom;
 
 `ifdef VERILATOR
 reg signed [55:0] quotient_pipe [0:PIPELINE-1];
